@@ -7,12 +7,12 @@ from firebase_admin import credentials, initialize_app, db
 
 
 # Initialize the Firebase Admin SDK with the secret value
-#cred = os.environ.get('DATABASE_ACCESS')
+cred = os.environ.get('DATABASE_ACCESS')
 
 
-json_path = os.path.abspath('keys/surfeable-firebase-adminsdk-jsap5-c3dd0bd252.json')
+#json_path = os.path.abspath('keys/surfeable-firebase-adminsdk-jsap5-c3dd0bd252.json')
 # Initialize the Firebase Admin SDK
-cred = credentials.Certificate(json_path)
+#cred = credentials.Certificate(json_path)
 firebase_admin.initialize_app(cred, {'databaseURL': 'https://surfeable-default-rtdb.europe-west1.firebasedatabase.app/'})
 
 def getRegions(countryName):
