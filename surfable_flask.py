@@ -7,19 +7,8 @@ from api.spotForecast import *
 APP = flask.Flask(__name__, static_folder='static')
 CORS(APP, resources={r"/api/*": {"origins": "*"}})
 
-@APP.route('/../../frontend/dist/<path:filename>')
-def serve_vue_dist(filename):
-    dist_path = os.path.join(APP.root_path, 'frontend', 'dist')  # Adjust the path accordingly
-    return send_from_directory(dist_path, filename)
-
-@APP.route('/')
-def index():
-    """ Displays the index page accessible at '/'
-    """
-    return flask.render_template('index.html')
-
 #uses the getCOordinates function to get the latitude and longitude of a location
-@APP.route("/api/location")
+@APP.route("/api/location", methods=['GET'])
 def get_location():
     region = request.args.get("region")
     spot = request.args.get("spot")
@@ -27,7 +16,7 @@ def get_location():
     coordinates = getCoordinates(spot, region, country)
     return jsonify(coordinates)
 
-@APP.route("/api/locationInfo")
+@APP.route("/api/locationInfo", methods=['GET'])
 def get_location_info():
     region = request.args.get("region")
     spot = request.args.get("spot")
@@ -35,13 +24,13 @@ def get_location_info():
     locationInfo = getLocationInfo(spot, region, country)
     return jsonify(locationInfo)
 
-@APP.route("/api/buoyLocationInfo")
+@APP.route("/api/buoyLocationInfo", methods=['GET'])
 def get_buoyLocationInfo():
     locationInfo = buoyLocationInfo()
     return jsonify(locationInfo)
 
 #uses the getSpots function to get all the spots from a region and country
-@APP.route("/api/spots")
+@APP.route("/api/spots", methods=['GET'])
 def get_spots():
     region = request.args.get("region")
     country = request.args.get("country")
@@ -49,14 +38,14 @@ def get_spots():
     return jsonify(spots)
 
 #uses the getRegion function to get all the regions from a country
-@APP.route("/api/regions")
+@APP.route("/api/regions", methods=['GET'])
 def get_regions():
     country = request.args.get("country")
     regions = getRegions(country)
     return jsonify(regions)
 
 #function that retrievs the weather data from the database for a given location using the spotForecast.py file
-@APP.route("/api/forecast")
+@APP.route("/api/forecast", methods=['GET'])
 def get_forecast():
     spot = request.args.get("spot")
     region = request.args.get("region")
@@ -65,7 +54,7 @@ def get_forecast():
     forecast = getSpotForecast(spot, region, country)
     return jsonify(forecast)
 
-@APP.route("/api/currentConditions")
+@APP.route("/api/currentConditions", methods=['GET'])
 def get_currentConditions():
     spot = request.args.get("spot")
     region = request.args.get("region")
@@ -74,21 +63,21 @@ def get_currentConditions():
     forecast = getCurrentWeather(spot, region, country)
     return jsonify(forecast)
 
-@APP.route("/api/beforeAfterTide")
+@APP.route("/api/beforeAfterTide", methods=['GET'])
 def get_beforeAfterTide():
     locationName = request.args.get("locationName")
 
     tides = getBeforeAfterTides(locationName)
     return jsonify(tides)
 
-@APP.route("/api/tideExtremes")
+@APP.route("/api/tideExtremes", methods=['GET'])
 def get_tideExtremes():
     locationName = request.args.get("locationName")
     start = request.args.get("start")
     tides = getDayTides(locationName, start)
     return jsonify(tides)
 
-@APP.route("/api/regionForecast")
+@APP.route("/api/regionForecast", methods=['GET'])
 def get_regionForecast():
     region = request.args.get("region")
     country = request.args.get("country")
@@ -96,24 +85,24 @@ def get_regionForecast():
     forecast = getRegionForecast(region, country)
     return jsonify(forecast)
 
-@APP.route("/api/getLiveBuoyData")
+@APP.route("/api/getLiveBuoyData", methods=['GET'])
 def get_liveBuoyData():
     data = getLiveBuoyData()
     return jsonify(data)
 
-@APP.route("/api/getSingleBuoyData")
+@APP.route("/api/getSingleBuoyData", methods=['GET'])
 def get_singleBuoyData():
     buoyName = request.args.get("buoyName")
     data = getSingleBuoyData(buoyName)
     return jsonify(data)
 
-@APP.route("/api/individualBuoyLocation")
+@APP.route("/api/individualBuoyLocation", methods=['GET'])
 def get_individualBuoyLocation():
     buoyName = request.args.get("buoyName")
     data = individualBuoyLocationInfo(buoyName)
     return jsonify(data)
 
-@APP.route("/api/getLast24BuoyData")
+@APP.route("/api/getLast24BuoyData", methods=['GET'])
 def get_last24BuoyData():
     buoyName = request.args.get("buoyName")
     data = getLast24HoursBuoyData(buoyName)
@@ -128,7 +117,7 @@ def submitSurfReport():
     else:
         return 'Surf report submitted', 200
 
-@APP.route("/api/getTodaySpotReports")
+@APP.route("/api/getTodaySpotReports", methods=['GET'])
 def get_todaySpotReports():
     spot = request.args.get("spot")
     region = request.args.get("region")
