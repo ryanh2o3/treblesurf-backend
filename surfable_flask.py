@@ -16,6 +16,7 @@ def get_location():
     coordinates = getCoordinates(spot, region, country)
     return jsonify(coordinates)
 
+#get location info for a given spot
 @APP.route("/api/locationInfo", methods=['GET'])
 def get_location_info():
     region = request.args.get("region")
