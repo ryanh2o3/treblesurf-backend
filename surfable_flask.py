@@ -118,6 +118,7 @@ def submitSurfReport():
     else:
         return 'Surf report submitted', 200
 
+#retrieve todays surf reports for a given spot
 @APP.route("/api/getTodaySpotReports", methods=['GET'])
 def get_todaySpotReports():
     spot = request.args.get("spot")
