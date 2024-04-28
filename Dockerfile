@@ -10,6 +10,7 @@ COPY . /app
 WORKDIR /app
 
 ENV FLASK_APP=surfable_flask.py
+ENV ENV=production
 
 EXPOSE 5000
 
