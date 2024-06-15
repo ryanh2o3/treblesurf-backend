@@ -127,6 +127,19 @@ def get_todaySpotReports():
     data = retrieveTodaysSurfReports(country, region, spot)
     return jsonify(data)
 
+@APP.route("/api/listSpotsForecast", methods=['GET'])
+def get_listSpotsForecast():
+    spots = request.args.get("spots")
+    region = request.args.get("region")
+    country = request.args.get("country")
+    data = getListSpotsForecast(spots, region, country)
+    return jsonify(data)
+
+@APP.route("/api/getMultipleBuoyData", methods=['GET'])
+def get_multipleBuoyData():
+    buoys= request.args.get("buoys")
+    data = getMultipleBuoyData(buoys)
+    return jsonify(data)
 
 if __name__ == '__main__':
     APP.debug=True
