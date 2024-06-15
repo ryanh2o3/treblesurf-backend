@@ -82,6 +82,29 @@ def getSpotForecast(spotName, regionName, countryName):
     # return the forecast
     return query
 
+def getListSpotsForecast(spots, regionName, countryName):
+    query = db.reference('WeatherData').order_by_key().limit_to_last(1).get()
+    if query:
+        top_level_key = list(query.keys())[0]
+        query = db.reference(f"WeatherData/{top_level_key}/{countryName}/{regionName}").get()
+
+    now = datetime.datetime.now()
+
+    for region_key in list(query.keys()):
+        region = query[region_key]
+        # Iterate over each spot in the region
+        if region_key not in spots:
+            print(region_key)
+            del query[region_key]
+        for spot_key in list(region.keys()):
+            spot = region[spot_key]
+            # If the 'dateForecastedFor' of the spot is before 'now', remove it
+            if datetime.datetime.strptime(spot['dateForecastedFor'], '%Y-%m-%d %H:%M:%S') < now:
+                del region[spot_key]
+
+    
+    return query
+
 def getRegionForecast(regionName, countryName):
     # get the most recent forecast data for the spot in the region of the country
     query = db.reference('WeatherData').order_by_key().limit_to_last(1).get()
@@ -260,3 +283,20 @@ def retrieveTodaysSurfReports(countryName, regionName, spotName):
     #loop through the reports and store them in a list
     reports = ref.get()
     return reports
+
+def getMultipleBuoyData(buoys):
+    # get the most recent buoy data from the database
+    values = []
+    buoys = buoys.split(',')
+
+    for buoy in buoys:
+        print(buoys)
+        print(buoy)
+        query = db.reference(f'BuoyData/{buoy}').order_by_key().limit_to_last(1).get()
+        # Get the last key in the dictionary
+        last_key = list(query.keys())[-1]
+        # Get the value of the last key
+        value = query[last_key]
+        values.append(value)
+
+    return values
