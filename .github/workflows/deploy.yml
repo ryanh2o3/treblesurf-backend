@@ -31,7 +31,7 @@ jobs:
 
       - name: Build the Go application
         run: |
-          go build
+          GOOS=linux GOARCH=amd64 go build
 
       - name: Package the application
         run: |
@@ -48,11 +48,12 @@ jobs:
           # Check if Lambda function exists
           if ! aws lambda get-function --function-name $FUNCTION_NAME; then
             # Create Lambda function if it doesn't exist
-            aws lambda create-function --function-name $FUNCTION_NAME --runtime go1.x --role $ROLE_ARN --handler main --zip-file fileb://$ZIP_FILE
+            aws lambda create-function --function-name $FUNCTION_NAME --runtime provided.al2 --role $ROLE_ARN --handler main --zip-file fileb://$ZIP_FILE
           else
             # Deploy Lambda function
             aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://$ZIP_FILE
           fi
+
           # Setup API Gateway
           integration=$(aws apigatewayv2 create-integration --api-id $API_ID --integration-type AWS_PROXY --integration-method POST --payload-format-version 2.0 --integration-uri arn:aws:apigateway:$REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$REGION:759663378274:function:$FUNCTION_NAME/invocations)
           integration_id=$(echo $integration | jq -r '.IntegrationId')
