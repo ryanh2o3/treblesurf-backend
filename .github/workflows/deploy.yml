@@ -20,7 +20,6 @@ jobs:
 
       - name: Build the Go application
         run: |
-          cd function
           go build
 
       - name: Package the application
