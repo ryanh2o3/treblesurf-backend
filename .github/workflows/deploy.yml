@@ -8,6 +8,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -17,6 +21,13 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: "1.24"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::759663378274:role/github_actions_oidc
+          aws-region: eu-west-1
+          audience: sts.amazonaws.com
 
       - name: Build the Go application
         run: |
@@ -28,13 +39,6 @@ jobs:
           cd ../scripts
           chmod +x deploy.sh
           ./deploy.sh
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::759663378274:role/github_actions_oidc
-          aws-region: eu-west-1
-          audience: sts.amazonaws.com
 
       - name: Deploy to AWS Lambda
         env:
