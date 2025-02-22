@@ -1,4 +1,4 @@
-module api
+module treblesurf-backend
 
 go 1.24.0
 
