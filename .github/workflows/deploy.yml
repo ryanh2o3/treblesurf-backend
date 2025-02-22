@@ -21,7 +21,7 @@ jobs:
       - name: Build the Go application
         run: |
           cd function
-          go build -o main main.go
+          go build
 
       - name: Package the application
         run: |
@@ -43,14 +43,14 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: "us-east-1"
         run: |
-          aws lambda update-function-code --function-name api --zip-file fileb://function/deployment.zip
+          aws lambda update-function-code --function-name api --zip-file fileb://deployment.zip
 
       - name: Deploy Lambdas and Setup API Gateway
         run: |
           FUNCTION_NAME="api"
           API_ID="bg4yv0rzhe"
           REGION="eu-west-1"
-          ZIP_FILE="function/deployment.zip"
+          ZIP_FILE="deployment.zip"
 
           # Deploy Lambda function
           aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://$ZIP_FILE

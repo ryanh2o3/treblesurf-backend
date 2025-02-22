@@ -6,10 +6,9 @@ set -e
 FUNCTION_NAME="api"
 REGION="eu-west-1"
 ZIP_FILE="function.zip"
-SOURCE_DIR="function"
 
 # Build the Go application
-GOOS=linux GOARCH=amd64 go build -o main $SOURCE_DIR/main.go
+GOOS=linux GOARCH=amd64 go build
 
 # Package the application
 zip $ZIP_FILE main
