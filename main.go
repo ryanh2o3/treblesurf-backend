@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"strings"
+	"treblesurf-backend/api"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -24,24 +25,24 @@ func init() {
         c.Next()
     })
     
-    r.GET("/regions/:countryName", api.getRegions)
-    r.GET("/spots/:countryName/:regionName", getSpots)
-    r.GET("/coordinates/:countryName/:regionName/:spotName", getCoordinates)
-    r.GET("/spotForecast/:countryName/:regionName/:spotName", getSpotForecast)
-    r.GET("/listSpotsForecast/:countryName/:regionName", getListSpotsForecast)
-    r.GET("/regionForecast/:countryName/:regionName", getRegionForecast)
-    r.GET("/currentWeather/:countryName/:regionName/:spotName", getCurrentWeather)
-    r.GET("/beforeAfterTides/:locationName", getBeforeAfterTides)
-    r.GET("/dayTides/:locationName/:startDay", getDayTides)
-    r.GET("/liveBuoyData", getLiveBuoyData)
-    r.GET("/singleBuoyData/:buoyName", getSingleBuoyData)
-    r.GET("/last24HoursBuoyData/:buoyName", getLast24HoursBuoyData)
-    r.POST("/submitCurrentSurfReport", submitCurrentSurfReport)
-    r.GET("/todaysSurfReports/:countryName/:regionName/:spotName", retrieveTodaysSurfReports)
-    r.GET("/multipleBuoyData", getMultipleBuoyData)
-    r.GET("/buoyLocationInfo", buoyLocationInfo)
-    r.GET("/individualBuoyLocationInfo/:regionName/:buoyName", individualBuoyLocationInfo)
-    r.GET("/locationInfo/:countryName/:regionName/:spotName", getLocationInfo)
+    r.GET("/regions/:countryName", api.GetRegions)
+    r.GET("/spots/:countryName/:regionName", api.GetSpots)
+    r.GET("/coordinates/:countryName/:regionName/:spotName", api.GetCoordinates)
+    r.GET("/spotForecast/:countryName/:regionName/:spotName", api.GetSpotForecast)
+    r.GET("/listSpotsForecast/:countryName/:regionName", api.GetListSpotsForecast)
+    r.GET("/regionForecast/:countryName/:regionName", api.GetRegionForecast)
+    r.GET("/currentWeather/:countryName/:regionName/:spotName", api.GetCurrentWeather)
+    r.GET("/beforeAfterTides/:locationName", api.GetBeforeAfterTides)
+    r.GET("/dayTides/:locationName/:startDay", api.GetDayTides)
+    r.GET("/liveBuoyData", api.GetLiveBuoyData)
+    r.GET("/singleBuoyData/:buoyName", api.GetSingleBuoyData)
+    r.GET("/last24HoursBuoyData/:buoyName", api.GetLast24HoursBuoyData)
+    r.POST("/submitCurrentSurfReport", api.SubmitCurrentSurfReport)
+    r.GET("/todaysSurfReports/:countryName/:regionName/:spotName", api.RetrieveTodaysSurfReports)
+    r.GET("/multipleBuoyData", api.GetMultipleBuoyData)
+    r.GET("/buoyLocationInfo", api.BuoyLocationInfo)
+    r.GET("/individualBuoyLocationInfo/:regionName/:buoyName", api.IndividualBuoyLocationInfo)
+    r.GET("/locationInfo/:countryName/:regionName/:spotName", api.GetLocationInfo)
     ginLambda = ginadapter.New(r)
 }
 
