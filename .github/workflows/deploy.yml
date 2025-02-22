@@ -31,11 +31,11 @@ jobs:
 
       - name: Build the Go application
         run: |
-          GOOS=linux GOARCH=amd64 go build
+          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
 
       - name: Package the application
         run: |
-          zip deployment.zip main.go
+          zip deployment.zip bootstrap
 
       - name: Deploy Lambdas and Setup API Gateway
         run: |
@@ -48,9 +48,3 @@ jobs:
 
           # Deploy Lambda function
           aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://$ZIP_FILE
-
-          # Setup API Gateway
-          integration=$(aws apigatewayv2 create-integration --api-id $API_ID --integration-type AWS_PROXY --integration-method POST --payload-format-version 2.0 --integration-uri arn:aws:apigateway:$REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$REGION:759663378274:function:$FUNCTION_NAME/invocations)
-          integration_id=$(echo $integration | jq -r '.IntegrationId')
-          aws apigatewayv2 create-route --api-id $API_ID --route-key "ANY /{proxy+}" --target "integrations/$integration_id"
-          aws lambda add-permission --function-name $FUNCTION_NAME --statement-id apigateway --action lambda:InvokeFunction --principal apigateway.amazonaws.com --source-arn "arn:aws:apigateway:eu-west-1::/restapis/bg4yv0rzhe"

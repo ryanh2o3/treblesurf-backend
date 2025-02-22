@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -11,13 +12,19 @@ import (
 
 var ginLambda *ginadapter.GinLambda
 
-func main() {
-	lambda.Start(Handler)
-}
-
 func init() {
 	r := gin.Default()
-    r.GET("/regions/:countryName", getRegions)
+
+    // Strip /api prefix
+    r.Use(func(c *gin.Context) {
+        path := c.Request.URL.Path
+        if strings.HasPrefix(path, "/api") {
+            c.Request.URL.Path = strings.TrimPrefix(path, "/api")
+        }
+        c.Next()
+    })
+    
+    r.GET("/regions/:countryName", api.getRegions)
     r.GET("/spots/:countryName/:regionName", getSpots)
     r.GET("/coordinates/:countryName/:regionName/:spotName", getCoordinates)
     r.GET("/spotForecast/:countryName/:regionName/:spotName", getSpotForecast)
@@ -40,4 +47,8 @@ func init() {
 
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	return ginLambda.ProxyWithContext(ctx, req)
+}
+
+func main() {
+	lambda.Start(Handler)
 }
