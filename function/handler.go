@@ -243,7 +243,7 @@ func getSpotForecast(c *gin.Context) {
     forecastDate := time.Now().Format("2006-01-02")
 
     input := &dynamodb.QueryInput{
-        TableName: aws.String("WeatherData"),
+        TableName: aws.String("SurfSpotForecastData"),
         KeyConditionExpression: aws.String("ForecastDate = :date AND begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":date": {
@@ -286,7 +286,7 @@ func getListSpotsForecast(c *gin.Context) {
     forecastDate := time.Now().Format("2006-01-02")
 
     input := &dynamodb.QueryInput{
-        TableName: aws.String("WeatherData"),
+        TableName: aws.String("SurfSpotForecastData"),
         KeyConditionExpression: aws.String("ForecastDate = :date AND begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":date": {
@@ -342,7 +342,7 @@ func getRegionForecast(c *gin.Context) {
     forecastDate := time.Now().Format("2006-01-02")
 
     input := &dynamodb.QueryInput{
-        TableName: aws.String("WeatherData"),
+        TableName: aws.String("SurfSpotForecastData"),
         KeyConditionExpression: aws.String("ForecastDate = :date AND begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":date": {
@@ -388,7 +388,7 @@ func getCurrentWeather(c *gin.Context) {
     forecastDate := time.Now().Format("2006-01-02")
 
     input := &dynamodb.QueryInput{
-        TableName: aws.String("WeatherData"),
+        TableName: aws.String("SurfSpotForecastData"),
         KeyConditionExpression: aws.String("ForecastDate = :date AND begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":date": {

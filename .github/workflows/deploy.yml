@@ -1,0 +1,62 @@
+name: Deploy to AWS Lambda
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.24"
+
+      - name: Build the Go application
+        run: |
+          cd function
+          go build -o main main.go
+
+      - name: Package the application
+        run: |
+          zip deployment.zip main
+          cd ../scripts
+          chmod +x deploy.sh
+          ./deploy.sh
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::759663378274:role/github_actions_oidc
+          aws-region: eu-west-1
+          audience: sts.amazonaws.com
+
+      - name: Deploy to AWS Lambda
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "us-east-1"
+        run: |
+          aws lambda update-function-code --function-name api --zip-file fileb://function/deployment.zip
+
+      - name: Deploy Lambdas and Setup API Gateway
+        run: |
+          FUNCTION_NAME="api"
+          API_ID="bg4yv0rzhe"
+          REGION="eu-west-1"
+          ZIP_FILE="function/deployment.zip"
+
+          # Deploy Lambda function
+          aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://$ZIP_FILE
+
+          # Setup API Gateway
+          integration=$(aws apigatewayv2 create-integration --api-id $API_ID --integration-type AWS_PROXY --integration-method POST --payload-format-version 2.0 --integration-uri arn:aws:apigateway:$REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$REGION:759663378274:function:$FUNCTION_NAME/invocations)
+          integration_id=$(echo $integration | jq -r '.IntegrationId')
+          aws apigatewayv2 create-route --api-id $API_ID --route-key "ANY /{proxy+}" --target "integrations/$integration_id"
+          aws lambda add-permission --function-name $FUNCTION_NAME --statement-id apigateway --action lambda:InvokeFunction --principal apigateway.amazonaws.com --source-arn "arn:aws:execute-api:$REGION:759663378274:$API_ID/*/*/*"
