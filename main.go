@@ -55,16 +55,18 @@ func init() {
 }
 
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// Debug logging for API Gateway request
-    log.Printf("API Gateway Path: %s", req.Path)
-    log.Printf("API Gateway PathParameters: %v", req.PathParameters)
-    log.Printf("API Gateway QueryStringParameters: %v", req.QueryStringParameters)
-    log.Printf("API Gateway RequestContext: %+v", req.RequestContext)
-    log.Printf("API Gateway Resource: %s", req.Resource)
-
-    // Add proxy+ parameter handling
+	// Handle proxy integration path
     if proxyPath, ok := req.PathParameters["proxy"]; ok {
-        req.Path = "/" + proxyPath
+        // Ensure the path starts with a forward slash
+        if !strings.HasPrefix(proxyPath, "/") {
+            proxyPath = "/" + proxyPath
+        }
+        
+        // If the path includes /api prefix, strip it
+        proxyPath = strings.TrimPrefix(proxyPath, "/api")
+        
+        // Update the request path
+        req.Path = proxyPath
         log.Printf("Updated path from proxy parameter: %s", req.Path)
     }
 
