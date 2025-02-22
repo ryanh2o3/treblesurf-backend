@@ -55,7 +55,20 @@ func init() {
 }
 
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	return ginLambda.ProxyWithContext(ctx, req)
+	// Debug logging for API Gateway request
+    log.Printf("API Gateway Path: %s", req.Path)
+    log.Printf("API Gateway PathParameters: %v", req.PathParameters)
+    log.Printf("API Gateway QueryStringParameters: %v", req.QueryStringParameters)
+    log.Printf("API Gateway RequestContext: %+v", req.RequestContext)
+    log.Printf("API Gateway Resource: %s", req.Resource)
+
+    // Add proxy+ parameter handling
+    if proxyPath, ok := req.PathParameters["proxy"]; ok {
+        req.Path = "/" + proxyPath
+        log.Printf("Updated path from proxy parameter: %s", req.Path)
+    }
+
+    return ginLambda.ProxyWithContext(ctx, req)
 }
 
 func main() {
