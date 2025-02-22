@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"strings"
 	"treblesurf-backend/api"
 
@@ -15,6 +16,13 @@ var ginLambda *ginadapter.GinLambda
 
 func init() {
 	r := gin.Default()
+
+    // Add logging middleware
+    r.Use(func(c *gin.Context) {
+        log.Printf("Method: %s", c.Request.Method)
+        log.Printf("Full request URL: %s", c.Request.URL.String())
+        c.Next()
+    })
 
     // Strip /api prefix
     r.Use(func(c *gin.Context) {
