@@ -35,14 +35,14 @@ jobs:
 
       - name: Package the application
         run: |
-          zip deployment.zip bootstrap
+          zip bootstrap.zip bootstrap
 
       - name: Deploy Lambdas and Setup API Gateway
         run: |
           FUNCTION_NAME="api"
           API_ID="bg4yv0rzhe"
           REGION="eu-west-1"
-          ZIP_FILE="deployment.zip"
+          ZIP_FILE="bootstrap.zip"
           ROLE_ARN="arn:aws:iam::759663378274:role/service-role/api-role-pydrwpue"
 
 
