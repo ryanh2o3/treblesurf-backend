@@ -17,8 +17,11 @@ func main() {
 
 func init() {
 	r := gin.Default()
-
-	r.GET("/listSpotsForecast/:countryName/:regionName", getListSpotsForecast)
+    r.GET("/regions/:countryName", getRegions)
+    r.GET("/spots/:countryName/:regionName", getSpots)
+    r.GET("/coordinates/:countryName/:regionName/:spotName", getCoordinates)
+    r.GET("/spotForecast/:countryName/:regionName/:spotName", getSpotForecast)
+    r.GET("/listSpotsForecast/:countryName/:regionName", getListSpotsForecast)
     r.GET("/regionForecast/:countryName/:regionName", getRegionForecast)
     r.GET("/currentWeather/:countryName/:regionName/:spotName", getCurrentWeather)
     r.GET("/beforeAfterTides/:locationName", getBeforeAfterTides)
@@ -29,7 +32,10 @@ func init() {
     r.POST("/submitCurrentSurfReport", submitCurrentSurfReport)
     r.GET("/todaysSurfReports/:countryName/:regionName/:spotName", retrieveTodaysSurfReports)
     r.GET("/multipleBuoyData", getMultipleBuoyData)
-	ginLambda = ginadapter.New(r)
+    r.GET("/buoyLocationInfo", buoyLocationInfo)
+    r.GET("/individualBuoyLocationInfo/:regionName/:buoyName", individualBuoyLocationInfo)
+    r.GET("/locationInfo/:countryName/:regionName/:spotName", getLocationInfo)
+    ginLambda = ginadapter.New(r)
 }
 
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
