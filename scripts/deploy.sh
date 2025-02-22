@@ -3,8 +3,8 @@
 set -e
 
 # Define variables
-FUNCTION_NAME="your_lambda_function_name"
-REGION="your_aws_region"
+FUNCTION_NAME="api"
+REGION="eu-west-1"
 ZIP_FILE="function.zip"
 SOURCE_DIR="function"
 
