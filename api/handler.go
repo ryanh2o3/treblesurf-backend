@@ -353,7 +353,6 @@ func GetListSpotsForecast(c *gin.Context) {
 
     for _, spotName := range spots {
         // Try for up to 48 hours in the past
-        var spotForecast []map[string]interface{}
         for i := 0; i < 48; i++ {
             searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
             dateStr := searchTime.Format("2006-01-02 15")
@@ -364,27 +363,18 @@ func GetListSpotsForecast(c *gin.Context) {
                 return
             }
             
-            if forecast != nil && len(forecast) > 0 {
-                spotForecast = forecast
+            if forecast != nil {
+                allForecasts = append(allForecasts, forecast...)
                 break
             }
         }
         
-        // If we found a forecast for this spot, add it to our results
-        if len(spotForecast) > 0 {
-            allForecasts = append(allForecasts, spotForecast...)
-        }
     }
 
     // Sort the forecasts by country, region, and spot
     sort.Slice(allForecasts, func(i, j int) bool {
         return allForecasts[i]["country_region_spot"].(string) < allForecasts[j]["country_region_spot"].(string)
     })
-
-    if len(allForecasts) == 0 {
-        c.JSON(http.StatusNotFound, gin.H{"error": "No forecasts found for the specified spots"})
-        return
-    }
 
     c.JSON(http.StatusOK, allForecasts)
 }
