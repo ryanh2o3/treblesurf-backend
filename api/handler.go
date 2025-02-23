@@ -207,17 +207,17 @@ func GetSpots(c *gin.Context) {
     regionName := c.Query("region")
     countryName := c.Query("country")
 
-    input := &dynamodb.QueryInput{
+    input := &dynamodb.ScanInput{
         TableName: aws.String("LocationData"),
-        KeyConditionExpression: aws.String("begins_with(country_region_spot, :location)"),
+        FilterExpression: aws.String("begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":location": {
-                S: aws.String(fmt.Sprintf("%s_%s_", countryName, regionName)),
+                S: aws.String(fmt.Sprintf("%s/%s/", countryName, regionName)),
             },
         },
     }
 
-    result, err := db.Query(input)
+    result, err := db.Scan(input)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -232,7 +232,10 @@ func GetSpots(c *gin.Context) {
 
     var spots []string
     for _, location := range locations {
-        spots = append(spots, location["Spot"].(string))
+        parts := strings.Split(location["country_region_spot"].(string), "/")
+        if len(parts) == 3 {
+            spots = append(spots, parts[2])
+        }
     }
 
     c.JSON(http.StatusOK, spots)
