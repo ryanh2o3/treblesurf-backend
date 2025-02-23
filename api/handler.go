@@ -344,57 +344,49 @@ func GetListSpotsForecast(c *gin.Context) {
     spots := c.QueryArray("spots")
     regionName := c.Query("region")
     countryName := c.Query("country")
-    forecastDate := time.Now().Format("2006-01-02")
 
-    input := &dynamodb.QueryInput{
-        TableName: aws.String("SurfSpotForecastData"),
-        KeyConditionExpression: aws.String("ForecastDate = :date AND begins_with(country_region_spot, :location)"),
-        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-            ":date": {
-                S: aws.String(forecastDate),
-            },
-            ":location": {
-                S: aws.String(fmt.Sprintf("%s_%s_", countryName, regionName)),
-            },
-        },
-        ScanIndexForward: aws.Bool(false),
-    }
+    var allForecasts []map[string]interface{}
 
-    result, err := db.Query(input)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+    // Start from current time rounded down to the nearest hour
+    now := time.Now()
+    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
 
-    if len(result.Items) == 0 {
-        c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found"})
-        return
-    }
+    for _, spotName := range spots {
+        // Try for up to 48 hours in the past
+        var spotForecast []map[string]interface{}
+        for i := 0; i < 48; i++ {
+            searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
+            dateStr := searchTime.Format("2006-01-02 15")
 
-    var forecasts []map[string]interface{}
-    err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &forecasts)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-
-    // Filter forecasts by the specified spots
-    filteredForecasts := []map[string]interface{}{}
-    for _, forecast := range forecasts {
-        for _, spot := range spots {
-            if strings.Contains(forecast["country_region_spot"].(string), spot) {
-                filteredForecasts = append(filteredForecasts, forecast)
+            forecast, err := queryForecastByDateTime(spotName, regionName, countryName, dateStr)
+            if err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+                return
+            }
+            
+            if forecast != nil && len(forecast) > 0 {
+                spotForecast = forecast
                 break
             }
+        }
+        
+        // If we found a forecast for this spot, add it to our results
+        if len(spotForecast) > 0 {
+            allForecasts = append(allForecasts, spotForecast...)
         }
     }
 
     // Sort the forecasts by country, region, and spot
-    sort.Slice(filteredForecasts, func(i, j int) bool {
-        return filteredForecasts[i]["country_region_spot"].(string) < filteredForecasts[j]["country_region_spot"].(string)
+    sort.Slice(allForecasts, func(i, j int) bool {
+        return allForecasts[i]["country_region_spot"].(string) < allForecasts[j]["country_region_spot"].(string)
     })
 
-    c.JSON(http.StatusOK, filteredForecasts)
+    if len(allForecasts) == 0 {
+        c.JSON(http.StatusNotFound, gin.H{"error": "No forecasts found for the specified spots"})
+        return
+    }
+
+    c.JSON(http.StatusOK, allForecasts)
 }
 
 func GetRegionForecast(c *gin.Context) {
