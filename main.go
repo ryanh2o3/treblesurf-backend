@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"strings"
 	"treblesurf-backend/api"
@@ -22,6 +21,7 @@ func init() {
     r.Use(func(c *gin.Context) {
         log.Printf("Method: %s", c.Request.Method)
         log.Printf("Full request URL: %s", c.Request.URL.String())
+        log.Printf("Path: %s", c.Request.URL.Path)
         c.Next()
     })
 
@@ -70,9 +70,6 @@ func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.API
         req.Path = proxyPath
         log.Printf("Updated path from proxy parameter: %s", req.Path)
     }
-    // Pretty print the entire request
-    reqJSON, _ := json.MarshalIndent(req, "", "    ")
-    log.Printf("Raw API Gateway Request:\n%s", string(reqJSON))
     
 
     return ginLambda.ProxyWithContext(ctx, req)
