@@ -341,10 +341,11 @@ func queryForecastByDateTimeLast(spotName, regionName, countryName, dateTime str
 
 
 func GetListSpotsForecast(c *gin.Context) {
-    spots := c.QueryArray("spots")
+    spotsStr := c.Query("spots")
+    spots := strings.Split(spotsStr, ",")
     regionName := c.Query("region")
     countryName := c.Query("country")
-
+    print(spots)
     var allForecasts []map[string]interface{}
 
     // Start from current time rounded down to the nearest hour
