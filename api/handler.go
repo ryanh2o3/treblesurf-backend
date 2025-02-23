@@ -366,7 +366,14 @@ func GetListSpotsForecast(c *gin.Context) {
             }
             
             if forecast != nil {
-                allForecasts = append(allForecasts, forecast...)
+                // Filter forecasts to get current hour plus every 3rd hour
+                var filteredForecasts []map[string]interface{}
+                for i := 0; i < len(forecast); i++ {
+                    if i == 0 || i%3 == 0 {  // Keep first hour and every 3rd hour after that
+                        filteredForecasts = append(filteredForecasts, forecast[i])
+                    }
+                }
+                allForecasts = append(allForecasts, filteredForecasts...)
                 break
             }
         }
