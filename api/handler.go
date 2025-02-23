@@ -352,6 +352,7 @@ func GetListSpotsForecast(c *gin.Context) {
     currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
 
     for _, spotName := range spots {
+        log.Printf("Getting forecast for %s", spotName)
         // Try for up to 48 hours in the past
         for i := 0; i < 48; i++ {
             searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
