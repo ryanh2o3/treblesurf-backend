@@ -71,9 +71,9 @@ func GetRegions(c *gin.Context) {
 
 
 func GetCoordinates(c *gin.Context) {
-    spotName := c.Param("spotName")
-    regionName := c.Param("regionName")
-    countryName := c.Param("countryName")
+    spotName := c.Query("spot")
+    regionName := c.Query("region")
+    countryName := c.Query("country")
 
     input := &dynamodb.QueryInput{
         TableName: aws.String("LocationData"),
@@ -112,9 +112,9 @@ func GetCoordinates(c *gin.Context) {
 }
 
 func GetLocationInfo(c *gin.Context) {
-    spotName := c.Param("spotName")
-    regionName := c.Param("regionName")
-    countryName := c.Param("countryName")
+    spotName := c.Query("spot")
+    regionName := c.Query("region")
+    countryName := c.Query("country")
 
     input := &dynamodb.QueryInput{
         TableName: aws.String("LocationData"),
@@ -169,8 +169,8 @@ func BuoyLocationInfo(c *gin.Context) {
 }
 
 func IndividualBuoyLocationInfo(c *gin.Context) {
-    regionName := c.Param("regionName")
-    buoyName := c.Param("buoyName")
+    regionName := c.Query("region")
+    buoyName := c.Query("buoyName")
 
     input := &dynamodb.QueryInput{
         TableName: aws.String("BuoyLocations"),
@@ -204,8 +204,8 @@ func IndividualBuoyLocationInfo(c *gin.Context) {
 }
 
 func GetSpots(c *gin.Context) {
-    regionName := c.Param("regionName")
-    countryName := c.Param("countryName")
+    regionName := c.Query("region")
+    countryName := c.Query("country")
 
     input := &dynamodb.QueryInput{
         TableName: aws.String("Location"),
@@ -239,9 +239,9 @@ func GetSpots(c *gin.Context) {
 }
 
 func GetSpotForecast(c *gin.Context) {
-    spotName := c.Param("spotName")
-    regionName := c.Param("regionName")
-    countryName := c.Param("countryName")
+    spotName := c.Query("spot")
+    regionName := c.Query("region")
+    countryName := c.Query("country")
     forecastDate := time.Now().Format("2006-01-02")
 
     input := &dynamodb.QueryInput{
@@ -283,8 +283,8 @@ func GetSpotForecast(c *gin.Context) {
 
 func GetListSpotsForecast(c *gin.Context) {
     spots := c.QueryArray("spots")
-    regionName := c.Param("regionName")
-    countryName := c.Param("countryName")
+    regionName := c.Query("region")
+    countryName := c.Query("country")
     forecastDate := time.Now().Format("2006-01-02")
 
     input := &dynamodb.QueryInput{
@@ -339,8 +339,8 @@ func GetListSpotsForecast(c *gin.Context) {
 }
 
 func GetRegionForecast(c *gin.Context) {
-    regionName := c.Param("regionName")
-    countryName := c.Param("countryName")
+    regionName := c.Query("region")
+    countryName := c.Query("country")
     forecastDate := time.Now().Format("2006-01-02")
 
     input := &dynamodb.QueryInput{
@@ -384,9 +384,9 @@ func GetRegionForecast(c *gin.Context) {
 }
 
 func GetCurrentWeather(c *gin.Context) {
-    spotName := c.Param("spotName")
-    regionName := c.Param("regionName")
-    countryName := c.Param("countryName")
+    spotName := c.Query("spot")
+    regionName := c.Query("region")
+    countryName := c.Query("country")
     forecastDate := time.Now().Format("2006-01-02")
 
     input := &dynamodb.QueryInput{
@@ -444,7 +444,7 @@ func getCurrentTides(locationName string) []map[string]interface{} {
 }
 
 func GetBeforeAfterTides(c *gin.Context) {
-    locationName := c.Param("locationName")
+    locationName := c.Query("locationName")
 
     tides := getCurrentTides(locationName)
     now := time.Now()
@@ -464,7 +464,7 @@ func GetBeforeAfterTides(c *gin.Context) {
 }
 
 func GetDayTides(c *gin.Context) {
-    locationName := c.Param("locationName")
+    locationName := c.Query("locationName")
     startDay := c.Param("startDay")
 
     start, _ := time.Parse("2006-01-02", startDay)
@@ -493,13 +493,13 @@ func GetLiveBuoyData(c *gin.Context) {
 }
 
 func GetSingleBuoyData(c *gin.Context) {
-    buoyName := c.Param("buoyName")
+    buoyName := c.Query("buoyName")
     data := getBuoyData(buoyName)
     c.JSON(http.StatusOK, data)
 }
 
 func GetLast24HoursBuoyData(c *gin.Context) {
-    buoyName := c.Param("buoyName")
+    buoyName := c.Query("buoyName")
     data := getBuoyDataLast24Hours(buoyName)
     c.JSON(http.StatusOK, data)
 }
@@ -564,9 +564,9 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 }
 
 func RetrieveTodaysSurfReports(c *gin.Context) {
-    countryName := c.Param("countryName")
-    regionName := c.Param("regionName")
-    spotName := c.Param("spotName")
+    countryName := c.Query("country")
+    regionName := c.Query("region")
+    spotName := c.Query("spot")
 
     currentTime := time.Now()
     currentDate := currentTime.Format("2006-01-02")

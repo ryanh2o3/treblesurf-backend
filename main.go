@@ -52,24 +52,24 @@ func init() {
         c.Next()
     })
     
-    r.GET("/regions", api.GetRegions)
-    r.GET("/spots/:countryName/:regionName", api.GetSpots)
-    r.GET("/coordinates/:countryName/:regionName/:spotName", api.GetCoordinates)
-    r.GET("/spotForecast/:countryName/:regionName/:spotName", api.GetSpotForecast)
-    r.GET("/listSpotsForecast/:countryName/:regionName", api.GetListSpotsForecast)
-    r.GET("/regionForecast/:countryName/:regionName", api.GetRegionForecast)
-    r.GET("/currentWeather/:countryName/:regionName/:spotName", api.GetCurrentWeather)
-    r.GET("/beforeAfterTides/:locationName", api.GetBeforeAfterTides)
-    r.GET("/dayTides/:locationName/:startDay", api.GetDayTides)
-    r.GET("/liveBuoyData", api.GetLiveBuoyData)
-    r.GET("/singleBuoyData/:buoyName", api.GetSingleBuoyData)
-    r.GET("/last24HoursBuoyData/:buoyName", api.GetLast24HoursBuoyData)
-    r.POST("/submitCurrentSurfReport", api.SubmitCurrentSurfReport)
-    r.GET("/todaysSurfReports/:countryName/:regionName/:spotName", api.RetrieveTodaysSurfReports)
-    r.GET("/multipleBuoyData", api.GetMultipleBuoyData)
+    r.GET("/regions", api.GetRegions)                      // Expects ?country=
+    r.GET("/spots", api.GetSpots)                         // Expects ?region= &country=
+    r.GET("/location", api.GetCoordinates)                // Expects ?country= &region= &spot=
+    r.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
+    r.GET("/listSpotsForecast", api.GetListSpotsForecast) // Expects ?country= &region= &spots=
+    r.GET("/regionForecast", api.GetRegionForecast)       // Expects ?country= &region=
+    r.GET("/currentConditions", api.GetCurrentWeather)     // Expects ?country= &region= &spot=
+    r.GET("/beforeAfterTide", api.GetBeforeAfterTides)    // Expects ?locationName=
+    r.GET("/tideExtremes", api.GetDayTides)               // Expects ?locationName= &start=
+    r.GET("/getLiveBuoyData", api.GetLiveBuoyData)
+    r.GET("/getSingleBuoyData", api.GetSingleBuoyData)    // Expects ?buoyName=
+    r.GET("/getLast24BuoyData", api.GetLast24HoursBuoyData) // Expects ?buoyName=
+    r.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
+    r.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
+    r.GET("/getMultipleBuoyData", api.GetMultipleBuoyData)      // Expects ?buoys=
     r.GET("/buoyLocationInfo", api.BuoyLocationInfo)
-    r.GET("/individualBuoyLocationInfo/:regionName/:buoyName", api.IndividualBuoyLocationInfo)
-    r.GET("/locationInfo/:countryName/:regionName/:spotName", api.GetLocationInfo)
+    r.GET("/individualBuoyLocation", api.IndividualBuoyLocationInfo) // Expects ?buoyName=
+    r.GET("/locationInfo", api.GetLocationInfo)   
     ginLambda = ginadapter.New(r)
 }
 
