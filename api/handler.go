@@ -250,25 +250,17 @@ func GetSpotForecast(c *gin.Context) {
 
     input := &dynamodb.QueryInput{
         TableName: aws.String("SurfSpotForecastData"),
-        KeyConditionExpression: aws.String("#fd <= :date"),
-        ExpressionAttributeNames: map[string]*string{
-            "#fd": aws.String("forecastDate"),
-        },
+        KeyConditionExpression: aws.String("country_region_spot = :location AND forecastDate <= :date"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":location": {
+                S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
+            },
             ":date": {
                 S: aws.String(currentTime),
             },
         },
         Limit:            aws.Int64(1),
         ScanIndexForward: aws.Bool(false), // Get most recent record first
-    }
-
-    if spotName != "" && regionName != "" && countryName != "" {
-        input.KeyConditionExpression = aws.String("#fd <= :date AND begins_with(#crs, :location)")
-        input.ExpressionAttributeNames["#crs"] = aws.String("country_region_spot")
-        input.ExpressionAttributeValues[":location"] = &dynamodb.AttributeValue{
-            S: aws.String(fmt.Sprintf("%s_%s_%s#", countryName, regionName, spotName)),
-        }
     }
 
     result, err := db.Query(input)
