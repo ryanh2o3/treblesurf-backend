@@ -271,7 +271,7 @@ func GetSpotForecast(c *gin.Context) {
     c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
 }
 
-func queryForecastByDateTime(spotName, regionName, countryName, dateTime string) (map[string]interface{}, error) {
+func queryForecastByDateTime(spotName, regionName, countryName, dateTime string) ([]map[string]interface{}, error) {
     print(dateTime)
     input := &dynamodb.QueryInput{
         TableName: aws.String("SurfSpotForecastData"),
@@ -296,13 +296,13 @@ func queryForecastByDateTime(spotName, regionName, countryName, dateTime string)
         return nil, nil
     }
 
-    var forecast map[string]interface{}
-    err = dynamodbattribute.UnmarshalMap(result.Items[0], &forecast)
+    var forecasts []map[string]interface{}
+    err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &forecasts)
     if err != nil {
         return nil, err
     }
 
-    return forecast, nil
+    return forecasts, nil
 }
 
 
