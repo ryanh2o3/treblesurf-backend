@@ -17,19 +17,37 @@ var ginLambda *ginadapter.GinLambda
 func init() {
 	r := gin.Default()
 
-    // Add logging middleware
+    // Enhanced logging middleware
     r.Use(func(c *gin.Context) {
+        log.Printf("=== Request Debug ===")
         log.Printf("Method: %s", c.Request.Method)
-        log.Printf("Full request URL: %s", c.Request.URL.String())
+        log.Printf("Full URL: %s", c.Request.URL.String())
         log.Printf("Path: %s", c.Request.URL.Path)
+        log.Printf("Raw Query: %s", c.Request.URL.RawQuery)
+        log.Printf("Parameters: %v", c.Params)
+        log.Printf("Headers: %v", c.Request.Header)
+        
+        // Print all route patterns
+        routes := r.Routes()
+        log.Printf("=== Registered Routes ===")
+        for _, route := range routes {
+            log.Printf("Route Pattern: %s %s", route.Method, route.Path)
+        }
+        
         c.Next()
+        
+        // Log the response status
+        log.Printf("=== Response ===")
+        log.Printf("Status: %d", c.Writer.Status())
     })
 
-    // Strip /api prefix
+    // Move the /api stripping middleware after the logging
     r.Use(func(c *gin.Context) {
         path := c.Request.URL.Path
         if strings.HasPrefix(path, "/api") {
-            c.Request.URL.Path = strings.TrimPrefix(path, "/api")
+            newPath := strings.TrimPrefix(path, "/api")
+            log.Printf("Stripped /api prefix. Original: %s, New: %s", path, newPath)
+            c.Request.URL.Path = newPath
         }
         c.Next()
     })
@@ -56,21 +74,6 @@ func init() {
 }
 
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// Handle proxy integration path
-    if proxyPath, ok := req.PathParameters["proxy"]; ok {
-        // Ensure the path starts with a forward slash
-        if !strings.HasPrefix(proxyPath, "/") {
-            proxyPath = "/" + proxyPath
-        }
-        
-        // If the path includes /api prefix, strip it
-        proxyPath = strings.TrimPrefix(proxyPath, "/api")
-        
-        // Update the request path
-        req.Path = proxyPath
-        log.Printf("Updated path from proxy parameter: %s", req.Path)
-    }
-    
 
     return ginLambda.ProxyWithContext(ctx, req)
 }
