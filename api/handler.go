@@ -245,21 +245,30 @@ func GetSpotForecast(c *gin.Context) {
     spotName := c.Query("spot")
     regionName := c.Query("region")
     countryName := c.Query("country")
-    forecastDate := time.Now().Format("2006-01-02")
+    // Query slightly before current time to get most recent forecast
+    currentTime := time.Now().Format("2006-01-02 15:04:05")
 
     input := &dynamodb.QueryInput{
         TableName: aws.String("SurfSpotForecastData"),
-        KeyConditionExpression: aws.String("ForecastDate = :date AND begins_with(country_region_spot, :location)"),
+        KeyConditionExpression: aws.String("#fd <= :date"),
+        ExpressionAttributeNames: map[string]*string{
+            "#fd": aws.String("forecastDate"),
+        },
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":date": {
-                S: aws.String(forecastDate),
-            },
-            ":location": {
-                S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
+                S: aws.String(currentTime),
             },
         },
-        Limit: aws.Int64(1),
-        ScanIndexForward: aws.Bool(false),
+        Limit:            aws.Int64(1),
+        ScanIndexForward: aws.Bool(false), // Get most recent record first
+    }
+
+    if spotName != "" && regionName != "" && countryName != "" {
+        input.KeyConditionExpression = aws.String("#fd <= :date AND begins_with(#crs, :location)")
+        input.ExpressionAttributeNames["#crs"] = aws.String("country_region_spot")
+        input.ExpressionAttributeValues[":location"] = &dynamodb.AttributeValue{
+            S: aws.String(fmt.Sprintf("%s_%s_%s#", countryName, regionName, spotName)),
+        }
     }
 
     result, err := db.Query(input)
