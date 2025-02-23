@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -55,6 +56,7 @@ func GetRegions(c *gin.Context) {
 
     var regions []string
     for _, location := range locations {
+        log.Printf("Location: %v", location)
         parts := strings.Split(location["country_region_spot"].(string), "_")
         if parts[0] == countryName {
             region := parts[1]
