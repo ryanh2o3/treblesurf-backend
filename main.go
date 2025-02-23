@@ -74,8 +74,23 @@ func init() {
 }
 
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+// Debug logging for API Gateway request
+log.Printf("=== Lambda Handler Debug ===")
+log.Printf("API Gateway Path: %s", req.Path)
+log.Printf("API Gateway HTTP Method: %s", req.HTTPMethod)
+log.Printf("API Gateway Query Parameters: %v", req.QueryStringParameters)
+log.Printf("API Gateway Path Parameters: %v", req.PathParameters)
 
-    return ginLambda.ProxyWithContext(ctx, req)
+// Check if path starts with /api and strip it
+if strings.HasPrefix(req.Path, "/api") {
+    req.Path = strings.TrimPrefix(req.Path, "/api")
+    log.Printf("Stripped /api prefix in Lambda Handler. New path: %s", req.Path)
+}
+
+resp, err := ginLambda.ProxyWithContext(ctx, req)
+    log.Printf("Lambda Response Status: %d", resp.StatusCode)
+    log.Printf("Lambda Response Body: %s", resp.Body)
+    return resp, err
 }
 
 func main() {
