@@ -57,7 +57,7 @@ func GetRegions(c *gin.Context) {
     var regions []string
     for _, location := range locations {
         log.Printf("Location: %v", location)
-        parts := strings.Split(location["country_region_spot"].(string), "_")
+        parts := strings.Split(location["country_region_spot"].(string), "/")
         if parts[0] == countryName {
             region := parts[1]
             if !contains(regions, region) {
