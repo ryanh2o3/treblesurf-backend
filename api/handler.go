@@ -284,7 +284,7 @@ func queryForecastByDateTime(spotName, regionName, countryName, dateTime string)
                 S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
             },
         },
-        ScanIndexForward: aws.Bool(false), 
+        ScanIndexForward: aws.Bool(true), 
     }
 
     result, err := db.Query(input)
@@ -318,7 +318,7 @@ func queryForecastByDateTimeLast(spotName, regionName, countryName, dateTime str
                 S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
             },
         },
-        ScanIndexForward: aws.Bool(false), 
+        ScanIndexForward: aws.Bool(true), 
     }
 
     result, err := db.Query(input)
