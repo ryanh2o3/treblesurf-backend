@@ -372,11 +372,6 @@ func GetListSpotsForecast(c *gin.Context) {
         
     }
 
-    // Sort the forecasts by country, region, and spot
-    sort.Slice(allForecasts, func(i, j int) bool {
-        return allForecasts[i]["country_region_spot"].(string) < allForecasts[j]["country_region_spot"].(string)
-    })
-
     c.JSON(http.StatusOK, allForecasts)
 }
 
