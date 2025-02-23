@@ -271,20 +271,19 @@ func GetSpotForecast(c *gin.Context) {
 }
 
 func queryForecastByDateTime(spotName, regionName, countryName, dateTime string) (map[string]interface{}, error) {
-    location := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
-
     print(dateTime)
     input := &dynamodb.QueryInput{
         TableName: aws.String("SurfSpotForecastData"),
-        KeyConditionExpression: aws.String("country_region_spot = :location AND forecastDate = :dateTime"),
+        KeyConditionExpression: aws.String("forecastDate = :dateTime AND begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-            ":location": {
-                S: aws.String(location),
-            },
             ":dateTime": {
                 S: aws.String(dateTime),
             },
+            ":location": {
+                S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
+            },
         },
+        ScanIndexForward: aws.Bool(false), 
     }
 
     result, err := db.Query(input)
