@@ -34,7 +34,7 @@ type Forecast struct {
 }
 
 func GetRegions(c *gin.Context) {
-    countryName := c.Param("countryName")
+    countryName := c.Query("country")
 
     input := &dynamodb.ScanInput{
         TableName: aws.String("LocationData"),

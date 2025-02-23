@@ -52,7 +52,7 @@ func init() {
         c.Next()
     })
     
-    r.GET("/regions/:countryName", api.GetRegions)
+    r.GET("/regions", api.GetRegions)
     r.GET("/spots/:countryName/:regionName", api.GetSpots)
     r.GET("/coordinates/:countryName/:regionName/:spotName", api.GetCoordinates)
     r.GET("/spotForecast/:countryName/:regionName/:spotName", api.GetSpotForecast)
