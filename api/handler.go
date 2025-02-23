@@ -253,7 +253,8 @@ func GetSpotForecast(c *gin.Context) {
     // Try for up to 48 hours in the past (adjust this number as needed)
     for i := 0; i < 48; i++ {
         searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-        dateStr := searchTime.Format("2006-01-02 15:04:05")
+        dateStr := searchTime.Format("2006-01-02 15")
+        
 
         forecast, err := queryForecastByDateTime(spotName, regionName, countryName, dateStr)
         if err != nil {
@@ -274,7 +275,7 @@ func queryForecastByDateTime(spotName, regionName, countryName, dateTime string)
     print(dateTime)
     input := &dynamodb.QueryInput{
         TableName: aws.String("SurfSpotForecastData"),
-        KeyConditionExpression: aws.String("begins_with(forecastDate,:dateTime) AND begins_with(country_region_spot, :location)"),
+        KeyConditionExpression: aws.String("forecastDate = :dateTime AND begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":dateTime": {
                 S: aws.String(dateTime),
