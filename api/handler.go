@@ -116,17 +116,17 @@ func GetLocationInfo(c *gin.Context) {
     regionName := c.Query("region")
     countryName := c.Query("country")
 
-    input := &dynamodb.QueryInput{
+    input := &dynamodb.ScanInput{
         TableName: aws.String("LocationData"),
-        KeyConditionExpression: aws.String("country_region_spot = :location"),
+        FilterExpression: aws.String("country_region_spot = :location"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":location": {
-                S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
+                S: aws.String(fmt.Sprintf("%s/%s/%s", countryName, regionName, spotName)),
             },
         },
     }
 
-    result, err := db.Query(input)
+    result, err := db.Scan(input)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
