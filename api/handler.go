@@ -274,7 +274,7 @@ func queryForecastByDateTime(spotName, regionName, countryName, dateTime string)
     print(dateTime)
     input := &dynamodb.QueryInput{
         TableName: aws.String("SurfSpotForecastData"),
-        KeyConditionExpression: aws.String("forecastDate = :dateTime AND begins_with(country_region_spot, :location)"),
+        KeyConditionExpression: aws.String("begins_with(forecastDate,:dateTime) AND begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":dateTime": {
                 S: aws.String(dateTime),
