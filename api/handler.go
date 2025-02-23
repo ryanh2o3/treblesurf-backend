@@ -245,43 +245,63 @@ func GetSpotForecast(c *gin.Context) {
     spotName := c.Query("spot")
     regionName := c.Query("region")
     countryName := c.Query("country")
-    // Query slightly before current time to get most recent forecast
-    currentTime := time.Now().Format("2006-01-02 15:04:05")
+
+    // Start from current time rounded down to the nearest hour
+    now := time.Now()
+    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
+
+    // Try for up to 48 hours in the past (adjust this number as needed)
+    for i := 0; i < 48; i++ {
+        searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
+        dateStr := searchTime.Format("2006-01-02 15:04:05")
+
+        forecast, err := queryForecastByDateTime(spotName, regionName, countryName, dateStr)
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        
+        if forecast != nil {
+            c.JSON(http.StatusOK, forecast)
+            return
+        }
+    }
+
+    c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
+}
+
+func queryForecastByDateTime(spotName, regionName, countryName, dateTime string) (map[string]interface{}, error) {
+    location := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
 
     input := &dynamodb.QueryInput{
         TableName: aws.String("SurfSpotForecastData"),
-        KeyConditionExpression: aws.String("country_region_spot = :location AND forecastDate <= :date"),
+        KeyConditionExpression: aws.String("country_region_spot = :location AND forecastDate = :dateTime"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":location": {
-                S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
+                S: aws.String(location),
             },
-            ":date": {
-                S: aws.String(currentTime),
+            ":dateTime": {
+                S: aws.String(dateTime),
             },
         },
-        Limit:            aws.Int64(1),
-        ScanIndexForward: aws.Bool(false), // Get most recent record first
     }
 
     result, err := db.Query(input)
     if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
+        return nil, err
     }
 
     if len(result.Items) == 0 {
-        c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found"})
-        return
+        return nil, nil
     }
 
     var forecast map[string]interface{}
     err = dynamodbattribute.UnmarshalMap(result.Items[0], &forecast)
     if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
+        return nil, err
     }
 
-    c.JSON(http.StatusOK, forecast)
+    return forecast, nil
 }
 
 
