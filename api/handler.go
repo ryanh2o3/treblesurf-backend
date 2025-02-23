@@ -208,7 +208,7 @@ func GetSpots(c *gin.Context) {
     countryName := c.Query("country")
 
     input := &dynamodb.QueryInput{
-        TableName: aws.String("Location"),
+        TableName: aws.String("LocationData"),
         KeyConditionExpression: aws.String("begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":location": {
