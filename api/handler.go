@@ -686,7 +686,8 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
 }
 
 func GetMultipleBuoyData(c *gin.Context) {
-    buoys := c.QueryArray("buoys")
+    buoysStr := c.Query("buoys")
+    buoys := strings.Split(buoysStr, ",")
     var values []map[string]interface{}
 
     for _, buoy := range buoys {
