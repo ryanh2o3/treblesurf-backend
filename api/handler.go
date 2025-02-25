@@ -690,7 +690,19 @@ func GetMultipleBuoyData(c *gin.Context) {
     var values []map[string]interface{}
 
     for _, buoy := range buoys {
-        data := getBuoyData(buoy, "string")
+        var data map[string]interface{}
+        // Start from current time rounded down to the nearest hour
+        now := time.Now()
+        currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
+    
+        for i := 0; i < 12; i++ {
+            searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
+            dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
+            data = getBuoyData(buoy, dateStr)
+            if data != nil {
+                break
+            }
+        }
         values = append(values, data)
     }
 
