@@ -519,7 +519,7 @@ func GetLiveBuoyData(c *gin.Context) {
     var buoyData []map[string]interface{}
 
     for _, buoy := range buoys {
-        data := getBuoyData(buoy)
+        data := getBuoyData(buoy, "string")
         buoyData = append(buoyData, data)
     }
 
@@ -528,7 +528,20 @@ func GetLiveBuoyData(c *gin.Context) {
 
 func GetSingleBuoyData(c *gin.Context) {
     buoyName := c.Query("buoyName")
-    data := getBuoyData(buoyName)
+    var data map[string]interface{}
+    // Start from current time rounded down to the nearest hour
+    now := time.Now()
+    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
+
+    for i := 0; i < 12; i++ {
+        searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
+        dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
+        data = getBuoyData(buoyName, dateStr)
+        if data != nil {
+            break
+        }
+    }
+
     c.JSON(http.StatusOK, data)
 }
 
@@ -635,7 +648,7 @@ func GetMultipleBuoyData(c *gin.Context) {
     var values []map[string]interface{}
 
     for _, buoy := range buoys {
-        data := getBuoyData(buoy)
+        data := getBuoyData(buoy, "string")
         values = append(values, data)
     }
 
@@ -669,52 +682,41 @@ func mergeMaps(maps ...map[string]interface{}) map[string]interface{} {
     return merged
 }
 
-func getBuoyData(buoyName string) map[string]interface{} {
+func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
     var buoyData map[string]interface{}
-    // Start from current time rounded down to the nearest hour
-    now := time.Now()
-    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
-
-    for i := 0; i < 12; i++ {
-        searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-        dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-        print(dateStr)
-        input := &dynamodb.QueryInput{
-            TableName: aws.String("BuoyData"),
-            KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime = :dt"),
-            ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-                ":rb": {
-                    S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
-                },
-                ":dt": {
-                    S: aws.String(dateStr),
-                },
+    print(dateStr)
+    input := &dynamodb.QueryInput{
+        TableName: aws.String("BuoyData"),
+        KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime = :dt"),
+        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":rb": {
+                S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
             },
-            ScanIndexForward: aws.Bool(false), // Get most recent first
-            Limit:           aws.Int64(1),     // We only want the most recent reading
-        }
-    
-        result, err := db.Query(input)
-        if err != nil {
-            log.Printf("Error querying buoy data: %v", err)
-            return nil
-        }
-    
-        if len(result.Items) == 0 {
-            log.Printf("No buoy data found for %s", buoyName)
-            return nil
-        }
-    
-        
-        err = dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
-        if err != nil {
-            log.Printf("Error unmarshalling buoy data: %v", err)
-            return nil
-        }
-    
-    
+            ":dt": {
+                S: aws.String(dateStr),
+            },
+        },
+        ScanIndexForward: aws.Bool(false), // Get most recent first
+        Limit:           aws.Int64(1),     // We only want the most recent reading
     }
 
+    result, err := db.Query(input)
+    if err != nil {
+        log.Printf("Error querying buoy data: %v", err)
+        return nil
+    }
+
+    if len(result.Items) == 0 {
+        log.Printf("No buoy data found for %s", buoyName)
+        return nil
+    }
+
+    
+    err = dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
+    if err != nil {
+        log.Printf("Error unmarshalling buoy data: %v", err)
+        return nil
+    }
     return buoyData
     
 }
