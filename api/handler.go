@@ -519,8 +519,8 @@ func GetLiveBuoyData(c *gin.Context) {
     var buoyData []map[string]interface{}
 
     for _, buoy := range buoys {
-        data := getBuoyData(buoy, "string", 1)
-        buoyData = append(buoyData, data[1])
+        data := getBuoyData(buoy, "string")
+        buoyData = append(buoyData, data)
     }
 
     c.JSON(http.StatusOK, buoyData)
@@ -536,7 +536,7 @@ func GetSingleBuoyData(c *gin.Context) {
     for i := 0; i < 12; i++ {
         searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
         dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-        data = getBuoyData(buoyName, dateStr, 1)[1]
+        data = getBuoyData(buoyName, dateStr)
         if data != nil {
             break
         }
@@ -547,19 +547,7 @@ func GetSingleBuoyData(c *gin.Context) {
 
 func GetLast24HoursBuoyData(c *gin.Context) {
     buoyName := c.Query("buoyName")
-    var data []map[string]interface{}
-    // Start from current time rounded down to the nearest hour
-    now := time.Now()
-    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
-
-    for i := 0; i < 12; i++ {
-        searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-        dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-        data = getBuoyData(buoyName, dateStr, 24)
-        if data != nil {
-            break
-        }
-    }
+    data := getBuoyDataLast24Hours(buoyName)
     c.JSON(http.StatusOK, data)
 }
 
@@ -660,8 +648,8 @@ func GetMultipleBuoyData(c *gin.Context) {
     var values []map[string]interface{}
 
     for _, buoy := range buoys {
-        data := getBuoyData(buoy, "string", 1)
-        values = append(values, data[1])
+        data := getBuoyData(buoy, "string")
+        values = append(values, data)
     }
 
     c.JSON(http.StatusOK, values)
@@ -694,8 +682,8 @@ func mergeMaps(maps ...map[string]interface{}) map[string]interface{} {
     return merged
 }
 
-func getBuoyData(buoyName string, dateStr string, limit int64) []map[string]interface{} {
-    var buoyData []map[string]interface{}
+func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
+    var buoyData map[string]interface{}
     print(dateStr)
     input := &dynamodb.QueryInput{
         TableName: aws.String("BuoyData"),
@@ -709,7 +697,7 @@ func getBuoyData(buoyName string, dateStr string, limit int64) []map[string]inte
             },
         },
         ScanIndexForward: aws.Bool(false), // Get most recent first
-        Limit:           aws.Int64(limit),     // We only want the most recent reading
+        Limit:           aws.Int64(1),     // We only want the most recent reading
     }
 
     result, err := db.Query(input)
@@ -724,7 +712,7 @@ func getBuoyData(buoyName string, dateStr string, limit int64) []map[string]inte
     }
 
     
-    err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &buoyData)
+    err = dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
     if err != nil {
         log.Printf("Error unmarshalling buoy data: %v", err)
         return nil
