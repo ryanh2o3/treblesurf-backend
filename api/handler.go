@@ -704,7 +704,9 @@ func GetMultipleBuoyData(c *gin.Context) {
                 break
             }
         }
+        if(data != nil){
         values = append(values, data)
+        }
     }
 
     c.JSON(http.StatusOK, values)
