@@ -671,52 +671,38 @@ func mergeMaps(maps ...map[string]interface{}) map[string]interface{} {
 
 func getBuoyData(buoyName string) map[string]interface{} {
     var buoyData map[string]interface{}
-    // Start from current time rounded down to the nearest hour
-    now := time.Now()
-    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
-
-    for i := 0; i < 12; i++ {
-        searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-        dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-        
-        input := &dynamodb.QueryInput{
-            TableName: aws.String("BuoyData"),
-            KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime = :dt"),
-            ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-                ":rb": {
-                    S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
-                },
-                ":dt": {
-                    S: aws.String(dateStr),
-                },
+    
+    input := &dynamodb.QueryInput{
+        TableName: aws.String("BuoyData"),
+        IndexName: aws.String("region_buoy-dataDateTime-index"), // Use GSI
+        KeyConditionExpression: aws.String("region_buoy = :rb"),
+        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":rb": {
+                S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
             },
-            ScanIndexForward: aws.Bool(false), // Get most recent first
-            Limit:           aws.Int64(1),     // We only want the most recent reading
-        }
-    
-        result, err := db.Query(input)
-        if err != nil {
-            log.Printf("Error querying buoy data: %v", err)
-            return nil
-        }
-    
-        if len(result.Items) == 0 {
-            log.Printf("No buoy data found for %s", buoyName)
-            return nil
-        }
-    
-        
-        err = dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
-        if err != nil {
-            log.Printf("Error unmarshalling buoy data: %v", err)
-            return nil
-        }
-    
-    
+        },
+        ScanIndexForward: aws.Bool(false), // Get most recent first
+        Limit:           aws.Int64(1),     // We only want the most recent reading
+    }
+
+    result, err := db.Query(input)
+    if err != nil {
+        log.Printf("Error querying buoy data: %v", err)
+        return nil
+    }
+
+    if len(result.Items) == 0 {
+        log.Printf("No buoy data found for %s", buoyName)
+        return nil
+    }
+
+    err = dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
+    if err != nil {
+        log.Printf("Error unmarshalling buoy data: %v", err)
+        return nil
     }
 
     return buoyData
-    
 }
 
 func getBuoyDataLast24Hours(buoyName string) map[string]interface{} {
