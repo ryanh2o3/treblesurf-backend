@@ -674,7 +674,6 @@ func getBuoyData(buoyName string) map[string]interface{} {
     
     input := &dynamodb.QueryInput{
         TableName: aws.String("BuoyData"),
-        IndexName: aws.String("region_buoy-dataDateTime-index"), // Use GSI
         KeyConditionExpression: aws.String("region_buoy = :rb"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":rb": {
