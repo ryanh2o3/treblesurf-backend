@@ -769,17 +769,16 @@ func getBuoyDataRange(buoyName string, startTime, endTime time.Time) ([]map[stri
     
     input := &dynamodb.QueryInput{
         TableName: aws.String("BuoyData"),
-        KeyConditionExpression: aws.String("dataDateTime BETWEEN :start AND :end"),
-        FilterExpression: aws.String("region_buoy = :rb"),
+        KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime BETWEEN :start AND :end"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":rb": {
+                S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
+            },
             ":start": {
                 S: aws.String(startStr),
             },
             ":end": {
                 S: aws.String(endStr),
-            },
-            ":rb": {
-                S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
             },
         },
         ScanIndexForward: aws.Bool(true), // true for ascending order by time
