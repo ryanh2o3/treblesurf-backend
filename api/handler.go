@@ -360,35 +360,26 @@ func GetListSpotsForecast(c *gin.Context) {
     print(spots)
     var allForecasts []map[string]interface{}
 
-    // Start from current time rounded down to the nearest hour
-    now := time.Now()
-    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
-
     for _, spotName := range spots {
-        log.Printf("Getting forecast for %s", spotName)
-        // Try for up to 48 hours in the past
-        for i := 0; i < 48; i++ {
-            searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-            dateStr := searchTime.Format("2006-01-02 15")
-
-            forecast, err := queryForecastByDateTime(spotName, regionName, countryName, dateStr)
-            if err != nil {
-                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-                return
-            }
-            
-            if forecast != nil {
-                // Filter forecasts to get current hour plus every 3rd hour
-                var filteredForecasts []map[string]interface{}
-                for i := 0; i < len(forecast); i++ {
-                    if i == 0 || i%3 == 0 {  // Keep first hour and every 3rd hour after that
-                        filteredForecasts = append(filteredForecasts, forecast[i])
-                    }
-                }
-                allForecasts = append(allForecasts, filteredForecasts...)
-                break
-            }
+ 
+        forecast, err := queryForecastByDateTime(spotName, regionName, countryName)
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
         }
+        
+        if forecast != nil {
+            // Filter forecasts to get current hour plus every 3rd hour
+            var filteredForecasts []map[string]interface{}
+            for i := 0; i < len(forecast); i++ {
+                if i == 0 || i%3 == 0 {  // Keep first hour and every 3rd hour after that
+                    filteredForecasts = append(filteredForecasts, forecast[i])
+                }
+            }
+            allForecasts = append(allForecasts, filteredForecasts...)
+            break
+        }
+        
         
     }
 
