@@ -291,7 +291,8 @@ func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[st
 
     // Second query to get all forecasts from the most recent batch
     batchInput := &dynamodb.QueryInput{
-        TableName:              aws.String("SurfSpotForecastData"),
+        TableName:              aws.String("SpotForecastData"),
+        IndexName:             aws.String("LatestGeneratedForSpot"),
         KeyConditionExpression: aws.String("spot_id = :spot_id AND generated_at = :generated_at"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":spot_id": {
@@ -319,39 +320,39 @@ func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[st
     return forecasts, nil
 }
 
-func queryForecastByDateTimeLast(spotName, regionName, countryName, dateTime string) (map[string]interface{}, error) {
-    print(dateTime)
-    input := &dynamodb.QueryInput{
-        TableName: aws.String("SurfSpotForecastData"),
-        KeyConditionExpression: aws.String("forecastDate = :dateTime AND begins_with(country_region_spot, :location)"),
-        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-            ":dateTime": {
-                S: aws.String(dateTime),
-            },
-            ":location": {
-                S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
-            },
-        },
-        ScanIndexForward: aws.Bool(true), 
-    }
+// func queryForecastByDateTimeLast(spotName, regionName, countryName, dateTime string) (map[string]interface{}, error) {
+//     print(dateTime)
+//     input := &dynamodb.QueryInput{
+//         TableName: aws.String("SurfSpotForecastData"),
+//         KeyConditionExpression: aws.String("forecastDate = :dateTime AND begins_with(country_region_spot, :location)"),
+//         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+//             ":dateTime": {
+//                 S: aws.String(dateTime),
+//             },
+//             ":location": {
+//                 S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
+//             },
+//         },
+//         ScanIndexForward: aws.Bool(true), 
+//     }
 
-    result, err := db.Query(input)
-    if err != nil {
-        return nil, err
-    }
+//     result, err := db.Query(input)
+//     if err != nil {
+//         return nil, err
+//     }
 
-    if len(result.Items) == 0 {
-        return nil, nil
-    }
+//     if len(result.Items) == 0 {
+//         return nil, nil
+//     }
 
-    var forecasts map[string]interface{}
-    err = dynamodbattribute.UnmarshalMap(result.Items[0], &forecasts)
-    if err != nil {
-        return nil, err
-    }
+//     var forecasts map[string]interface{}
+//     err = dynamodbattribute.UnmarshalMap(result.Items[0], &forecasts)
+//     if err != nil {
+//         return nil, err
+//     }
 
-    return forecasts, nil
-}
+//     return forecasts, nil
+// }
 
 
 func GetListSpotsForecast(c *gin.Context) {
@@ -433,35 +434,35 @@ func GetRegionForecast(c *gin.Context) {
     c.JSON(http.StatusOK, forecasts)
 }
 
-func GetCurrentWeather(c *gin.Context) {
-    spotName := c.Query("spot")
-    regionName := c.Query("region")
-    countryName := c.Query("country")
+// func GetCurrentWeather(c *gin.Context) {
+//     spotName := c.Query("spot")
+//     regionName := c.Query("region")
+//     countryName := c.Query("country")
 
-    // Start from current time rounded down to the nearest hour
-    now := time.Now()
-    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
+//     // Start from current time rounded down to the nearest hour
+//     now := time.Now()
+//     currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
 
-    // Try for up to 48 hours in the past (adjust this number as needed)
-    for i := 0; i < 48; i++ {
-        searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-        dateStr := searchTime.Format("2006-01-02 15")
+//     // Try for up to 48 hours in the past (adjust this number as needed)
+//     for i := 0; i < 48; i++ {
+//         searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
+//         dateStr := searchTime.Format("2006-01-02 15")
         
 
-        forecast, err := queryForecastByDateTimeLast(spotName, regionName, countryName, dateStr)
-        if err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-            return
-        }
+//         forecast, err := queryForecastByDateTimeLast(spotName, regionName, countryName, dateStr)
+//         if err != nil {
+//             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+//             return
+//         }
         
-        if forecast != nil {
-            c.JSON(http.StatusOK, forecast)
-            return
-        }
-    }
+//         if forecast != nil {
+//             c.JSON(http.StatusOK, forecast)
+//             return
+//         }
+//     }
 
-    c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
-}
+//     c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
+// }
 
 
 func getCurrentTides(locationName string) []map[string]interface{} {
