@@ -292,7 +292,7 @@ func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[st
     // Second query to get all forecasts from the most recent batch
     batchInput := &dynamodb.QueryInput{
         TableName:              aws.String("SurfSpotForecastData"),
-        IndexName:             aws.String("SpotIdGeneratedAtIndex"),
+        IndexName:             aws.String("LatestGeneratedForSpot"),
         KeyConditionExpression: aws.String("spot_id = :spot_id AND generated_at = :generated_at"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":spot_id": {
