@@ -246,45 +246,36 @@ func GetSpotForecast(c *gin.Context) {
     regionName := c.Query("region")
     countryName := c.Query("country")
 
-    // Start from current time rounded down to the nearest hour
-    now := time.Now()
-    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
-
-    // Try for up to 48 hours in the past (adjust this number as needed)
-    for i := 0; i < 48; i++ {
-        searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-        dateStr := searchTime.Format("2006-01-02 15")
-        
-
-        forecast, err := queryForecastByDateTime(spotName, regionName, countryName, dateStr)
-        if err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-            return
-        }
-        
-        if forecast != nil {
-            c.JSON(http.StatusOK, forecast)
-            return
-        }
+    forecast, err := queryForecastByDateTime(spotName, regionName, countryName)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
     }
+    
+    if forecast != nil {
+        c.JSON(http.StatusOK, forecast)
+        return
+    }
+    
 
     c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
 }
 
-func queryForecastByDateTime(spotName, regionName, countryName, dateTime string) ([]map[string]interface{}, error) {
-    print(dateTime)
+func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[string]interface{}, error) {
+    
+    spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
+    
     input := &dynamodb.QueryInput{
-        TableName: aws.String("SurfSpotForecastData"),
-        KeyConditionExpression: aws.String("forecastDate = :dateTime AND begins_with(country_region_spot, :location)"),
-        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-            ":dateTime": {
-                S: aws.String(dateTime),
-            },
-            ":location": {
-                S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
-            },
-        },
-        ScanIndexForward: aws.Bool(true), 
+        TableName:              aws.String("SurfSpotForecastData"),
+		IndexName:             aws.String("LatestGeneratedForSpot"), // The GSI name
+		KeyConditionExpression: aws.String("spot_id = :spot_id"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":spot_id": {
+				S: aws.String(spotId),
+			},
+		},
+		ScanIndexForward: aws.Bool(false), // Sort by generated_at in descending order (most recent first)
+		Limit:             aws.Int64(1),    // Get only the latest forecast
     }
 
     result, err := db.Query(input)
@@ -292,12 +283,33 @@ func queryForecastByDateTime(spotName, regionName, countryName, dateTime string)
         return nil, err
     }
 
-    if len(result.Items) == 0 {
-        return nil, nil
+    // Extract the generated_at value from the most recent batch
+    mostRecentBatch := result.Items[0]
+    generatedAt := mostRecentBatch["generated_at"].S
+
+    // Second query to get all forecasts from the most recent batch
+    batchInput := &dynamodb.QueryInput{
+        TableName:              aws.String("SurfSpotForecastData"),
+        IndexName:             aws.String("SpotIdGeneratedAtIndex"),
+        KeyConditionExpression: aws.String("spot_id = :spot_id AND generated_at = :generated_at"),
+        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":spot_id": {
+                S: aws.String(spotId),
+            },
+            ":generated_at": {
+                S: generatedAt,
+            },
+        },
+        ScanIndexForward: aws.Bool(true), // Sort by forecast_timestamp in ascending order
+    }
+
+    batchResult, err := db.Query(batchInput)
+    if err != nil {
+        return nil, err
     }
 
     var forecasts []map[string]interface{}
-    err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &forecasts)
+    err = dynamodbattribute.UnmarshalListOfMaps(batchResult.Items, &forecasts)
     if err != nil {
         return nil, err
     }
