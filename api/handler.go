@@ -266,7 +266,7 @@ func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[st
     spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
     
     input := &dynamodb.QueryInput{
-        TableName:              aws.String("SurfSpotForecastData"),
+        TableName:              aws.String("SpotForecastData"),
 		IndexName:             aws.String("LatestGeneratedForSpot"), // The GSI name
 		KeyConditionExpression: aws.String("spot_id = :spot_id"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
