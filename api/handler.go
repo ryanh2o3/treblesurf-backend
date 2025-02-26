@@ -280,8 +280,10 @@ func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[st
 
     result, err := db.Query(input)
     if err != nil {
+        fmt.Printf("Error: %v\n", err)
         return nil, err
     }
+    fmt.Print(result)
 
     // Extract the generated_at value from the most recent batch
     mostRecentBatch := result.Items[0]
@@ -305,9 +307,10 @@ func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[st
 
     batchResult, err := db.Query(batchInput)
     if err != nil {
+        fmt.Printf("Error: %v\n", err)
         return nil, err
     }
-
+    fmt.Print(batchResult)
     var forecasts []map[string]interface{}
     err = dynamodbattribute.UnmarshalListOfMaps(batchResult.Items, &forecasts)
     if err != nil {
