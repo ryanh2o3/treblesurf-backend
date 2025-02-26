@@ -302,7 +302,7 @@ func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[st
                 S: generatedAt,
             },
         },
-        ScanIndexForward: aws.Bool(true), // Sort by forecast_timestamp in ascending order
+        ScanIndexForward: aws.Bool(false), // Sort by forecast_timestamp in ascending order
     }
 
     batchResult, err := db.Query(batchInput)
