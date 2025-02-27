@@ -301,42 +301,34 @@ func queryMultipleSpotForecasts(spotIds []string) ([]map[string]interface{}, err
     currentEpoch := time.Now().Unix()
     var allForecasts []map[string]interface{}
 
-    // Create batch get items input
-    input := &dynamodb.BatchGetItemInput{
-        RequestItems: map[string]*dynamodb.KeysAndAttributes{
-            "SpotForecastData": {
-                Keys: make([]map[string]*dynamodb.AttributeValue, 0, len(spotIds)),
-            },
-        },
-    }
-
-    // Add each spot_id to the batch request
+    // Query each spot ID separately since BatchGetItem doesn't support range queries
     for _, spotId := range spotIds {
-        input.RequestItems["SpotForecastData"].Keys = append(
-            input.RequestItems["SpotForecastData"].Keys,
-            map[string]*dynamodb.AttributeValue{
-                "spot_id": {
+        input := &dynamodb.QueryInput{
+            TableName: aws.String("SpotForecastData"),
+            KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
+            ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+                ":spot_id": {
                     S: aws.String(spotId),
                 },
-                "forecast_timestamp": {
+                ":current_time": {
                     S: aws.String(fmt.Sprintf("%d", currentEpoch)),
                 },
             },
-        )
-    }
+            ScanIndexForward: aws.Bool(true), // Sort by forecast_timestamp in ascending order
+        }
 
-    // Execute batch get
-    result, err := db.BatchGetItem(input)
-    if err != nil {
-        return nil, err
-    }
-
-    // Process results
-    if items, ok := result.Responses["SpotForecastData"]; ok {
-        err = dynamodbattribute.UnmarshalListOfMaps(items, &allForecasts)
+        result, err := db.Query(input)
         if err != nil {
             return nil, err
         }
+
+        var forecasts []map[string]interface{}
+        err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &forecasts)
+        if err != nil {
+            return nil, err
+        }
+
+        allForecasts = append(allForecasts, forecasts...)
     }
 
     return allForecasts, nil
@@ -387,6 +379,8 @@ func GetListSpotsForecast(c *gin.Context) {
     for _, spot := range spots {
         spotIds = append(spotIds, fmt.Sprintf("%s#%s#%s", countryName, regionName, spot))
     }
+
+    log.Print(spotIds)
 
     forecasts, err := queryMultipleSpotForecasts(spotIds)
     if err != nil {
