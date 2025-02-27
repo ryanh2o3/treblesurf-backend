@@ -246,7 +246,7 @@ func GetSpotForecast(c *gin.Context) {
     regionName := c.Query("region")
     countryName := c.Query("country")
 
-    forecast, err := queryForecastByDateTime(spotName, regionName, countryName)
+    forecast, err := queryForecastByDateTime(spotName, regionName, countryName, nil)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -261,7 +261,7 @@ func GetSpotForecast(c *gin.Context) {
     c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
 }
 
-func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[string]interface{}, error) {
+func queryForecastByDateTime(spotName, regionName, countryName string, limit *int64) ([]map[string]interface{}, error) {
     spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
     currentEpoch := time.Now().Unix()
     
@@ -277,6 +277,10 @@ func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[st
             },
         },
         ScanIndexForward: aws.Bool(true), // Sort by forecast_timestamp in ascending order
+        
+    }
+    if limit != nil {
+        input.Limit = limit
     }
 
     result, err := db.Query(input)
@@ -407,35 +411,24 @@ func GetRegionForecast(c *gin.Context) {
     c.JSON(http.StatusOK, forecasts)
 }
 
-// func GetCurrentWeather(c *gin.Context) {
-//     spotName := c.Query("spot")
-//     regionName := c.Query("region")
-//     countryName := c.Query("country")
+func GetCurrentWeather(c *gin.Context) {
+    spotName := c.Query("spot")
+    regionName := c.Query("region")
+    countryName := c.Query("country")
 
-//     // Start from current time rounded down to the nearest hour
-//     now := time.Now()
-//     currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
+    forecast, err := queryForecastByDateTime(spotName, regionName, countryName, aws.Int64(1))
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    
+    if forecast != nil {
+        c.JSON(http.StatusOK, forecast)
+        return
+    }
 
-//     // Try for up to 48 hours in the past (adjust this number as needed)
-//     for i := 0; i < 48; i++ {
-//         searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-//         dateStr := searchTime.Format("2006-01-02 15")
-        
-
-//         forecast, err := queryForecastByDateTimeLast(spotName, regionName, countryName, dateStr)
-//         if err != nil {
-//             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-//             return
-//         }
-        
-//         if forecast != nil {
-//             c.JSON(http.StatusOK, forecast)
-//             return
-//         }
-//     }
-
-//     c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
-// }
+    c.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
+}
 
 
 func getCurrentTides(locationName string) []map[string]interface{} {
