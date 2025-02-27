@@ -262,57 +262,30 @@ func GetSpotForecast(c *gin.Context) {
 }
 
 func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[string]interface{}, error) {
-    
     spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
+    currentEpoch := time.Now().Unix()
     
     input := &dynamodb.QueryInput{
-        TableName:              aws.String("SpotForecastData"),
-		IndexName:             aws.String("LatestGeneratedForSpot"), // The GSI name
-		KeyConditionExpression: aws.String("spot_id = :spot_id"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotId),
-			},
-		},
-		ScanIndexForward: aws.Bool(false), // Sort by generated_at in descending order (most recent first)
-		Limit:             aws.Int64(1),    // Get only the latest forecast
-    }
-
-    result, err := db.Query(input)
-    if err != nil {
-        fmt.Printf("Error: %v\n", err)
-        return nil, err
-    }
-    fmt.Print(result)
-
-    // Extract the generated_at value from the most recent batch
-    mostRecentBatch := result.Items[0]
-    generatedAt := mostRecentBatch["generated_at"].S
-
-    // Second query to get all forecasts from the most recent batch
-    batchInput := &dynamodb.QueryInput{
-        TableName:              aws.String("SpotForecastData"),
-        IndexName:             aws.String("LatestGeneratedForSpot"),
-        KeyConditionExpression: aws.String("spot_id = :spot_id AND generated_at = :generated_at"),
+        TableName: aws.String("SpotForecastData"),
+        KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":spot_id": {
                 S: aws.String(spotId),
             },
-            ":generated_at": {
-                S: generatedAt,
+            ":current_time": {
+                N: aws.String(fmt.Sprintf("%d", currentEpoch)),
             },
         },
-        ScanIndexForward: aws.Bool(false), // Sort by forecast_timestamp in ascending order
+        ScanIndexForward: aws.Bool(true), // Sort by forecast_timestamp in ascending order
     }
 
-    batchResult, err := db.Query(batchInput)
+    result, err := db.Query(input)
     if err != nil {
-        fmt.Printf("Error: %v\n", err)
         return nil, err
     }
-    fmt.Print(batchResult)
+
     var forecasts []map[string]interface{}
-    err = dynamodbattribute.UnmarshalListOfMaps(batchResult.Items, &forecasts)
+    err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &forecasts)
     if err != nil {
         return nil, err
     }
