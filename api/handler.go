@@ -273,7 +273,7 @@ func queryForecastByDateTime(spotName, regionName, countryName string) ([]map[st
                 S: aws.String(spotId),
             },
             ":current_time": {
-                N: aws.String(fmt.Sprintf("%d", currentEpoch)),
+                S: aws.String(fmt.Sprintf("%d", currentEpoch)),
             },
         },
         ScanIndexForward: aws.Bool(true), // Sort by forecast_timestamp in ascending order
