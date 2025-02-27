@@ -58,7 +58,7 @@ func init() {
     r.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
     r.GET("/listSpotsForecast", api.GetListSpotsForecast) // Expects ?country= &region= &spots=
     r.GET("/regionForecast", api.GetRegionForecast)       // Expects ?country= &region=
-    //r.GET("/currentConditions", api.GetCurrentWeather)     // Expects ?country= &region= &spot=
+    r.GET("/currentConditions", api.GetCurrentWeather)     // Expects ?country= &region= &spot=
     r.GET("/beforeAfterTide", api.GetBeforeAfterTides)    // Expects ?locationName=
     r.GET("/tideExtremes", api.GetDayTides)               // Expects ?locationName= &start=
     r.GET("/getLiveBuoyData", api.GetLiveBuoyData)
