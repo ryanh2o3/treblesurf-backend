@@ -297,6 +297,51 @@ func queryForecastByDateTime(spotName, regionName, countryName string, limit *in
     return forecasts, nil
 }
 
+func queryMultipleSpotForecasts(spotIds []string) ([]map[string]interface{}, error) {
+    currentEpoch := time.Now().Unix()
+    var allForecasts []map[string]interface{}
+
+    // Create batch get items input
+    input := &dynamodb.BatchGetItemInput{
+        RequestItems: map[string]*dynamodb.KeysAndAttributes{
+            "SpotForecastData": {
+                Keys: make([]map[string]*dynamodb.AttributeValue, 0, len(spotIds)),
+            },
+        },
+    }
+
+    // Add each spot_id to the batch request
+    for _, spotId := range spotIds {
+        input.RequestItems["SpotForecastData"].Keys = append(
+            input.RequestItems["SpotForecastData"].Keys,
+            map[string]*dynamodb.AttributeValue{
+                "spot_id": {
+                    S: aws.String(spotId),
+                },
+                "forecast_timestamp": {
+                    S: aws.String(fmt.Sprintf("%d", currentEpoch)),
+                },
+            },
+        )
+    }
+
+    // Execute batch get
+    result, err := db.BatchGetItem(input)
+    if err != nil {
+        return nil, err
+    }
+
+    // Process results
+    if items, ok := result.Responses["SpotForecastData"]; ok {
+        err = dynamodbattribute.UnmarshalListOfMaps(items, &allForecasts)
+        if err != nil {
+            return nil, err
+        }
+    }
+
+    return allForecasts, nil
+}
+
 // func queryForecastByDateTimeLast(spotName, regionName, countryName, dateTime string) (map[string]interface{}, error) {
 //     print(dateTime)
 //     input := &dynamodb.QueryInput{
@@ -337,33 +382,24 @@ func GetListSpotsForecast(c *gin.Context) {
     spots := strings.Split(spotsStr, ",")
     regionName := c.Query("region")
     countryName := c.Query("country")
-    print(spots)
-    var allForecasts []map[string]interface{}
-
-    for _, spotName := range spots {
- 
-        forecast, err := queryForecastByDateTime(spotName, regionName, countryName, aws.Int64(72))
-        if err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-            return
-        }
-        
-        if forecast != nil {
-            // Filter forecasts to get current hour plus every 3rd hour
-            var filteredForecasts []map[string]interface{}
-            for i := 0; i < len(forecast); i++ {
-                if i == 0 || i%3 == 0 {  // Keep first hour and every 3rd hour after that
-                    filteredForecasts = append(filteredForecasts, forecast[i])
-                }
-            }
-            allForecasts = append(allForecasts, filteredForecasts...)
-            break
-        }
-        
-        
+    
+    var spotIds []string
+    for _, spot := range spots {
+        spotIds = append(spotIds, fmt.Sprintf("%s#%s#%s", countryName, regionName, spot))
     }
 
-    c.JSON(http.StatusOK, allForecasts)
+    forecasts, err := queryMultipleSpotForecasts(spotIds)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    if len(forecasts) == 0 {
+        c.JSON(http.StatusNotFound, gin.H{"error": "No forecasts found"})
+        return
+    }
+
+    c.JSON(http.StatusOK, forecasts)
 }
 
 func GetRegionForecast(c *gin.Context) {
