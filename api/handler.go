@@ -297,9 +297,9 @@ func queryForecastByDateTime(spotName, regionName, countryName string, limit *in
     return forecasts, nil
 }
 
-func queryMultipleSpotForecasts(spotIds []string, limit *int64) ([]map[string]interface{}, error) {
+func queryMultipleSpotForecasts(spotIds []string, limit *int64) ([][]map[string]interface{}, error) {
     currentEpoch := time.Now().Unix()
-    var allForecasts []map[string]interface{}
+    var allForecasts [][]map[string]interface{}
 
     // Query each spot ID separately since BatchGetItem doesn't support range queries
     for _, spotId := range spotIds {
@@ -331,7 +331,7 @@ func queryMultipleSpotForecasts(spotIds []string, limit *int64) ([]map[string]in
             return nil, err
         }
 
-        allForecasts = append(allForecasts, forecasts...)
+        allForecasts = append(allForecasts, forecasts)
     }
 
     return allForecasts, nil
