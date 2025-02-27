@@ -297,7 +297,7 @@ func queryForecastByDateTime(spotName, regionName, countryName string, limit *in
     return forecasts, nil
 }
 
-func queryMultipleSpotForecasts(spotIds []string) ([]map[string]interface{}, error) {
+func queryMultipleSpotForecasts(spotIds []string, limit *int64) ([]map[string]interface{}, error) {
     currentEpoch := time.Now().Unix()
     var allForecasts []map[string]interface{}
 
@@ -315,6 +315,9 @@ func queryMultipleSpotForecasts(spotIds []string) ([]map[string]interface{}, err
                 },
             },
             ScanIndexForward: aws.Bool(true), // Sort by forecast_timestamp in ascending order
+        }
+        if limit != nil {
+            input.Limit = limit
         }
 
         result, err := db.Query(input)
@@ -382,7 +385,7 @@ func GetListSpotsForecast(c *gin.Context) {
 
     log.Print(spotIds)
 
-    forecasts, err := queryMultipleSpotForecasts(spotIds)
+    forecasts, err := queryMultipleSpotForecasts(spotIds, aws.Int64(72))
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
