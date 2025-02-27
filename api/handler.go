@@ -342,7 +342,7 @@ func GetListSpotsForecast(c *gin.Context) {
 
     for _, spotName := range spots {
  
-        forecast, err := queryForecastByDateTime(spotName, regionName, countryName, nil)
+        forecast, err := queryForecastByDateTime(spotName, regionName, countryName, aws.Int64(72))
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
             return
