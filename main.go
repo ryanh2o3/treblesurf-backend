@@ -51,6 +51,8 @@ func init() {
         }
         c.Next()
     })
+
+    r.POST("/auth/google", api.GoogleAuthHandler)
     
     r.GET("/regions", api.GetRegions)                      // Expects ?country=
     r.GET("/spots", api.GetSpots)                         // Expects ?region= &country=
@@ -70,6 +72,15 @@ func init() {
     r.GET("/buoyLocationInfo", api.BuoyLocationInfo)
     r.GET("/individualBuoyLocation", api.IndividualBuoyLocationInfo) // Expects ?buoyName=
     r.GET("/locationInfo", api.GetLocationInfo)   
+
+    // Protected routes (auth required)
+    authorized := r.Group("/")
+    authorized.Use(api.AuthMiddleware())
+    {
+        authorized.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
+        authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
+    }
+
     ginLambda = ginadapter.New(r)
 }
 
