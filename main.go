@@ -66,8 +66,6 @@ func init() {
     r.GET("/getLiveBuoyData", api.GetLiveBuoyData)
     r.GET("/getSingleBuoyData", api.GetSingleBuoyData)    // Expects ?buoyName=
     r.GET("/getLast24BuoyData", api.GetLast24HoursBuoyData) // Expects ?buoyName=
-    r.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
-    r.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
     r.GET("/getMultipleBuoyData", api.GetMultipleBuoyData)      // Expects ?buoys=
     r.GET("/buoyLocationInfo", api.BuoyLocationInfo)
     r.GET("/individualBuoyLocation", api.IndividualBuoyLocationInfo) // Expects ?buoyName=
