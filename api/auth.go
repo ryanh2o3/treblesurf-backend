@@ -45,6 +45,10 @@ func GoogleAuthHandler(c *gin.Context) {
     }
 
     email := payload.Claims["email"].(string)
+	name := payload.Claims["name"].(string)
+	picture := payload.Claims["picture"].(string)
+	familyName := payload.Claims["family_name"].(string)
+	givenName := payload.Claims["given_name"].(string)
 	log.Printf("User email: %s", email)
 
     // Create a new JWT token
@@ -59,7 +63,16 @@ func GoogleAuthHandler(c *gin.Context) {
         return
     }
 
-    c.JSON(http.StatusOK, gin.H{"token": tokenString})
+    c.JSON(http.StatusOK, gin.H{
+        "token": tokenString,
+        "user": gin.H{
+            "email": email,
+            "name": name,
+			"picture": picture,
+			"family_name": familyName,
+			"given_name": givenName,
+        },
+    })
 }
 
 // AuthMiddleware checks if the request has a valid JWT token
