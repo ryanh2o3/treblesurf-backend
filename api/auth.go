@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -44,6 +45,7 @@ func GoogleAuthHandler(c *gin.Context) {
     }
 
     email := payload.Claims["email"].(string)
+	log.Printf("User email: %s", email)
 
     // Create a new JWT token
     token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
