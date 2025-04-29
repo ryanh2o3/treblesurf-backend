@@ -146,6 +146,102 @@ func AuthMiddleware() gin.HandlerFunc {
     }
 }
 
+func ValidateTokenHandler(c *gin.Context) {
+    tokenStr := c.GetHeader("Authorization")
+    if tokenStr == "" {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
+        return
+    }
+
+    // Remove 'Bearer ' prefix if present
+    if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
+        tokenStr = tokenStr[7:]
+    }
+
+    // Parse the token
+    token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+        return jwtSecret, nil
+    })
+
+    // Check if token is valid
+    if err != nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token", "details": err.Error()})
+        return
+    }
+
+    if !token.Valid {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Token validation failed"})
+        return
+    }
+
+    // Get claims from token
+    claims, ok := token.Claims.(jwt.MapClaims)
+    if !ok {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse token claims"})
+        return
+    }
+
+    email, ok := claims["email"].(string)
+    if !ok {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Email claim missing"})
+        return
+    }
+
+    // Get user data
+    user, err := getUserByEmail(email)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
+        return
+    }
+
+    if user == nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+        return
+    }
+
+    // Check expiration time - refresh if less than 24 hours remaining
+    expirationTime, ok := claims["exp"].(float64)
+    if !ok {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid expiration claim"})
+        return
+    }
+
+    expTime := time.Unix(int64(expirationTime), 0)
+    remainingTime := time.Until(expTime)
+
+    response := gin.H{
+        "valid": true,
+        "user": gin.H{
+            "email":       user.Email,
+            "name":        user.Name,
+            "picture":     user.Picture,
+            "family_name": user.FamilyName,
+            "given_name":  user.GivenName,
+        },
+        "expires_in": int(remainingTime.Seconds()),
+    }
+
+    // If token expires in less than 24 hours, generate a new one
+    if remainingTime < 24*time.Hour {
+        newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+            "email": email,
+            "exp":   time.Now().Add(time.Hour * 72).Unix(),
+        })
+        
+        newTokenString, err := newToken.SignedString(jwtSecret)
+        if err != nil {
+            // Still return the valid status with the old token
+            c.JSON(http.StatusOK, response)
+            return
+        }
+        
+        response["token"] = newTokenString
+        response["token_refreshed"] = true
+    }
+
+    c.JSON(http.StatusOK, response)
+}
+
 type User struct {
     Email      string `json:"email"`
     Name       string `json:"name"`
