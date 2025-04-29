@@ -859,3 +859,48 @@ func isValidSurfDifficulty(surfDifficulty string) bool {
     validDifficulties := []string{"lulls", "consistent", "relentless"}
     return contains(validDifficulties, surfDifficulty)
 }
+
+
+func DeleteMyAccount(c *gin.Context) {
+	email, exists := c.Get("email")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+     // First check if the user exists
+     user, err := getUserByEmail(email.(string))
+     if err != nil {
+         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
+         return
+     }
+ 
+     if user == nil {
+         c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+         return
+     }
+
+	// Delete the user account
+    input := &dynamodb.DeleteItemInput{
+        TableName: aws.String("Users"),
+        Key: map[string]*dynamodb.AttributeValue{
+            "email": {
+                S: aws.String(email.(string)),
+            },
+        },
+    }
+
+    _, err = db.DeleteItem(input)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete account"})
+        return
+    }
+
+    // Here you could add additional cleanup for user data if needed
+    // For example:
+    // - Delete user preferences
+    // - Delete saved spots
+    // - Remove user reports/contributions
+
+    c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
+}
