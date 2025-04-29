@@ -7,6 +7,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"google.golang.org/api/idtoken"
@@ -50,6 +53,41 @@ func GoogleAuthHandler(c *gin.Context) {
 	familyName := payload.Claims["family_name"].(string)
 	givenName := payload.Claims["given_name"].(string)
 	log.Printf("User email: %s", email)
+
+	// Check if user exists in database
+    existingUser, err := getUserByEmail(email)
+    if err != nil {
+        log.Printf("Error checking user: %v", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+        return
+    }
+
+    if existingUser == nil {
+        // Create new user
+        newUser := User{
+            Email:      email,
+            Name:       name,
+            Picture:    picture,
+            FamilyName: familyName,
+            GivenName:  givenName,
+        }
+        
+        if err := createUser(newUser); err != nil {
+            log.Printf("Error creating user: %v", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+            return
+        }
+        
+        log.Printf("Created new user: %s", email)
+    } else {
+        // Update last login time
+        if err := updateUserLastLogin(email); err != nil {
+            log.Printf("Error updating last login: %v", err)
+            // Continue anyway, not a critical error
+        }
+        
+        log.Printf("User logged in: %s", email)
+    }
 
     // Create a new JWT token
     token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -106,4 +144,86 @@ func AuthMiddleware() gin.HandlerFunc {
 
         c.Next()
     }
+}
+
+type User struct {
+    Email      string `json:"email"`
+    Name       string `json:"name"`
+    Picture    string `json:"picture"`
+    FamilyName string `json:"family_name"`
+    GivenName  string `json:"given_name"`
+    CreatedAt  string `json:"created_at"`
+    LastLogin  string `json:"last_login"`
+}
+
+// getUserByEmail checks if a user exists in the Users table
+func getUserByEmail(email string) (*User, error) {
+    input := &dynamodb.GetItemInput{
+        TableName: aws.String("Users"),
+        Key: map[string]*dynamodb.AttributeValue{
+            "email": {
+                S: aws.String(email),
+            },
+        },
+    }
+
+    result, err := db.GetItem(input)
+    if err != nil {
+        return nil, err
+    }
+
+    if result.Item == nil {
+        return nil, nil // User not found
+    }
+
+    user := &User{}
+    err = dynamodbattribute.UnmarshalMap(result.Item, user)
+    if err != nil {
+        return nil, err
+    }
+
+    return user, nil
+}
+
+// createUser creates a new user in the Users table
+func createUser(user User) error {
+    now := time.Now().UTC().Format(time.RFC3339)
+    user.CreatedAt = now
+    user.LastLogin = now
+
+    item, err := dynamodbattribute.MarshalMap(user)
+    if err != nil {
+        return err
+    }
+
+    input := &dynamodb.PutItemInput{
+        TableName: aws.String("Users"),
+        Item:      item,
+    }
+
+    _, err = db.PutItem(input)
+    return err
+}
+
+// updateUserLastLogin updates the last login time for a user
+func updateUserLastLogin(email string) error {
+    now := time.Now().UTC().Format(time.RFC3339)
+
+    input := &dynamodb.UpdateItemInput{
+        TableName: aws.String("Users"),
+        Key: map[string]*dynamodb.AttributeValue{
+            "email": {
+                S: aws.String(email),
+            },
+        },
+        UpdateExpression: aws.String("set last_login = :time"),
+        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":time": {
+                S: aws.String(now),
+            },
+        },
+    }
+
+    _, err := db.UpdateItem(input)
+    return err
 }
