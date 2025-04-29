@@ -219,7 +219,7 @@ func ValidateTokenHandler(c *gin.Context) {
             "given_name":  user.GivenName,
         },
         "expires_in": int(remainingTime.Seconds()),
-		"token": token,
+		"token": tokenStr,
     }
 
     // If token expires in less than 24 hours, generate a new one
