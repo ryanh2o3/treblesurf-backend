@@ -53,6 +53,7 @@ func init() {
     })
 
     r.POST("/auth/google", api.GoogleAuthHandler)
+    r.GET("auth/validate", api.ValidateTokenHandler)
     
     r.GET("/regions", api.GetRegions)                      // Expects ?country=
     r.GET("/spots", api.GetSpots)                         // Expects ?region= &country=
