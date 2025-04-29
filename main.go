@@ -57,7 +57,6 @@ func init() {
     r.GET("/regions", api.GetRegions)                      // Expects ?country=
     r.GET("/spots", api.GetSpots)                         // Expects ?region= &country=
     r.GET("/location", api.GetCoordinates)                // Expects ?country= &region= &spot=
-    r.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
     r.GET("/listSpotsForecast", api.GetListSpotsForecast) // Expects ?country= &region= &spots=
     r.GET("/regionForecast", api.GetRegionForecast)       // Expects ?country= &region=
     r.GET("/currentConditions", api.GetCurrentWeather)     // Expects ?country= &region= &spot=
@@ -75,6 +74,8 @@ func init() {
     authorized := r.Group("/")
     authorized.Use(api.AuthMiddleware())
     {
+        authorized.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
+        authorized.DELETE("/deleteMyAccount", api.DeleteMyAccount)
         authorized.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
         authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
     }
