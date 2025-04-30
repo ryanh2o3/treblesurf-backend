@@ -84,6 +84,7 @@ func init() {
             modifyGroup.PUT("/setTheme", api.SetUserTheme)
         // Other state-changing endpoints
         }
+        authorized.GET("/getTheme", api.GetUserTheme)
         authorized.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
         authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
     }

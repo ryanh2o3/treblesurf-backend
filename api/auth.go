@@ -382,6 +382,7 @@ type User struct {
     GivenName  string `json:"given_name"`
     CreatedAt  string `json:"created_at"`
     LastLogin  string `json:"last_login"`
+	Theme    string `json:"theme"`
 }
 
 // getUserByEmail checks if a user exists in the Users table

@@ -905,6 +905,29 @@ func DeleteMyAccount(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
 }
 
+func GetUserTheme(c *gin.Context) {
+    email, exists := c.Get("email")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+        return
+    }
+
+     // First check if the user exists
+     user, err := getUserByEmail(email.(string))
+     if err != nil {
+         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
+         return
+     }
+ 
+     if user == nil {
+         c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+         return
+     }
+
+    theme := user.Theme
+    c.JSON(http.StatusOK, gin.H{"theme": theme})
+}
+
 func SetUserTheme(c *gin.Context) {
     email, exists := c.Get("email")
 	if !exists {
