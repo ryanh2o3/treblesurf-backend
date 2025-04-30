@@ -71,6 +71,8 @@ func init() {
     r.GET("/buoyLocationInfo", api.BuoyLocationInfo)
     r.GET("/individualBuoyLocation", api.IndividualBuoyLocationInfo) // Expects ?buoyName=
     r.GET("/locationInfo", api.GetLocationInfo)   
+    r.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
+
 
     // Protected routes (auth required)
     authorized := r.Group("/")
@@ -85,7 +87,6 @@ func init() {
         // Other state-changing endpoints
         }
         authorized.GET("/getTheme", api.GetUserTheme)
-        authorized.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
         authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
     }
 
