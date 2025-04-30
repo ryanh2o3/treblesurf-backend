@@ -904,3 +904,51 @@ func DeleteMyAccount(c *gin.Context) {
 
     c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
 }
+
+func SetUserTheme(c *gin.Context) {
+    email, exists := c.Get("email")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+        return
+	}
+
+     // First check if the user exists
+     user, err := getUserByEmail(email.(string))
+     if err != nil {
+         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
+        return
+        }
+ 
+     if user == nil {
+         c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+         return
+     }
+     theme := c.Query("theme")
+     if theme == "" {
+         c.JSON(http.StatusBadRequest, gin.H{"error": "Theme is required"})
+         return
+     }
+ 
+     input := &dynamodb.UpdateItemInput{
+         TableName: aws.String("Users"),
+         Key: map[string]*dynamodb.AttributeValue{
+             "email": {
+                 S: aws.String(email.(string)),
+             },
+         },
+         UpdateExpression: aws.String("SET theme = :theme"),
+         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+             ":theme": {
+                 S: aws.String(theme),
+             },
+         },
+     }
+ 
+     _, err = db.UpdateItem(input)
+     if err != nil {
+         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update theme"})
+         return
+     }
+ 
+     c.JSON(http.StatusOK, gin.H{"message": "Theme updated successfully"})
+}
