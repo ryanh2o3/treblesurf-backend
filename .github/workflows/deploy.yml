@@ -51,3 +51,8 @@ jobs:
 
           # Deploy Lambda function
           aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://$ZIP_FILE
+
+          # Update Lambda environment variables
+          aws lambda update-function-configuration \
+            --function-name $FUNCTION_NAME \
+            --environment "Variables={JWT_SECRET='$JWT_SECRET'}"
