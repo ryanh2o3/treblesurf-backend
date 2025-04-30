@@ -604,11 +604,16 @@ func SubmitCurrentSurfReport(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
-
-    if !isValidSwellSize(report["swellSize"]) || !isValidWindAmount(report["windAmount"]) || !isValidWindDirection(report["windDirection"]) || !isValidSurfConditions(report["surfConditions"]) || !isValidSurfDifficulty(report["surfDifficulty"]) {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid report data"})
+    email, exists := c.Get("email")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
         return
-    }
+	}
+
+    // if !isValidSwellSize(report["surfSize"]) || !isValidWindAmount(report["windAmount"]) || !isValidWindDirection(report["windDirection"]) || !isValidSurfConditions(report["surfConditions"]) || !isValidSurfDifficulty(report["surfDifficulty"]) {
+    //     c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid report data"})
+    //     return
+    // }
 
     currentTime := time.Now()
     currentDate := currentTime.Format("2006-01-02")
@@ -628,8 +633,8 @@ func SubmitCurrentSurfReport(c *gin.Context) {
             "Date": {
                 S: aws.String(currentDate),
             },
-            "SwellSize": {
-                S: aws.String(report["swellSize"]),
+            "SurfSize": {
+                S: aws.String(report["surfSize"]),
             },
             "WindAmount": {
                 S: aws.String(report["windAmount"]),
@@ -637,11 +642,17 @@ func SubmitCurrentSurfReport(c *gin.Context) {
             "WindDirection": {
                 S: aws.String(report["windDirection"]),
             },
-            "SurfConditions": {
-                S: aws.String(report["surfConditions"]),
+            "Consistency": {
+                S: aws.String(report["consistency"]),
             },
-            "SurfDifficulty": {
-                S: aws.String(report["surfDifficulty"]),
+            "Quality": {
+                S: aws.String(report["quality"]),
+            },
+            "Messiness": {
+                S: aws.String(report["messiness"]),
+            },
+            "UserEmail": {
+                S: aws.String(email.(string)),
             },
             "Time": {
                 S: aws.String(currentTime.String()),
@@ -851,7 +862,7 @@ func isValidWindDirection(windDirection string) bool {
 }
 
 func isValidSurfConditions(surfConditions string) bool {
-    validConditions := []string{"clean", "messy", "okay"}
+    validConditions := []string{"glassy", "clean", "messy", "okay"}
     return contains(validConditions, surfConditions)
 }
 
