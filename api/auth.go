@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -25,8 +27,8 @@ type TokenClaims struct {
 var jwtSecret []byte
 
 func init() {
-    secretKey, exists := os.LookupEnv("JWT_SECRET")
-	if !exists {
+    secretKey := os.Getenv("JWT_SECRET")
+    if secretKey == "" {
         log.Fatal("JWT_SECRET environment variable must be set")
     }
     jwtSecret = []byte(secretKey)
@@ -113,6 +115,32 @@ func GoogleAuthHandler(c *gin.Context) {
         return
     }
 
+	// In GoogleAuthHandler, after setting the auth cookie:
+	csrfToken, err := GenerateCSRFToken()
+	if err == nil {
+		c.SetCookie(
+			"csrf_token",
+			csrfToken,
+			int(72*time.Hour.Seconds()),
+			"/",
+			"",
+			true,  // Secure
+			false, // Not HTTP-only (JS needs to access it)
+		)
+		// Include it in response for SPA to use
+		c.Header("X-CSRF-Token", csrfToken)
+	}
+
+	c.SetCookie(
+        "auth_token",
+        tokenString,
+        int(72*time.Hour.Seconds()),
+        "/",
+        "",
+        true,  // Secure (HTTPS only)
+        true,  // HTTP-only
+    )
+
     c.JSON(http.StatusOK, gin.H{
         "token": tokenString,
         "user": gin.H{
@@ -129,6 +157,15 @@ func GoogleAuthHandler(c *gin.Context) {
 func AuthMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         tokenStr := c.GetHeader("Authorization")
+
+		// If not in header, check cookie
+        if tokenStr == "" {
+            tokenCookie, err := c.Cookie("auth_token")
+            if err == nil {
+                tokenStr = tokenCookie
+            }
+        }
+
         if tokenStr == "" {
             c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
             return
@@ -153,6 +190,56 @@ func AuthMiddleware() gin.HandlerFunc {
             return
         }
 
+		// Check token expiration time
+        if claims.ExpiresAt != nil {
+            expTime := claims.ExpiresAt.Time
+            remainingTime := time.Until(expTime)
+            
+            // If token expires in less than 24 hours, generate a new one
+            if remainingTime < 24*time.Hour {
+                newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, TokenClaims{
+                    Email: claims.Email,
+                    RegisteredClaims: jwt.RegisteredClaims{
+                        ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
+                        IssuedAt:  jwt.NewNumericDate(time.Now()),
+                        NotBefore: jwt.NewNumericDate(time.Now()),
+                        Issuer:    "treblesurf-api",
+                        Subject:   claims.Email,
+                    },
+                })
+                
+                newTokenString, err := newToken.SignedString(jwtSecret)
+                if err == nil {
+                    // Set the new auth token cookie
+                    c.SetCookie(
+                        "auth_token",
+                        newTokenString,
+                        int(72*time.Hour.Seconds()),
+                        "/",
+                        "",
+                        true,  // Secure (HTTPS only)
+                        true,  // HTTP-only
+                    )
+                    
+                    // Also refresh the CSRF token
+                    csrfToken, err := GenerateCSRFToken()
+                    if err == nil {
+                        c.SetCookie(
+                            "csrf_token",
+                            csrfToken,
+                            int(72*time.Hour.Seconds()),
+                            "/",
+                            "",
+                            true,  // Secure
+                            false, // Not HTTP-only (JS needs to access it)
+                        )
+                        // Include it in response for SPA to use
+                        c.Header("X-CSRF-Token", csrfToken)
+                    }
+                }
+            }
+        }
+
         c.Set("email", claims.Email)
         c.Next()
     }
@@ -160,6 +247,14 @@ func AuthMiddleware() gin.HandlerFunc {
 
 func ValidateTokenHandler(c *gin.Context) {
     tokenStr := c.GetHeader("Authorization")
+
+	// Check cookie if header is empty - ADD THIS
+    if tokenStr == "" {
+        tokenCookie, err := c.Cookie("auth_token")
+        if err == nil {
+            tokenStr = tokenCookie
+        }
+    }
     if tokenStr == "" {
         c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
         return
@@ -228,21 +323,48 @@ func ValidateTokenHandler(c *gin.Context) {
     // If token expires in less than 24 hours, generate a new one
     if remainingTime < 24*time.Hour {
         newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, TokenClaims{
-			Email: email,
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
-				IssuedAt:  jwt.NewNumericDate(time.Now()),
-				NotBefore: jwt.NewNumericDate(time.Now()),
-				Issuer:    "treblesurf-api",
-				Subject:   email,
-			},
-		})
+            Email: email,
+            RegisteredClaims: jwt.RegisteredClaims{
+                ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
+                IssuedAt:  jwt.NewNumericDate(time.Now()),
+                NotBefore: jwt.NewNumericDate(time.Now()),
+                Issuer:    "treblesurf-api",
+                Subject:   email,
+            },
+        })
         
         newTokenString, err := newToken.SignedString(jwtSecret)
         if err != nil {
             // Still return the valid status with the old token
             c.JSON(http.StatusOK, response)
             return
+        }
+        
+        // Set the new token in cookie - ADD THIS
+        c.SetCookie(
+            "auth_token",
+            newTokenString,
+            int(72*time.Hour.Seconds()),
+            "/",
+            "",
+            true,  // Secure (HTTPS only)
+            true,  // HTTP-only
+        )
+        
+        // Generate new CSRF token too - ADD THIS
+        csrfToken, err := GenerateCSRFToken()
+        if err == nil {
+            c.SetCookie(
+                "csrf_token",
+                csrfToken,
+                int(72*time.Hour.Seconds()),
+                "/",
+                "",
+                true,  // Secure
+                false, // Not HTTP-only (JS needs to access it)
+            )
+            // Include it in response for SPA to use
+            c.Header("X-CSRF-Token", csrfToken)
         }
         
         response["token"] = newTokenString
@@ -332,4 +454,74 @@ func updateUserLastLogin(email string) error {
 
     _, err := db.UpdateItem(input)
     return err
+}
+
+// GenerateCSRFToken creates a secure random token for CSRF protection
+func GenerateCSRFToken() (string, error) {
+    bytes := make([]byte, 32)
+    _, err := rand.Read(bytes)
+    if err != nil {
+        return "", err
+    }
+    return base64.StdEncoding.EncodeToString(bytes), nil
+}
+
+// CSRFMiddleware adds CSRF protection to routes that modify state
+func CSRFMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Only check POST, PUT, DELETE requests
+        if c.Request.Method == "GET" || c.Request.Method == "HEAD" || c.Request.Method == "OPTIONS" {
+            c.Next()
+            return
+        }
+
+        // Get token from header
+        clientToken := c.GetHeader("X-CSRF-Token")
+        
+        // Get token from session/cookie
+        serverToken, err := c.Cookie("csrf_token")
+        if err != nil {
+            c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+                "error": "CSRF token missing",
+            })
+            return
+        }
+
+        // Validate token
+        if clientToken == "" || clientToken != serverToken {
+            c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+                "error": "CSRF token invalid",
+            })
+            return
+        }
+
+        c.Next()
+    }
+}
+
+// LogoutHandler clears authentication cookies
+func LogoutHandler(c *gin.Context) {
+    // Clear auth cookie
+    c.SetCookie(
+        "auth_token",
+        "",
+        -1, // Expire immediately
+        "/",
+        "",
+        true,
+        true,
+    )
+    
+    // Clear CSRF cookie
+    c.SetCookie(
+        "csrf_token",
+        "",
+        -1,
+        "/",
+        "",
+        true,
+        false,
+    )
+    
+    c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }

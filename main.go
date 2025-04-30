@@ -54,7 +54,8 @@ func init() {
 
     r.POST("/auth/google", api.GoogleAuthHandler)
     r.GET("auth/validate", api.ValidateTokenHandler)
-    
+    r.POST("/auth/logout", api.LogoutHandler)
+
     r.GET("/regions", api.GetRegions)                      // Expects ?country=
     r.GET("/spots", api.GetSpots)                         // Expects ?region= &country=
     r.GET("/location", api.GetCoordinates)                // Expects ?country= &region= &spot=
@@ -75,9 +76,14 @@ func init() {
     authorized := r.Group("/")
     authorized.Use(api.AuthMiddleware())
     {
+        modifyGroup := authorized.Group("/")
+        modifyGroup.Use(api.CSRFMiddleware()) 
+        {
+            modifyGroup.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
+            modifyGroup.DELETE("/deleteMyAccount", api.DeleteMyAccount)
+        // Other state-changing endpoints
+        }
         authorized.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
-        authorized.DELETE("/deleteMyAccount", api.DeleteMyAccount)
-        authorized.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
         authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
     }
 
