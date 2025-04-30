@@ -52,6 +52,9 @@ jobs:
           # Deploy Lambda function
           aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://$ZIP_FILE
 
+          # Wait for the function update to complete before proceeding
+          aws lambda wait function-updated --function-name $FUNCTION_NAME
+
           # Update Lambda environment variables
           aws lambda update-function-configuration \
             --function-name $FUNCTION_NAME \
