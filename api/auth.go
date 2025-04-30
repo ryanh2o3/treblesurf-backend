@@ -62,7 +62,7 @@ func GoogleAuthHandler(c *gin.Context) {
 	familyName := payload.Claims["family_name"].(string)
 	givenName := payload.Claims["given_name"].(string)
 	log.Printf("User email: %s", email)
-
+	theme := "dark"
 	// Check if user exists in database
     existingUser, err := getUserByEmail(email)
     if err != nil {
@@ -94,6 +94,7 @@ func GoogleAuthHandler(c *gin.Context) {
             log.Printf("Error updating last login: %v", err)
             // Continue anyway, not a critical error
         }
+		theme = existingUser.Theme
         
         log.Printf("User logged in: %s", email)
     }
@@ -149,6 +150,7 @@ func GoogleAuthHandler(c *gin.Context) {
 			"picture": picture,
 			"family_name": familyName,
 			"given_name": givenName,
+			"theme": theme,
         },
     })
 }
@@ -315,6 +317,7 @@ func ValidateTokenHandler(c *gin.Context) {
             "picture":     user.Picture,
             "family_name": user.FamilyName,
             "given_name":  user.GivenName,
+			"theme":     user.Theme,
         },
         "expires_in": int(remainingTime.Seconds()),
 		"token": tokenStr,
