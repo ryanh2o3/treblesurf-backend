@@ -81,6 +81,7 @@ func init() {
         {
             modifyGroup.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
             modifyGroup.DELETE("/deleteMyAccount", api.DeleteMyAccount)
+            modifyGroup.PUT("/setTheme", api.SetUserTheme)
         // Other state-changing endpoints
         }
         authorized.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
