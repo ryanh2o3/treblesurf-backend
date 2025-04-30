@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,14 +16,20 @@ import (
 	"google.golang.org/api/idtoken"
 )
 
-// Replace this with a proper secret from environment variable in production
-var jwtSecret = []byte(getEnvOrDefault("JWT_SECRET", "your_super_secret"))
+type TokenClaims struct {
+    Email string `json:"email"`
+    jwt.RegisteredClaims
+}
 
-func getEnvOrDefault(key, defaultValue string) string {
-    if value, exists := os.LookupEnv(key); exists {
-        return value
+// Replace this with a proper secret from environment variable in production
+var jwtSecret []byte
+
+func init() {
+    secretKey := os.Getenv("JWT_SECRET")
+    if secretKey == "" {
+        log.Fatal("JWT_SECRET environment variable must be set")
     }
-    return defaultValue
+    jwtSecret = []byte(secretKey)
 }
 
 // TokenRequest defines the structure for incoming token validation requests
@@ -89,11 +96,16 @@ func GoogleAuthHandler(c *gin.Context) {
         log.Printf("User logged in: %s", email)
     }
 
-    // Create a new JWT token
-    token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-        "email": email,
-        "exp":   time.Now().Add(time.Hour * 72).Unix(),
-    })
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, TokenClaims{
+		Email: email,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "treblesurf-api",
+			Subject:   email,
+		},
+	})
     
     tokenString, err := token.SignedString(jwtSecret)
     if err != nil {
@@ -127,7 +139,12 @@ func AuthMiddleware() gin.HandlerFunc {
             tokenStr = tokenStr[7:]
         }
 
-        token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+        // Parse token with claims directly - removing the duplicate parsing
+        claims := &TokenClaims{}
+        token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+            if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+                return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+            }
             return jwtSecret, nil
         })
         
@@ -136,12 +153,7 @@ func AuthMiddleware() gin.HandlerFunc {
             return
         }
 
-        // Add claims to context for later use if needed
-        claims, ok := token.Claims.(jwt.MapClaims)
-        if ok {
-            c.Set("email", claims["email"])
-        }
-
+        c.Set("email", claims.Email)
         c.Next()
     }
 }
@@ -158,8 +170,12 @@ func ValidateTokenHandler(c *gin.Context) {
         tokenStr = tokenStr[7:]
     }
 
-    // Parse the token
-    token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+    // Parse the token with claims
+    claims := &TokenClaims{}
+    token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+        }
         return jwtSecret, nil
     })
 
@@ -174,18 +190,8 @@ func ValidateTokenHandler(c *gin.Context) {
         return
     }
 
-    // Get claims from token
-    claims, ok := token.Claims.(jwt.MapClaims)
-    if !ok {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse token claims"})
-        return
-    }
-
-    email, ok := claims["email"].(string)
-    if !ok {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Email claim missing"})
-        return
-    }
+    // Get email directly from structured claims
+    email := claims.Email
 
     // Get user data
     user, err := getUserByEmail(email)
@@ -199,15 +205,12 @@ func ValidateTokenHandler(c *gin.Context) {
         return
     }
 
-    // Check expiration time - refresh if less than 24 hours remaining
-    expirationTime, ok := claims["exp"].(float64)
-    if !ok {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid expiration claim"})
-        return
-    }
-
-    expTime := time.Unix(int64(expirationTime), 0)
-    remainingTime := time.Until(expTime)
+    if claims.ExpiresAt == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Missing expiration claim"})
+		return
+	}
+	expTime := claims.ExpiresAt.Time
+	remainingTime := time.Until(expTime)
 
     response := gin.H{
         "valid": true,
@@ -224,10 +227,16 @@ func ValidateTokenHandler(c *gin.Context) {
 
     // If token expires in less than 24 hours, generate a new one
     if remainingTime < 24*time.Hour {
-        newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-            "email": email,
-            "exp":   time.Now().Add(time.Hour * 72).Unix(),
-        })
+        newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, TokenClaims{
+			Email: email,
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				NotBefore: jwt.NewNumericDate(time.Now()),
+				Issuer:    "treblesurf-api",
+				Subject:   email,
+			},
+		})
         
         newTokenString, err := newToken.SignedString(jwtSecret)
         if err != nil {
