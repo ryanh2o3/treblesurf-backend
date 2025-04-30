@@ -618,9 +618,14 @@ func SubmitCurrentSurfReport(c *gin.Context) {
     currentTime := time.Now()
     currentDate := currentTime.Format("2006-01-02")
 
+    countryRegionSpot := fmt.Sprintf("%s_%s_%s", report["country"], report["region"], report["spot"])
+
     input := &dynamodb.PutItemInput{
         TableName: aws.String("SurfReports"),
         Item: map[string]*dynamodb.AttributeValue{
+            "country_region_spot": {
+                S: aws.String(countryRegionSpot),
+            },
             "Country": {
                 S: aws.String(report["country"]),
             },
