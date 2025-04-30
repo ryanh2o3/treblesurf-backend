@@ -25,8 +25,8 @@ type TokenClaims struct {
 var jwtSecret []byte
 
 func init() {
-    secretKey := os.Getenv("JWT_SECRET")
-    if secretKey == "" {
+    secretKey, exists := os.LookupEnv("JWT_SECRET")
+	if !exists {
         log.Fatal("JWT_SECRET environment variable must be set")
     }
     jwtSecret = []byte(secretKey)
