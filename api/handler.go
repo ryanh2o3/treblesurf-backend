@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -12,16 +14,24 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/rekognition"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gin-gonic/gin"
 )
 
-var db *dynamodb.DynamoDB
+var ( 
+    db *dynamodb.DynamoDB
+    s3Client *s3.S3
+    rekognitionClient *rekognition.Rekognition
+)
 
 func init() {
     sess := session.Must(session.NewSession(&aws.Config{
         Region: aws.String("eu-west-1"),
     }))
     db = dynamodb.New(sess)
+    s3Client = s3.New(sess)
+    rekognitionClient = rekognition.New(sess)
 }
 
 type Location struct {
@@ -32,6 +42,19 @@ type Location struct {
 
 type Forecast struct {
     DateForecastedFor string `json:"dateForecastedFor"`
+}
+
+type ReportWithImage struct {
+    Country        string `json:"country"`
+    Region         string `json:"region"`
+    Spot           string `json:"spot"`
+    SurfSize       string `json:"surfSize"`
+    WindAmount     string `json:"windAmount"`
+    WindDirection  string `json:"windDirection"`
+    Consistency    string `json:"consistency"`
+    Quality        string `json:"quality"`
+    Messiness      string `json:"messiness"`
+    ImageData      string `json:"imageData"` // Base64 encoded image
 }
 
 func GetRegions(c *gin.Context) {
@@ -599,7 +622,7 @@ func GetLast24HoursBuoyData(c *gin.Context) {
 }
 
 func SubmitCurrentSurfReport(c *gin.Context) {
-    var report map[string]string
+    var report ReportWithImage
     if err := c.BindJSON(&report); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
@@ -616,45 +639,84 @@ func SubmitCurrentSurfReport(c *gin.Context) {
     // }
 
     currentTime := time.Now()
-    
-    countryRegionSpot := fmt.Sprintf("%s_%s_%s", report["country"], report["region"], report["spot"])
+
+    countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
 
     dateReported := fmt.Sprintf("%s_%s", currentTime, email)
-    input := &dynamodb.PutItemInput{
-        TableName: aws.String("SurfReports"),
-        Item: map[string]*dynamodb.AttributeValue{
-            "country_region_spot": {
-                S: aws.String(countryRegionSpot),
-            },
-            "dateReported": {
-                S: aws.String(dateReported),
-            },
-            "SurfSize": {
-                S: aws.String(report["surfSize"]),
-            },
-            "WindAmount": {
-                S: aws.String(report["windAmount"]),
-            },
-            "WindDirection": {
-                S: aws.String(report["windDirection"]),
-            },
-            "Consistency": {
-                S: aws.String(report["consistency"]),
-            },
-            "Quality": {
-                S: aws.String(report["quality"]),
-            },
-            "Messiness": {
-                S: aws.String(report["messiness"]),
-            },
-            "UserEmail": {
-                S: aws.String(email.(string)),
-            },
-            "Time": {
-                S: aws.String(currentTime.String()),
-            },
+    // Create the DynamoDB item
+    item := map[string]*dynamodb.AttributeValue{
+        "country_region_spot": {
+            S: aws.String(countryRegionSpot),
+        },
+        "dateReported": {
+            S: aws.String(dateReported),
+        },
+        "SurfSize": {
+            S: aws.String(report.SurfSize),
+        },
+        "WindAmount": {
+            S: aws.String(report.WindAmount),
+        },
+        "WindDirection": {
+            S: aws.String(report.WindDirection),
+        },
+        "Consistency": {
+            S: aws.String(report.Consistency),
+        },
+        "Quality": {
+            S: aws.String(report.Quality),
+        },
+        "Messiness": {
+            S: aws.String(report.Messiness),
+        },
+        "UserEmail": {
+            S: aws.String(email.(string)),
+        },
+        "Time": {
+            S: aws.String(currentTime.String()),
         },
     }
+
+    // Process image if provided
+    if report.ImageData != "" {
+        // Extract base64 data
+        imageData, err := base64.StdEncoding.DecodeString(report.ImageData)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image data"})
+            return
+        }
+
+        // Validate image using Rekognition
+        valid, err := validateImageWithRekognition(imageData)
+        if err != nil {
+            log.Printf("Rekognition error: %v", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate image"})
+            return
+        }
+
+        if valid {
+            // Upload to S3
+            imageKey := fmt.Sprintf("surf-reports/%s/%s.jpg", countryRegionSpot, dateReported)
+            s3Key, err := uploadImageToS3(imageData, imageKey)
+            if err != nil {
+                log.Printf("S3 upload error: %v", err)
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
+                return
+            }
+
+            // Store just the S3 key in DynamoDB
+            item["ImageKey"] = &dynamodb.AttributeValue{
+                S: aws.String(s3Key),
+            }
+        }
+    }
+
+    // Insert into DynamoDB
+    input := &dynamodb.PutItemInput{
+        TableName: aws.String("SurfReports"),
+        Item: item,
+    }
+
 
     _, err := db.PutItem(input)
     if err != nil {
@@ -663,6 +725,49 @@ func SubmitCurrentSurfReport(c *gin.Context) {
     }
     c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
+
+func validateImageWithRekognition(imageData []byte) (bool, error) {
+    input := &rekognition.DetectLabelsInput{
+        Image: &rekognition.Image{
+            Bytes: imageData,
+        },
+        MinConfidence: aws.Float64(90.0),
+    }
+
+    result, err := rekognitionClient.DetectLabels(input)
+    if err != nil {
+        return false, err
+    }
+
+    validLabels := []string{"Sea", "Water", "Sea Waves", "Beach", "Coast"}
+    for _, label := range result.Labels {
+        for _, validLabel := range validLabels {
+            if strings.EqualFold(*label.Name, validLabel) {
+                return true, nil
+            }
+        }
+    }
+
+    return false, nil
+}
+
+func uploadImageToS3(imageData []byte, key string) (string, error) {
+    bucketName := "treblesurf-images" // Replace with your bucket name
+    
+    _, err := s3Client.PutObject(&s3.PutObjectInput{
+        Bucket: aws.String(bucketName),
+        Key:    aws.String(key),
+        Body:   aws.ReadSeekCloser(strings.NewReader(string(imageData))),
+        ContentType: aws.String("image/jpeg"),
+    })
+    if err != nil {
+        return "", err
+    }
+
+    // Return the URL for the uploaded image
+    return key, nil
+}
+
 
 func RetrieveTodaysSurfReports(c *gin.Context) {
     countryName := c.Query("country")
@@ -694,7 +799,74 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
+
+    // For each report with an image key, add the base64 image data if requested
+    includeImages := c.Query("includeImages") == "true"
+    if includeImages {
+        for i, report := range reports {
+            if imageKey, ok := report["ImageKey"].(string); ok && imageKey != "" {
+                // Get the image from S3
+                image, err := getImageFromS3(imageKey)
+                if err == nil {
+                    // Add base64-encoded image to the report
+                    reports[i]["ImageData"] = base64.StdEncoding.EncodeToString(image)
+                }
+            }
+        }
+    }
+
     c.JSON(http.StatusOK, reports)
+}
+
+func getImageFromS3(key string) ([]byte, error) {
+    result, err := s3Client.GetObject(&s3.GetObjectInput{
+        Bucket: aws.String("treblesurf-images"),
+        Key:    aws.String(key),
+    })
+    if err != nil {
+        return nil, err
+    }
+    defer result.Body.Close()
+    
+    return io.ReadAll(result.Body)
+}
+
+func GetReportImage(c *gin.Context) {
+    // Get the image key from the query parameter
+    imageKey := c.Query("key")
+    if imageKey == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Image key is required"})
+        return
+    }
+    
+    // Get the image from S3
+    result, err := s3Client.GetObject(&s3.GetObjectInput{
+        Bucket: aws.String("treblesurf-images"),
+        Key:    aws.String(imageKey),
+    })
+    if err != nil {
+        log.Printf("Error getting image from S3: %v", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve image"})
+        return
+    }
+    defer result.Body.Close()
+    
+    // Read the image data
+    imageData, err := io.ReadAll(result.Body)
+    if err != nil {
+        log.Printf("Error reading image data: %v", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read image data"})
+        return
+    }
+    
+    // Convert to base64
+    base64Data := base64.StdEncoding.EncodeToString(imageData)
+    
+    // Return the base64-encoded image
+    c.JSON(http.StatusOK, gin.H{
+        "imageData": base64Data,
+        "contentType": *result.ContentType,
+    })
 }
 
 func GetMultipleBuoyData(c *gin.Context) {
