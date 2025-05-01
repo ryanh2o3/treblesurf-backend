@@ -812,14 +812,14 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
 
     countryRegionSpot := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
 
-    todayPrefix := time.Now().Format("2006-01-02")
     input := &dynamodb.QueryInput{
         TableName: aws.String("SurfReports"),
-        KeyConditionExpression: aws.String("country_region_spot = :crs AND begins_with(dateReported, :today)"),
+        KeyConditionExpression: aws.String("country_region_spot = :crs"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":crs":   {S: aws.String(countryRegionSpot)},
-            ":today":    {S: aws.String(todayPrefix)},
         },
+        ScanIndexForward: aws.Bool(false), // Sort in descending order to get the latest reports
+        Limit:            aws.Int64(5),   // Limit to the last 5 reports
     }
 
     result, err := db.Query(input)
@@ -833,21 +833,6 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
-    }
-
-    // For each report with an image key, add the base64 image data if requested
-    includeImages := c.Query("includeImages") == "true"
-    if includeImages {
-        for i, report := range reports {
-            if imageKey, ok := report["ImageKey"].(string); ok && imageKey != "" {
-                // Get the image from S3
-                image, err := getImageFromS3(imageKey)
-                if err == nil {
-                    // Add base64-encoded image to the report
-                    reports[i]["ImageData"] = base64.StdEncoding.EncodeToString(image)
-                }
-            }
-        }
     }
 
     c.JSON(http.StatusOK, reports)
