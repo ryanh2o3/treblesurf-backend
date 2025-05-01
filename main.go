@@ -88,6 +88,7 @@ func init() {
         }
         authorized.GET("/getTheme", api.GetUserTheme)
         authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
+        authorized.GET("getReportImage", api.GetReportImage) // Expects ?key=
     }
 
     ginLambda = ginadapter.New(r)
