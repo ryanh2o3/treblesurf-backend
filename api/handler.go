@@ -819,6 +819,21 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
         return
     }
 
+    // For each report with an image key, add the base64 image data if requested
+    includeImages := c.Query("includeImages") == "true"
+    if includeImages {
+        for i, report := range reports {
+            if imageKey, ok := report["ImageKey"].(string); ok && imageKey != "" {
+                // Get the image from S3
+                image, err := getImageFromS3(imageKey)
+                if err == nil {
+                    // Add base64-encoded image to the report
+                    reports[i]["ImageData"] = base64.StdEncoding.EncodeToString(image)
+                }
+            }
+        }
+    }
+
     c.JSON(http.StatusOK, reports)
 }
 
@@ -842,7 +857,7 @@ func GetReportImage(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Image key is required"})
         return
     }
-    
+    log.Print("image key", imageKey)
     // Get the image from S3
     result, err := s3Client.GetObject(&s3.GetObjectInput{
         Bucket: aws.String("treblesurf-images"),
