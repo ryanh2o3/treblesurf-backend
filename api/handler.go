@@ -638,6 +638,12 @@ func SubmitCurrentSurfReport(c *gin.Context) {
     //     return
     // }
 
+    user, err := getUserByEmail(email.(string))
+     if err != nil {
+         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
+         return
+     }
+
     currentTime := time.Now()
 
     countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
@@ -674,6 +680,9 @@ func SubmitCurrentSurfReport(c *gin.Context) {
         },
         "Time": {
             S: aws.String(currentTime.String()),
+        },
+        "Reporter": {
+            S: aws.String(user.GivenName),
         },
     }
 
