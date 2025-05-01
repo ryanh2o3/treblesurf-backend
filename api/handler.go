@@ -717,6 +717,9 @@ func SubmitCurrentSurfReport(c *gin.Context) {
             item["ImageKey"] = &dynamodb.AttributeValue{
                 S: aws.String(s3Key),
             }
+        } else {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Image validation failed"})
+            return
         }
     }
 
