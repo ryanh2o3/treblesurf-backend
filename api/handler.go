@@ -680,7 +680,16 @@ func SubmitCurrentSurfReport(c *gin.Context) {
     // Process image if provided
     if report.ImageData != "" {
         // Extract base64 data
-        imageData, err := base64.StdEncoding.DecodeString(report.ImageData)
+        base64String := report.ImageData
+        // Handle data URIs by removing the prefix
+        if strings.HasPrefix(base64String, "data:") {
+            // Find the comma that separates the header from the data
+            commaIndex := strings.Index(base64String, ",")
+            if commaIndex != -1 {
+                base64String = base64String[commaIndex+1:]
+            }
+        }
+        imageData, err := base64.StdEncoding.DecodeString(base64String)
         if err != nil {
             c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image data"})
             return
