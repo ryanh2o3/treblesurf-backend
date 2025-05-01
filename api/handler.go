@@ -632,17 +632,16 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
         return
 	}
+    user, err2 := getUserByEmail(email.(string))
+     if err2 != nil {
+         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
+         return
+     }
 
     // if !isValidSwellSize(report["surfSize"]) || !isValidWindAmount(report["windAmount"]) || !isValidWindDirection(report["windDirection"]) || !isValidSurfConditions(report["surfConditions"]) || !isValidSurfDifficulty(report["surfDifficulty"]) {
     //     c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid report data"})
     //     return
     // }
-
-    user, err := getUserByEmail(email.(string))
-     if err != nil {
-         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
-         return
-     }
 
     currentTime := time.Now()
 
