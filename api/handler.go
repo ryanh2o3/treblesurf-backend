@@ -794,7 +794,7 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
         KeyConditionExpression: aws.String("country_region_spot = :crs AND begins_with(dateReported, :today)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":crs":   {S: aws.String(countryRegionSpot)},
-            ":date":    {S: aws.String(todayPrefix)},
+            ":today":    {S: aws.String(todayPrefix)},
         },
     }
 
