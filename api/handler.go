@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -714,7 +713,12 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 
         if valid {
             // Upload to S3
-            imageKey := fmt.Sprintf("surf-reports/%s/%s.jpg", countryRegionSpot, dateReported)
+            imageKey := fmt.Sprintf(
+                "surf-reports/%s/%s_%s.jpg",
+                countryRegionSpot,
+                currentTime.UTC().Format("2006-01-02T15:04:05Z"),
+                email,
+            )
             s3Key, err := uploadImageToS3(imageData, imageKey)
             if err != nil {
                 log.Printf("S3 upload error: %v", err)
@@ -858,20 +862,11 @@ func GetReportImage(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Image key is required"})
         return
     }
-    // Decode the key
-    decodedKey, err := url.QueryUnescape(imageKey)
-    if err != nil {
-        log.Printf("Error decoding image key: %v", err)
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image key"})
-        return
-    }
-
-    log.Printf("Decoded image key: %s", decodedKey)
 
     // Get the image from S3
     result, err := s3Client.GetObject(&s3.GetObjectInput{
         Bucket: aws.String("treblesurf-images"),
-        Key:    aws.String(decodedKey),
+        Key:    aws.String(imageKey),
     })
     if err != nil {
         log.Printf("Error getting image from S3: %v", err)
