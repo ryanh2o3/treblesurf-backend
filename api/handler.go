@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -857,11 +858,20 @@ func GetReportImage(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Image key is required"})
         return
     }
-    log.Print("image key", imageKey)
+    // Decode the key
+    decodedKey, err := url.QueryUnescape(imageKey)
+    if err != nil {
+        log.Printf("Error decoding image key: %v", err)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image key"})
+        return
+    }
+
+    log.Printf("Decoded image key: %s", decodedKey)
+
     // Get the image from S3
     result, err := s3Client.GetObject(&s3.GetObjectInput{
         Bucket: aws.String("treblesurf-images"),
-        Key:    aws.String(imageKey),
+        Key:    aws.String(decodedKey),
     })
     if err != nil {
         log.Printf("Error getting image from S3: %v", err)
