@@ -786,16 +786,15 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
     regionName := c.Query("region")
     spotName := c.Query("spot")
 
-    currentTime := time.Now()
-    currentDate := currentTime.Format("2006-01-02")
+    countryRegionSpot := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
+
+    todayPrefix := time.Now().Format("2006-01-02")
     input := &dynamodb.QueryInput{
         TableName: aws.String("SurfReports"),
-        KeyConditionExpression: aws.String("Country = :country AND Region = :region AND Spot = :spot AND Date = :date"),
+        KeyConditionExpression: aws.String("country_region_spot = :crs AND begins_with(dateReported, :today)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-            ":country": {S: aws.String(countryName)},
-            ":region":  {S: aws.String(regionName)},
-            ":spot":    {S: aws.String(spotName)},
-            ":date":    {S: aws.String(currentDate)},
+            ":crs":   {S: aws.String(countryRegionSpot)},
+            ":date":    {S: aws.String(todayPrefix)},
         },
     }
 
