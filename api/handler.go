@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/rekognition"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gin-gonic/gin"
+	"github.com/rwcarlsen/goexif/exif"
 )
 
 var ( 
@@ -648,6 +650,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
     countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
 
     dateReported := fmt.Sprintf("%s_%s", currentTime, email)
+    
     // Create the DynamoDB item
     item := map[string]*dynamodb.AttributeValue{
         "country_region_spot": {
@@ -677,9 +680,6 @@ func SubmitCurrentSurfReport(c *gin.Context) {
         "UserEmail": {
             S: aws.String(email.(string)),
         },
-        "Time": {
-            S: aws.String(currentTime.String()),
-        },
         "Reporter": {
             S: aws.String(user.GivenName),
         },
@@ -701,6 +701,14 @@ func SubmitCurrentSurfReport(c *gin.Context) {
         if err != nil {
             c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image data"})
             return
+        }
+
+        // Extract time from EXIF data if available
+        exifData, err := exif.Decode(bytes.NewReader(imageData))
+        if err == nil {
+            if dateTime, err := exifData.DateTime(); err == nil {
+                currentTime = dateTime
+            }
         }
 
         // Validate image using Rekognition
@@ -734,6 +742,9 @@ func SubmitCurrentSurfReport(c *gin.Context) {
             c.JSON(http.StatusBadRequest, gin.H{"error": "Image validation failed"})
             return
         }
+    }
+    item["Time"] = &dynamodb.AttributeValue{
+        S: aws.String(currentTime.String()),
     }
 
     // Insert into DynamoDB
