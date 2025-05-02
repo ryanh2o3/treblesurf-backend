@@ -20,38 +20,38 @@ func init() {
     // Enhanced logging middleware
     r.Use(func(c *gin.Context) {
 
-        origin := c.Request.Header.Get("Origin")
+        // origin := c.Request.Header.Get("Origin")
         
-        // Allow specific origins (production and localhost for development)
-        allowedOrigins := []string{
-            "https://treblesurf.com", 
-            "http://localhost:5174", // Local development
-            "http://localhost:5173",
-            // Add any other local development URLs you need
-        }
+        // // Allow specific origins (production and localhost for development)
+        // allowedOrigins := []string{
+        //     "https://treblesurf.com", 
+        //     "http://localhost:5174", // Local development
+        //     "http://localhost:5173",
+        //     // Add any other local development URLs you need
+        // }
         
-        // Check if origin is allowed
-        allowOrigin := ""
-        for _, allowed := range allowedOrigins {
-            if origin == allowed {
-                allowOrigin = origin
-                break
-            }
-        }
+        // // Check if origin is allowed
+        // allowOrigin := ""
+        // for _, allowed := range allowedOrigins {
+        //     if origin == allowed {
+        //         allowOrigin = origin
+        //         break
+        //     }
+        // }
         
-        // If origin is allowed or running in development mode
-        if allowOrigin != "" {    
-            c.Header("Access-Control-Allow-Origin", allowOrigin)
-            c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-            c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-            c.Header("Access-Control-Allow-Credentials", "true")
-        }
+        // // If origin is allowed or running in development mode
+        // if allowOrigin != "" {    
+        //     c.Header("Access-Control-Allow-Origin", allowOrigin)
+        //     c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        //     c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+        //     c.Header("Access-Control-Allow-Credentials", "true")
+        // }
         
-        // Handle preflight OPTIONS requests
-        if c.Request.Method == "OPTIONS" {
-            c.AbortWithStatus(204)
-            return
-        }
+        // // Handle preflight OPTIONS requests
+        // if c.Request.Method == "OPTIONS" {
+        //     c.AbortWithStatus(204)
+        //     return
+        // }
 
         log.Printf("=== Request Debug ===")
         log.Printf("Method: %s", c.Request.Method)
