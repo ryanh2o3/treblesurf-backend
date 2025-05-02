@@ -819,7 +819,7 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
             ":crs":   {S: aws.String(countryRegionSpot)},
         },
         ScanIndexForward: aws.Bool(false), // Sort in descending order to get the latest reports
-        Limit:            aws.Int64(5),   // Limit to the last 5 reports
+        Limit:            aws.Int64(1),   // Limit to the last 5 reports
     }
 
     result, err := db.Query(input)
