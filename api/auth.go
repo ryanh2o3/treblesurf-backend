@@ -49,8 +49,25 @@ func GoogleAuthHandler(c *gin.Context) {
 
     // Replace with your actual Google Client ID
     clientID := "667754725634-pmth2mlieh3jfebl8ujkjji7nqqih3tf.apps.googleusercontent.com"
+    iosClientID := "667754725634-9tck0kii14dm6d1e0u05preefmfppp5b.apps.googleusercontent.com"
+
+	clientIDs := map[string]bool{
+		clientID: true,
+	}
+
+	clientIDs[iosClientID] = true
+	clientIDs[clientID] = true
+
+    var payload *idtoken.Payload
+    var err error
     
-    payload, err := idtoken.Validate(context.Background(), req.IDToken, clientID)
+    for id := range clientIDs {
+        payload, err = idtoken.Validate(context.Background(), req.IDToken, id)
+        if err == nil {
+            break
+        }
+    }
+    
     if err != nil {
         c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
         return
