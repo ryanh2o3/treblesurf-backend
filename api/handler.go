@@ -181,7 +181,7 @@ func GetLocationInfo(c *gin.Context) {
     }
 
     if location.Image != "" {
-        imageData, err := getImageFromS3(location.Image)
+        imageData, err := getImageFromS3(location.Image + ".jpg")
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve image"})
             return
