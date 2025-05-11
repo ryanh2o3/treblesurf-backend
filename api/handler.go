@@ -145,6 +145,7 @@ type LocationInfo struct {
     Longitude           float64 `json:"Longitude"`
     Type                string  `json:"Type"`
     CountryRegionSpot   string  `json:"country_region_spot"`
+    ImageString        string  `json:"ImageString"`
 }
 
 func GetLocationInfo(c *gin.Context) {
@@ -186,7 +187,7 @@ func GetLocationInfo(c *gin.Context) {
             c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve image"})
             return
         }
-        location.Image = base64.StdEncoding.EncodeToString(imageData)
+        location.ImageString = base64.StdEncoding.EncodeToString(imageData)
     }
 
     c.JSON(http.StatusOK, location)
