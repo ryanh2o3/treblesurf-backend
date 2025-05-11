@@ -136,14 +136,25 @@ func GetCoordinates(c *gin.Context) {
     c.JSON(http.StatusOK, coordinates)
 }
 
+type LocationInfo struct {
+    BeachDirection      int     `json:"BeachDirection"`
+    Elevation           int     `json:"Elevation"`
+    IdealSwellDirection string  `json:"IdealSwellDirection"`
+    Image               string  `json:"Image"`
+    Latitude            float64 `json:"Latitude"`
+    Longitude           float64 `json:"Longitude"`
+    Type                string  `json:"Type"`
+    CountryRegionSpot   string  `json:"country_region_spot"`
+}
+
 func GetLocationInfo(c *gin.Context) {
     spotName := c.Query("spot")
     regionName := c.Query("region")
     countryName := c.Query("country")
 
-    input := &dynamodb.ScanInput{
+    input := &dynamodb.QueryInput{
         TableName: aws.String("LocationData"),
-        FilterExpression: aws.String("country_region_spot = :location"),
+        KeyConditionExpression: aws.String("country_region_spot = :location"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":location": {
                 S: aws.String(fmt.Sprintf("%s/%s/%s", countryName, regionName, spotName)),
@@ -151,7 +162,7 @@ func GetLocationInfo(c *gin.Context) {
         },
     }
 
-    result, err := db.Scan(input)
+    result, err := db.Query(input)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -162,11 +173,20 @@ func GetLocationInfo(c *gin.Context) {
         return
     }
 
-    var location map[string]interface{}
+    var location LocationInfo
     err = dynamodbattribute.UnmarshalMap(result.Items[0], &location)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
+    }
+
+    if location.Image != "" {
+        imageData, err := getImageFromS3(location.Image)
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve image"})
+            return
+        }
+        location.Image = base64.StdEncoding.EncodeToString(imageData)
     }
 
     c.JSON(http.StatusOK, location)
