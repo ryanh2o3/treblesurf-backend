@@ -255,15 +255,7 @@ func GetSpots(c *gin.Context) {
         return
     }
 
-    var spots []string
-    for _, location := range locations {
-        parts := strings.Split(location["country_region_spot"].(string), "/")
-        if len(parts) == 3 {
-            spots = append(spots, parts[2])
-        }
-    }
-
-    c.JSON(http.StatusOK, spots)
+    c.JSON(http.StatusOK, locations)
 }
 
 func GetSpotForecast(c *gin.Context) {
