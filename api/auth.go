@@ -285,7 +285,33 @@ func AuthMiddleware() gin.HandlerFunc {
 // CombinedAuthMiddleware checks for either valid JWT or valid session
 func CombinedAuthMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
-        // Try JWT auth first (your existing auth)
+        c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        c.Header("Pragma", "no-cache")
+
+        // Try session auth first
+        if sessionService != nil {
+            userSession, err := sessionService.GetUserSession(c.Request)
+            if err == nil && userSession != nil {
+                // Session is valid
+                c.Set("email", userSession.UserID)
+                c.Set("session", userSession)
+                
+                // Parse session JSON to get CSRF token
+                var sessionData SessionJSON
+                if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
+                    if sessionData.CSRF != "" {
+                        c.Header("X-CSRF-Token", sessionData.CSRF)
+                    }
+                }
+                
+                // Extend session
+                _ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
+                
+                c.Next()
+                return
+            }
+        }
+
         tokenStr := c.GetHeader("Authorization")
 
         // If not in header, check cookie
@@ -326,30 +352,6 @@ func CombinedAuthMiddleware() gin.HandlerFunc {
                         // ...
                     }
                 }
-                
-                c.Next()
-                return
-            }
-        }
-
-        // If JWT auth failed, try session auth
-        if sessionService != nil {
-            userSession, err := sessionService.GetUserSession(c.Request)
-            if err == nil && userSession != nil {
-                // Session is valid
-                c.Set("email", userSession.UserID)
-                c.Set("session", userSession)
-                
-                // Parse session JSON to get CSRF token
-                var sessionData SessionJSON
-                if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
-                    if sessionData.CSRF != "" {
-                        c.Header("X-CSRF-Token", sessionData.CSRF)
-                    }
-                }
-                
-                // Extend session
-                _ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
                 
                 c.Next()
                 return
