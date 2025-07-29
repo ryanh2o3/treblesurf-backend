@@ -362,133 +362,181 @@ func CombinedAuthMiddleware() gin.HandlerFunc {
 }
 
 func ValidateTokenHandler(c *gin.Context) {
+    // First try JWT authentication
     tokenStr := c.GetHeader("Authorization")
 
-	// Check cookie if header is empty - ADD THIS
+    // Check cookie if header is empty
     if tokenStr == "" {
         tokenCookie, err := c.Cookie("auth_token")
         if err == nil {
             tokenStr = tokenCookie
         }
     }
-    if tokenStr == "" {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
-        return
-    }
 
-    // Remove 'Bearer ' prefix if present
-    if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
-        tokenStr = tokenStr[7:]
-    }
-
-    // Parse the token with claims
-    claims := &TokenClaims{}
-    token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-            return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+    // If we have a token, try to validate it
+    if tokenStr != "" {
+        // Remove 'Bearer ' prefix if present
+        if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
+            tokenStr = tokenStr[7:]
         }
-        return jwtSecret, nil
-    })
 
-    // Check if token is valid
-    if err != nil {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token", "details": err.Error()})
-        return
-    }
-
-    if !token.Valid {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "Token validation failed"})
-        return
-    }
-
-    // Get email directly from structured claims
-    email := claims.Email
-
-    // Get user data
-    user, err := getUserByEmail(email)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
-        return
-    }
-
-    if user == nil {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
-        return
-    }
-
-    if claims.ExpiresAt == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Missing expiration claim"})
-		return
-	}
-	expTime := claims.ExpiresAt.Time
-	remainingTime := time.Until(expTime)
-
-    response := gin.H{
-        "valid": true,
-        "user": gin.H{
-            "email":       user.Email,
-            "name":        user.Name,
-            "picture":     user.Picture,
-            "family_name": user.FamilyName,
-            "given_name":  user.GivenName,
-			"theme":     user.Theme,
-        },
-        "expires_in": int(remainingTime.Seconds()),
-		"token": tokenStr,
-    }
-
-    // If token expires in less than 24 hours, generate a new one
-    if remainingTime < 24*time.Hour {
-        newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, TokenClaims{
-            Email: email,
-            RegisteredClaims: jwt.RegisteredClaims{
-                ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
-                IssuedAt:  jwt.NewNumericDate(time.Now()),
-                NotBefore: jwt.NewNumericDate(time.Now()),
-                Issuer:    "treblesurf-api",
-                Subject:   email,
-            },
+        // Parse the token with claims
+        claims := &TokenClaims{}
+        token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+            if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+                return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+            }
+            return jwtSecret, nil
         })
-        
-        newTokenString, err := newToken.SignedString(jwtSecret)
-        if err != nil {
-            // Still return the valid status with the old token
+
+        // If token is valid, use it
+        if err == nil && token.Valid {
+            // Get email directly from structured claims
+            email := claims.Email
+
+            // Get user data
+            user, err := getUserByEmail(email)
+            if err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
+                return
+            }
+
+            if user == nil {
+                c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+                return
+            }
+
+            // Handle token renewal if needed
+            var tokenRefreshed bool
+            var newTokenString string
+            
+            if claims.ExpiresAt != nil {
+                expTime := claims.ExpiresAt.Time
+                remainingTime := time.Until(expTime)
+
+                // If token expires in less than 24 hours, generate a new one
+                if remainingTime < 24*time.Hour {
+                    newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, TokenClaims{
+                        Email: email,
+                        RegisteredClaims: jwt.RegisteredClaims{
+                            ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
+                            IssuedAt:  jwt.NewNumericDate(time.Now()),
+                            NotBefore: jwt.NewNumericDate(time.Now()),
+                            Issuer:    "treblesurf-api",
+                            Subject:   email,
+                        },
+                    })
+                    
+                    newTokenString, err = newToken.SignedString(jwtSecret)
+                    if err == nil {
+                        tokenRefreshed = true
+                        
+                        // Set the new token in cookie
+                        c.SetCookie(
+                            "auth_token",
+                            newTokenString,
+                            int(24*time.Hour.Seconds()),
+                            "/",
+                            "",
+                            true,  // Secure (HTTPS only)
+                            true,  // HTTP-only
+                        )
+                        
+                        // Generate new CSRF token too
+                        csrfToken, err := GenerateCSRFToken()
+                        if err == nil {
+                            c.SetCookie(
+                                "csrf_token",
+                                csrfToken,
+                                int(24*time.Hour.Seconds()),
+                                "/",
+                                "",
+                                true,  // Secure
+                                false, // Not HTTP-only (JS needs to access it)
+                            )
+                            // Include it in response for SPA to use
+                            c.Header("X-CSRF-Token", csrfToken)
+                        }
+                    }
+                }
+            }
+
+            // Send the response
+            response := gin.H{
+                "valid": true,
+                "auth_type": "jwt",
+                "user": gin.H{
+                    "email":       user.Email,
+                    "name":        user.Name,
+                    "picture":     user.Picture,
+                    "family_name": user.FamilyName,
+                    "given_name":  user.GivenName,
+                    "theme":       user.Theme,
+                },
+            }
+            
+            if tokenRefreshed {
+                response["token"] = newTokenString
+                response["token_refreshed"] = true
+            } else {
+                response["token"] = tokenStr
+            }
+            
             c.JSON(http.StatusOK, response)
             return
         }
-        
-        // Set the new token in cookie - ADD THIS
-        c.SetCookie(
-            "auth_token",
-            newTokenString,
-            int(24*time.Hour.Seconds()),
-            "/",
-            "",
-            true,  // Secure (HTTPS only)
-            true,  // HTTP-only
-        )
-        
-        // Generate new CSRF token too - ADD THIS
-        csrfToken, err := GenerateCSRFToken()
-        if err == nil {
-            c.SetCookie(
-                "csrf_token",
-                csrfToken,
-                int(24*time.Hour.Seconds()),
-                "/",
-                "",
-                true,  // Secure
-                false, // Not HTTP-only (JS needs to access it)
-            )
-            // Include it in response for SPA to use
-            c.Header("X-CSRF-Token", csrfToken)
-        }
-        
-        response["token"] = newTokenString
-        response["token_refreshed"] = true
     }
 
-    c.JSON(http.StatusOK, response)
+    // If JWT validation failed, try session
+    if sessionService != nil {
+        userSession, err := sessionService.GetUserSession(c.Request)
+        if err == nil && userSession != nil {
+            // Session is valid, get user data
+            email := userSession.UserID
+            user, err := getUserByEmail(email)
+            if err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
+                return
+            }
+
+            if user == nil {
+                c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+                return
+            }
+
+            // Parse session JSON to get CSRF token
+            var sessionData SessionJSON
+            if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
+                if sessionData.CSRF != "" {
+                    // Include CSRF token in response header
+                    c.Header("X-CSRF-Token", sessionData.CSRF)
+                }
+            }
+
+            // Extend the session
+            _ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
+
+            // Send the response
+            response := gin.H{
+                "valid": true,
+                "auth_type": "session",
+                "user": gin.H{
+                    "email":       user.Email,
+                    "name":        user.Name,
+                    "picture":     user.Picture,
+                    "family_name": user.FamilyName,
+                    "given_name":  user.GivenName,
+                    "theme":       user.Theme,
+                },
+            }
+            
+            c.JSON(http.StatusOK, response)
+            return
+        }
+    }
+
+    // If we got here, both auth methods failed
+    c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing authentication"})
 }
 
 type User struct {
