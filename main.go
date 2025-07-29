@@ -86,6 +86,10 @@ func init() {
         c.Next()
     })
 
+    if err := api.InitSessionService(); err != nil {
+        log.Printf("Failed to initialize session service: %v", err)
+    }
+
     r.POST("/auth/google", api.GoogleAuthHandler)
     r.GET("auth/validate", api.ValidateTokenHandler)
     r.POST("/auth/logout", api.LogoutHandler)
@@ -110,7 +114,7 @@ func init() {
 
     // Protected routes (auth required)
     authorized := r.Group("/")
-    authorized.Use(api.AuthMiddleware())
+    authorized.Use(api.CombinedAuthMiddleware())
     {
         modifyGroup := authorized.Group("/")
         modifyGroup.Use(api.CSRFMiddleware()) 

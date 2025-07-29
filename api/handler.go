@@ -34,6 +34,7 @@ func init() {
     db = dynamodb.New(sess)
     s3Client = s3.New(sess)
     rekognitionClient = rekognition.New(sess)
+
 }
 
 type Location struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -119,7 +120,7 @@ func GoogleAuthHandler(c *gin.Context) {
     token := jwt.NewWithClaims(jwt.SigningMethodHS256, TokenClaims{
 		Email: email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    "treblesurf-api",
@@ -139,7 +140,7 @@ func GoogleAuthHandler(c *gin.Context) {
 		c.SetCookie(
 			"csrf_token",
 			csrfToken,
-			int(72*time.Hour.Seconds()),
+			int(24*time.Hour.Seconds()),
 			"/",
 			"",
 			true,  // Secure
@@ -152,12 +153,27 @@ func GoogleAuthHandler(c *gin.Context) {
 	c.SetCookie(
         "auth_token",
         tokenString,
-        int(72*time.Hour.Seconds()),
+        int(24*time.Hour.Seconds()),
         "/",
         "",
         true,  // Secure (HTTPS only)
         true,  // HTTP-only
     )
+
+    if sessionService != nil {
+    // Generate a session with CSRF token
+    sessionData := SessionJSON{
+        CSRF: csrfToken,
+    }
+    jsonBytes, err := json.Marshal(sessionData)
+    if err == nil {
+        _, err = sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
+        if err != nil {
+            // Just log the error, don't fail the request
+            log.Printf("Error creating session: %v", err)
+        }
+    }
+}
 
     c.JSON(http.StatusOK, gin.H{
         "token": tokenString,
@@ -233,7 +249,7 @@ func AuthMiddleware() gin.HandlerFunc {
                     c.SetCookie(
                         "auth_token",
                         newTokenString,
-                        int(72*time.Hour.Seconds()),
+                        int(24*time.Hour.Seconds()),
                         "/",
                         "",
                         true,  // Secure (HTTPS only)
@@ -246,7 +262,7 @@ func AuthMiddleware() gin.HandlerFunc {
                         c.SetCookie(
                             "csrf_token",
                             csrfToken,
-                            int(72*time.Hour.Seconds()),
+                            int(24*time.Hour.Seconds()),
                             "/",
                             "",
                             true,  // Secure
@@ -261,6 +277,87 @@ func AuthMiddleware() gin.HandlerFunc {
 
         c.Set("email", claims.Email)
         c.Next()
+    }
+}
+
+// Add a new middleware that tries both JWT and session authentication
+
+// CombinedAuthMiddleware checks for either valid JWT or valid session
+func CombinedAuthMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Try JWT auth first (your existing auth)
+        tokenStr := c.GetHeader("Authorization")
+
+        // If not in header, check cookie
+        if tokenStr == "" {
+            tokenCookie, err := c.Cookie("auth_token")
+            if err == nil {
+                tokenStr = tokenCookie
+            }
+        }
+
+        if tokenStr != "" {
+            // Remove 'Bearer ' prefix if present
+            if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
+                tokenStr = tokenStr[7:]
+            }
+
+            // Parse token with claims
+            claims := &TokenClaims{}
+            token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+                if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+                    return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+                }
+                return jwtSecret, nil
+            })
+            
+            if err == nil && token.Valid {
+                // JWT is valid, set email in context
+                c.Set("email", claims.Email)
+                
+                // Check token expiration time for renewal
+                if claims.ExpiresAt != nil {
+                    // Same token renewal logic as your AuthMiddleware
+                    expTime := claims.ExpiresAt.Time
+                    remainingTime := time.Until(expTime)
+                    
+                    if remainingTime < 24*time.Hour {
+                        // Your existing token renewal logic
+                        // ...
+                    }
+                }
+                
+                c.Next()
+                return
+            }
+        }
+
+        // If JWT auth failed, try session auth
+        if sessionService != nil {
+            userSession, err := sessionService.GetUserSession(c.Request)
+            if err == nil && userSession != nil {
+                // Session is valid
+                c.Set("email", userSession.UserID)
+                c.Set("session", userSession)
+                
+                // Parse session JSON to get CSRF token
+                var sessionData SessionJSON
+                if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
+                    if sessionData.CSRF != "" {
+                        c.Header("X-CSRF-Token", sessionData.CSRF)
+                    }
+                }
+                
+                // Extend session
+                _ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
+                
+                c.Next()
+                return
+            }
+        }
+
+        // Both auth methods failed
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
     }
 }
 
@@ -364,7 +461,7 @@ func ValidateTokenHandler(c *gin.Context) {
         c.SetCookie(
             "auth_token",
             newTokenString,
-            int(72*time.Hour.Seconds()),
+            int(24*time.Hour.Seconds()),
             "/",
             "",
             true,  // Secure (HTTPS only)
@@ -377,7 +474,7 @@ func ValidateTokenHandler(c *gin.Context) {
             c.SetCookie(
                 "csrf_token",
                 csrfToken,
-                int(72*time.Hour.Seconds()),
+                int(24*time.Hour.Seconds()),
                 "/",
                 "",
                 true,  // Secure
@@ -543,6 +640,13 @@ func LogoutHandler(c *gin.Context) {
         true,
         false,
     )
+
+    if sessionService != nil {
+        userSession, err := sessionService.GetUserSession(c.Request)
+        if err == nil && userSession != nil {
+            _ = sessionService.ClearUserSession(userSession, c.Writer)
+        }
+    }
     
     c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
