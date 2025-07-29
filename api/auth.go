@@ -166,14 +166,13 @@ func GoogleAuthHandler(c *gin.Context) {
         CSRF: csrfToken,
     }
     jsonBytes, err := json.Marshal(sessionData)
-    if err == nil {
+    err = nil
         _, err = sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
         if err != nil {
             // Just log the error, don't fail the request
             log.Printf("Error creating session: %v", err)
         }
     }
-}
 
     c.JSON(http.StatusOK, gin.H{
         "token": tokenString,
@@ -364,7 +363,60 @@ func CombinedAuthMiddleware() gin.HandlerFunc {
 }
 
 func ValidateTokenHandler(c *gin.Context) {
-    // First try JWT authentication
+    // Add cache control headers to prevent browser caching
+    c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+    c.Header("Pragma", "no-cache")
+    c.Header("Expires", "0")
+
+    // Try session auth first
+    if sessionService != nil {
+        userSession, err := sessionService.GetUserSession(c.Request)
+        if err == nil && userSession != nil {
+            // Session is valid, get user data
+            email := userSession.UserID
+            user, err := getUserByEmail(email)
+            if err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
+                return
+            }
+
+            if user == nil {
+                c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+                return
+            }
+
+            // Parse session JSON to get CSRF token
+            var sessionData SessionJSON
+            if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
+                if sessionData.CSRF != "" {
+                    // Include CSRF token in response header
+                    c.Header("X-CSRF-Token", sessionData.CSRF)
+                }
+            }
+
+            // Extend the session
+            _ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
+
+            // Send the response
+            response := gin.H{
+                "valid": true,
+                "auth_type": "session",
+                "user": gin.H{
+                    "email":       user.Email,
+                    "name":        user.Name,
+                    "picture":     user.Picture,
+                    "family_name": user.FamilyName,
+                    "given_name":  user.GivenName,
+                    "theme":       user.Theme,
+                },
+            }
+            
+            c.JSON(http.StatusOK, response)
+            return
+        }
+    }
+
+    // If session auth failed, fall back to JWT authentication
     tokenStr := c.GetHeader("Authorization")
 
     // Check cookie if header is empty
@@ -375,7 +427,7 @@ func ValidateTokenHandler(c *gin.Context) {
         }
     }
 
-    // If we have a token, try to validate it
+    // Rest of your existing JWT validation code...
     if tokenStr != "" {
         // Remove 'Bearer ' prefix if present
         if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
@@ -482,54 +534,6 @@ func ValidateTokenHandler(c *gin.Context) {
                 response["token_refreshed"] = true
             } else {
                 response["token"] = tokenStr
-            }
-            
-            c.JSON(http.StatusOK, response)
-            return
-        }
-    }
-
-    // If JWT validation failed, try session
-    if sessionService != nil {
-        userSession, err := sessionService.GetUserSession(c.Request)
-        if err == nil && userSession != nil {
-            // Session is valid, get user data
-            email := userSession.UserID
-            user, err := getUserByEmail(email)
-            if err != nil {
-                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
-                return
-            }
-
-            if user == nil {
-                c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
-                return
-            }
-
-            // Parse session JSON to get CSRF token
-            var sessionData SessionJSON
-            if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
-                if sessionData.CSRF != "" {
-                    // Include CSRF token in response header
-                    c.Header("X-CSRF-Token", sessionData.CSRF)
-                }
-            }
-
-            // Extend the session
-            _ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
-
-            // Send the response
-            response := gin.H{
-                "valid": true,
-                "auth_type": "session",
-                "user": gin.H{
-                    "email":       user.Email,
-                    "name":        user.Name,
-                    "picture":     user.Picture,
-                    "family_name": user.FamilyName,
-                    "given_name":  user.GivenName,
-                    "theme":       user.Theme,
-                },
             }
             
             c.JSON(http.StatusOK, response)
