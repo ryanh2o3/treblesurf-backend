@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/adam-hanna/sessions/user"
@@ -166,7 +167,7 @@ func GoogleAuthHandler(c *gin.Context) {
     sessionData := SessionJSON{
         CSRF: csrfToken,
         UserAgent: c.Request.UserAgent(),
-        IPAddress: c.ClientIP(),
+        IPAddress: getClientIP(c),
         CreatedAt: time.Now(),
         LastActive: time.Now(),
     }
@@ -839,4 +840,21 @@ func TerminateSessionHandler(c *gin.Context) {
     }
 
     c.JSON(http.StatusOK, gin.H{"message": "Session terminated successfully"})
+}
+
+func getClientIP(c *gin.Context) string {
+    // Try CloudFront-specific header first
+    if ip := c.Request.Header.Get("CloudFront-Viewer-Address"); ip != "" {
+        fmt.Print("viewer add")
+        return strings.Split(ip, ":")[0] 
+    }
+    
+    // Try X-Forwarded-For (first entry is the original client)
+    if xff := c.Request.Header.Get("X-Forwarded-For"); xff != "" {
+        ips := strings.Split(xff, ",")
+        fmt.Print("x forwarded found")
+        return strings.TrimSpace(ips[0])
+    }
+    fmt.Print("default clip ip")
+    return c.ClientIP() 
 }
