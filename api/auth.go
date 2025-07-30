@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -193,47 +192,10 @@ func GoogleAuthHandler(c *gin.Context) {
     })
 }
 
-func ClientTypeMiddleware() gin.HandlerFunc {
-    return func(c *gin.Context) {
-        // Detect client type based on headers or user agent
-        clientType := c.GetHeader("X-Client-Type")
-        userAgent := c.Request.UserAgent()
-        isAppClient := clientType == "app" || 
-            (userAgent != "" && strings.Contains(strings.ToLower(userAgent), "app"))
 
-        // Set client type in context for downstream use
-        c.Set("isAppClient", isAppClient)
-        c.Next()
-    }
-}
-
-// AdaptiveAuthMiddleware uses either app or web auth based on client type
-func AdaptiveAuthMiddleware() gin.HandlerFunc {
-    // Create instances of both middleware handlers
-    webAuth := WebAuthMiddleware()
-    appAuth := AuthMiddleware()
-    
-    // Return a handler that will choose between them
-    return func(c *gin.Context) {
-        // Get client type from context
-        isAppClient, exists := c.Get("isAppClient")
-        if !exists {
-            // If no client type is set, default to web
-            webAuth(c)
-            return
-        }
-        
-        // Use appropriate auth middleware based on client type
-        if isAppClient.(bool) {
-            appAuth(c)
-        } else {
-            webAuth(c)
-        }
-    }
-}
 
 // WebAuthMiddleware is for web clients - uses sessions ONLY, no JWT fallback
-func WebAuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         c.Header("Pragma", "no-cache")
@@ -271,40 +233,40 @@ func WebAuthMiddleware() gin.HandlerFunc {
     }
 }
 
-// AuthMiddleware checks if the request has a valid JWT token (for apps only)
-func AuthMiddleware() gin.HandlerFunc {
-    return func(c *gin.Context) {
-        tokenStr := c.GetHeader("Authorization")
+// // AuthMiddleware checks if the request has a valid JWT token (for apps only)
+// func AuthMiddleware() gin.HandlerFunc {
+//     return func(c *gin.Context) {
+//         tokenStr := c.GetHeader("Authorization")
 
-        // For apps, we ONLY accept Authorization header, no cookies
-        if tokenStr == "" {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
-            return
-        }
+//         // For apps, we ONLY accept Authorization header, no cookies
+//         if tokenStr == "" {
+//             c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
+//             return
+//         }
 
-        // Remove 'Bearer ' prefix if present
-        if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
-            tokenStr = tokenStr[7:]
-        }
+//         // Remove 'Bearer ' prefix if present
+//         if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
+//             tokenStr = tokenStr[7:]
+//         }
 
-        // Parse token with claims
-        claims := &TokenClaims{}
-        token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-            if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-                return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-            }
-            return jwtSecret, nil
-        })
+//         // Parse token with claims
+//         claims := &TokenClaims{}
+//         token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+//             if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+//                 return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+//             }
+//             return jwtSecret, nil
+//         })
         
-        if err != nil || !token.Valid {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-            return
-        }
+//         if err != nil || !token.Valid {
+//             c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+//             return
+//         }
 
-        c.Set("email", claims.Email)
-        c.Next()
-    }
-}
+//         c.Set("email", claims.Email)
+//         c.Next()
+//     }
+// }
 
 // Add a new middleware that tries both JWT and session authentication
 
@@ -399,14 +361,6 @@ func ValidateTokenHandler(c *gin.Context) {
     c.Header("Pragma", "no-cache")
     c.Header("Expires", "0")
 
-    // Determine client type (app or web)
-    clientType := c.GetHeader("X-Client-Type")
-    userAgent := c.Request.UserAgent()
-    isAppClient := clientType == "app" || 
-        (userAgent != "" && strings.Contains(strings.ToLower(userAgent), "app"))
-
-    // Handle web client authentication (sessions only)
-    if !isAppClient {
         if sessionService == nil {
             c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Session service unavailable"})
             return
@@ -460,98 +414,6 @@ func ValidateTokenHandler(c *gin.Context) {
             },
         })
         return
-    }
-    
-    // Handle app client authentication (JWT only)
-    tokenStr := c.GetHeader("Authorization")
-    if tokenStr == "" {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
-        return
-    }
-
-    // Remove 'Bearer ' prefix if present
-    if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
-        tokenStr = tokenStr[7:]
-    }
-
-    // Parse the token with claims
-    claims := &TokenClaims{}
-    token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-            return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-        }
-        return jwtSecret, nil
-    })
-
-    // Check token validity
-    if err != nil || !token.Valid {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-        return
-    }
-    
-    // Token is valid, get user data
-    email := claims.Email
-    user, err := getUserByEmail(email)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
-        return
-    }
-
-    if user == nil {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
-        return
-    }
-
-    // Handle token renewal if needed
-    var tokenRefreshed bool
-    var newTokenString string
-    
-    if claims.ExpiresAt != nil {
-        expTime := claims.ExpiresAt.Time
-        remainingTime := time.Until(expTime)
-
-        // If token expires in less than 24 hours, generate a new one
-        if remainingTime < 24*time.Hour {
-            newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, TokenClaims{
-                Email: email,
-                RegisteredClaims: jwt.RegisteredClaims{
-                    ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
-                    IssuedAt:  jwt.NewNumericDate(time.Now()),
-                    NotBefore: jwt.NewNumericDate(time.Now()),
-                    Issuer:    "treblesurf-api",
-                    Subject:   email,
-                },
-            })
-            
-            newTokenString, err = newToken.SignedString(jwtSecret)
-            if err == nil {
-                tokenRefreshed = true
-            }
-        }
-    }
-
-    // Return response for app client
-    response := gin.H{
-        "valid": true,
-        "auth_type": "jwt",
-        "user": gin.H{
-            "email":       user.Email,
-            "name":        user.Name,
-            "picture":     user.Picture,
-            "family_name": user.FamilyName,
-            "given_name":  user.GivenName,
-            "theme":       user.Theme,
-        },
-    }
-    
-    if tokenRefreshed {
-        response["token"] = newTokenString
-        response["token_refreshed"] = true
-    } else {
-        response["token"] = tokenStr
-    }
-    
-    c.JSON(http.StatusOK, response)
 }
 
 type User struct {
