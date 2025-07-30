@@ -103,7 +103,7 @@ func init() {
     authorized := r.Group("/")
     // authorized.Use(api.ClientTypeMiddleware()) // First detect client type
     // authorized.Use(api.AdaptiveAuthMiddleware())
-    authorized.Use(api.WebAuthMiddleware())
+    authorized.Use(api.AuthMiddleware())
     {
         webModifyGroup := authorized.Group("/")
         // webModifyGroup.Use(func(c *gin.Context) {
