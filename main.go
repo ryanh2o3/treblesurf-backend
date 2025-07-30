@@ -51,15 +51,7 @@ func init() {
         // if c.Request.Method == "OPTIONS" {
         //     c.AbortWithStatus(204)
         //     return
-        // }
-
-        log.Printf("=== Request Debug ===")
-        log.Printf("Method: %s", c.Request.Method)
-        log.Printf("Full URL: %s", c.Request.URL.String())
-        log.Printf("Path: %s", c.Request.URL.Path)
-        log.Printf("Raw Query: %s", c.Request.URL.RawQuery)
-        log.Printf("Parameters: %v", c.Params)
-        log.Printf("Headers: %v", c.Request.Header)
+        // })
         
         // Print all route patterns
         routes := r.Routes()
@@ -69,10 +61,6 @@ func init() {
         }
         
         c.Next()
-        
-        // Log the response status
-        log.Printf("=== Response ===")
-        log.Printf("Status: %d", c.Writer.Status())
     })
 
     // Move the /api stripping middleware after the logging
@@ -80,7 +68,6 @@ func init() {
         path := c.Request.URL.Path
         if strings.HasPrefix(path, "/api") {
             newPath := strings.TrimPrefix(path, "/api")
-            log.Printf("Stripped /api prefix. Original: %s, New: %s", path, newPath)
             c.Request.URL.Path = newPath
         }
         c.Next()
