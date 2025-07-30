@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/adam-hanna/sessions/user"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -164,6 +165,10 @@ func GoogleAuthHandler(c *gin.Context) {
     // Generate a session with CSRF token
     sessionData := SessionJSON{
         CSRF: csrfToken,
+        UserAgent: c.Request.UserAgent(),
+        IPAddress: c.ClientIP(),
+        CreatedAt: time.Now(),
+        LastActive: time.Now(),
     }
     jsonBytes, err := json.Marshal(sessionData)
     err = nil
@@ -298,6 +303,10 @@ func CombinedAuthMiddleware() gin.HandlerFunc {
                 // Parse session JSON to get CSRF token
                 var sessionData SessionJSON
                 if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
+                    sessionData.LastActive = time.Now()
+                    updatedJSON, _ := json.Marshal(sessionData)
+                    userSession.JSON = string(updatedJSON)
+
                     if sessionData.CSRF != "" {
                         c.Header("X-CSRF-Token", sessionData.CSRF)
                     }
@@ -703,4 +712,131 @@ func LogoutHandler(c *gin.Context) {
     }
     
     c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+}
+
+type SessionInfo struct {
+    SessionID  string    `json:"session_id"`
+    ExpiresAt  time.Time `json:"expires_at"`
+    Current    bool      `json:"current"`
+    LastActive time.Time `json:"last_active,omitempty"`
+    UserAgent  string    `json:"user_agent,omitempty"`
+    IPAddress  string    `json:"ip_address,omitempty"`
+}
+
+// GetUserSessionsHandler retrieves all active sessions for the current user
+func GetUserSessionsHandler(c *gin.Context) {
+    // Get current user's email from the context
+    email, exists := c.Get("email")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+        return
+    }
+
+    // Get the current session ID (if any)
+    var currentSessionID string
+    if session, exists := c.Get("session"); exists {
+        if userSession, ok := session.(*user.Session); ok {
+            currentSessionID = userSession.ID
+        }
+    }
+
+    // Get all sessions for this user from DynamoDB
+    if sessionStoreDB == nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Session store unavailable"})
+        return
+    }
+
+    userSessions, err := sessionStoreDB.GetSessionsByUserID(email.(string))
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve sessions"})
+        return
+    }
+
+    // Create a list of session info objects (with only the data we want to expose)
+    sessionInfos := make([]SessionInfo, 0, len(userSessions))
+    for _, session := range userSessions {
+        // Parse JSON to get additional session metadata
+        sessionInfo := SessionInfo{
+            SessionID:  session.ID,
+            ExpiresAt:  session.ExpiresAt,
+            Current:    session.ID == currentSessionID,
+        }
+        
+        var sessionData SessionJSON
+        if err := json.Unmarshal([]byte(session.JSON), &sessionData); err == nil {
+            sessionInfo.UserAgent = sessionData.UserAgent
+            sessionInfo.IPAddress = sessionData.IPAddress
+            sessionInfo.LastActive = sessionData.LastActive
+        }
+        
+        sessionInfos = append(sessionInfos, sessionInfo)
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "sessions": sessionInfos,
+        "count":    len(sessionInfos),
+    })
+}
+
+// TerminateSessionHandler terminates a specific session
+func TerminateSessionHandler(c *gin.Context) {
+    // Get current user's email from context
+    email, exists := c.Get("email")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+        return
+    }
+
+    // Get the session ID to terminate
+    sessionID := c.Param("sessionId")
+    if sessionID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Session ID required"})
+        return
+    }
+
+    if sessionStoreDB == nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Session store unavailable"})
+        return
+    }
+
+    // Get the session first to verify it belongs to this user
+    session, err := sessionStoreDB.FetchValidUserSession(sessionID)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve session"})
+        return
+    }
+
+    // If session not found or doesn't belong to current user
+    if session == nil {
+        c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+        return
+    }
+
+    // Verify ownership
+    if session.UserID != email.(string) {
+        c.JSON(http.StatusForbidden, gin.H{"error": "You can only terminate your own sessions"})
+        return
+    }
+
+    // Check if this is the current session
+    currentSession, exists := c.Get("session")
+    if exists {
+        if userSession, ok := currentSession.(*user.Session); ok && userSession.ID == sessionID {
+            // This is the current session, use ClearUserSession which handles cookies too
+            err = sessionService.ClearUserSession(session, c.Writer)
+        } else {
+            // Just delete from database
+            err = sessionStoreDB.DeleteUserSession(sessionID)
+        }
+    } else {
+        // Just delete from database
+        err = sessionStoreDB.DeleteUserSession(sessionID)
+    }
+
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to terminate session"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Session terminated successfully"})
 }
