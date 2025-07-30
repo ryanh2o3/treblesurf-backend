@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/adam-hanna/sessions"
@@ -35,6 +36,7 @@ type SessionItem struct {
     UserID     string    `json:"user_id"`  // Will store email as UserID
     ExpiresAt  time.Time `json:"expires_at"`
     JSON       string    `json:"json_data"`
+	TTL int64 `json:"ttl"`
 }
 
 // SaveUserSession saves a user session to DynamoDB
@@ -44,6 +46,7 @@ func (s *DynamoDBStore) SaveUserSession(userSession *user.Session) error {
         UserID:    userSession.UserID,
         ExpiresAt: userSession.ExpiresAt,
         JSON:      userSession.JSON,
+		TTL:       userSession.ExpiresAt.Unix(),
     }
 
     item, err := dynamodbattribute.MarshalMap(sessionItem)
@@ -57,6 +60,19 @@ func (s *DynamoDBStore) SaveUserSession(userSession *user.Session) error {
     }
 
     _, err = s.db.PutItem(input)
+    return err
+}
+
+func (s *DynamoDBStore) EnableTTL() error {
+    input := &dynamodb.UpdateTimeToLiveInput{
+        TableName: aws.String(s.tableName),
+        TimeToLiveSpecification: &dynamodb.TimeToLiveSpecification{
+            AttributeName: aws.String("ttl"),
+            Enabled:       aws.Bool(true),
+        },
+    }
+    
+    _, err := s.db.UpdateTimeToLive(input)
     return err
 }
 
@@ -229,6 +245,10 @@ func InitSessionService() error {
     // Ensure the Sessions table exists
     if err := sessionStore.EnsureSessionsTable(); err != nil {
         return fmt.Errorf("failed to ensure Sessions table: %w", err)
+    }
+
+	if err := sessionStore.EnableTTL(); err != nil {
+        log.Printf("Warning: Failed to enable TTL on Sessions table: %v", err)
     }
 
     // Create auth service with your JWT secret
