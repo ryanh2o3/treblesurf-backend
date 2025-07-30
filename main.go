@@ -101,15 +101,25 @@ func init() {
 
     // Protected routes (auth required)
     authorized := r.Group("/")
-    authorized.Use(api.CombinedAuthMiddleware())
+    authorized.Use(api.ClientTypeMiddleware()) // First detect client type
+    authorized.Use(api.AdaptiveAuthMiddleware())
     {
-        modifyGroup := authorized.Group("/")
-        modifyGroup.Use(api.CSRFMiddleware()) 
+        webModifyGroup := authorized.Group("/")
+        webModifyGroup.Use(func(c *gin.Context) {
+        // Skip this middleware for app clients
+        isAppClient, _ := c.Get("isAppClient")
+        if isAppClient.(bool) {
+            c.Next()
+            return
+        }
+        // Apply CSRF only for web clients
+        api.CSRFMiddleware()(c)
+        })
         {
-            modifyGroup.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
-            modifyGroup.DELETE("/deleteMyAccount", api.DeleteMyAccount)
-            modifyGroup.PUT("/setTheme", api.SetUserTheme)
-            authorized.DELETE("/sessions/:sessionId", api.TerminateSessionHandler)
+            webModifyGroup.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
+            webModifyGroup.DELETE("/deleteMyAccount", api.DeleteMyAccount)
+            webModifyGroup.PUT("/setTheme", api.SetUserTheme)
+            webModifyGroup.DELETE("/sessions/:sessionId", api.TerminateSessionHandler)
 
         // Other state-changing endpoints
         }
