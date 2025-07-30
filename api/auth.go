@@ -845,16 +845,8 @@ func TerminateSessionHandler(c *gin.Context) {
 func getClientIP(c *gin.Context) string {
     // Try CloudFront-specific header first
     if ip := c.Request.Header.Get("CloudFront-Viewer-Address"); ip != "" {
-        fmt.Print("viewer add")
         return strings.Split(ip, ":")[0] 
     }
-    
-    // Try X-Forwarded-For (first entry is the original client)
-    if xff := c.Request.Header.Get("X-Forwarded-For"); xff != "" {
-        ips := strings.Split(xff, ",")
-        fmt.Print("x forwarded found")
-        return strings.TrimSpace(ips[0])
-    }
-    fmt.Print("default clip ip")
+
     return c.ClientIP() 
 }
