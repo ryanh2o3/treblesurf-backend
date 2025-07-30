@@ -122,8 +122,11 @@ func init() {
             modifyGroup.POST("/submitSurfReport", api.SubmitCurrentSurfReport)
             modifyGroup.DELETE("/deleteMyAccount", api.DeleteMyAccount)
             modifyGroup.PUT("/setTheme", api.SetUserTheme)
+            authorized.DELETE("/sessions/:sessionId", api.TerminateSessionHandler)
+
         // Other state-changing endpoints
         }
+        authorized.GET("/sessions", api.GetUserSessionsHandler)
         authorized.GET("/getTheme", api.GetUserTheme)
         authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
         authorized.GET("getReportImage", api.GetReportImage) // Expects ?key=

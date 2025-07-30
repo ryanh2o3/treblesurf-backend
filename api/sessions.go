@@ -158,19 +158,74 @@ func (s *DynamoDBStore) EnsureSessionsTable() error {
     return err
 }
 
+// ...existing code...
+
+// GetSessionsByUserID retrieves all valid sessions for a specific user
+func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, error) {
+    // Create a query input that filters by UserID
+    input := &dynamodb.ScanInput{
+        TableName:        aws.String(s.tableName),
+        FilterExpression: aws.String("user_id = :uid"),
+        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":uid": {
+                S: aws.String(userID),
+            },
+        },
+    }
+
+    result, err := s.db.Scan(input)
+    if err != nil {
+        return nil, err
+    }
+
+    sessions := make([]*user.Session, 0)
+    now := time.Now()
+
+    for _, item := range result.Items {
+        sessionItem := &SessionItem{}
+        if err := dynamodbattribute.UnmarshalMap(item, sessionItem); err != nil {
+            continue
+        }
+
+        // Skip expired sessions
+        if now.After(sessionItem.ExpiresAt) {
+            continue
+        }
+
+        // Convert to user.Session
+        userSession := &user.Session{
+            ID:        sessionItem.SessionID,
+            UserID:    sessionItem.UserID,
+            ExpiresAt: sessionItem.ExpiresAt,
+            JSON:      sessionItem.JSON,
+        }
+
+        sessions = append(sessions, userSession)
+    }
+
+    return sessions, nil
+}
+
 // SessionJSON defines the structure for session data
 type SessionJSON struct {
     CSRF string `json:"csrf"`
+	UserAgent string    `json:"user_agent,omitempty"`
+    IPAddress string    `json:"ip_address,omitempty"`
+    CreatedAt time.Time `json:"created_at,omitempty"`
+    LastActive time.Time `json:"last_active,omitempty"`
     // Add any other session data you want to store
 }
 
 var sessionService *sessions.Service
+var sessionStoreDB *DynamoDBStore
 
 // InitSessionService initializes the session service with DynamoDB store
 func InitSessionService() error {
     // Create DynamoDB store
     sessionStore := NewDynamoDBStore(db, "Sessions")
     
+	sessionStoreDB = sessionStore
+
     // Ensure the Sessions table exists
     if err := sessionStore.EnsureSessionsTable(); err != nil {
         return fmt.Errorf("failed to ensure Sessions table: %w", err)
