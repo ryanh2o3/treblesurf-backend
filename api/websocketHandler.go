@@ -336,11 +336,11 @@ func getConnectionsByUsers(userIDs []string) ([]ConnectionInfo, error) {
     var filterCondition expression.ConditionBuilder
     
     // Start with the first user ID
-    filterCondition = expression.Name("UserID").Equal(expression.Value(userIDs[0]))
+    filterCondition = expression.Name("user_id").Equal(expression.Value(userIDs[0]))
     
     // Add OR conditions for each additional user ID
     for i := 1; i < len(userIDs); i++ {
-        filterCondition = filterCondition.Or(expression.Name("UserID").Equal(expression.Value(userIDs[i])))
+        filterCondition = filterCondition.Or(expression.Name("user_id").Equal(expression.Value(userIDs[i])))
     }
     
     // Create expression with filter
