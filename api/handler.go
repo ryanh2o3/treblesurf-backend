@@ -774,39 +774,39 @@ func SubmitCurrentSurfReport(c *gin.Context) {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
-//     log.Print("done putting")
+    log.Print("done putting")
 
-//     message := map[string]interface{}{
-//     "action": "new_report",
-//     "data": map[string]interface{}{
-//         "country":       report.Country,
-//         "region":        report.Region,
-//         "spot":          report.Spot,
-//         "quality":       report.Quality,
-//         "surfSize":      report.SurfSize,
-//         "windAmount":    report.WindAmount,
-//         "windDirection": report.WindDirection,
-//         "messiness":     report.Messiness,
-//         "consistency":   report.Consistency,
-//         "reporter":      user.GivenName,
-//         "imageKey":      s3KeyReport,
-//         "reportTime":    time.Now().Format(time.RFC3339),
-//     },
-// }
+    message := map[string]interface{}{
+    "action": "new_report",
+    "data": map[string]interface{}{
+        "country":       report.Country,
+        "region":        report.Region,
+        "spot":          report.Spot,
+        "quality":       report.Quality,
+        "surfSize":      report.SurfSize,
+        "windAmount":    report.WindAmount,
+        "windDirection": report.WindDirection,
+        "messiness":     report.Messiness,
+        "consistency":   report.Consistency,
+        "reporter":      user.GivenName,
+        "imageKey":      s3KeyReport,
+        "reportTime":    time.Now().Format(time.RFC3339),
+    },
+}
 
-//     subscribers, err := getSpotSubscribers(report.Country, report.Region, report.Spot)
-//     log.Print("subscribers", subscribers)
-//     if err != nil {
-//         log.Printf("Failed to get subscribers: %v", err)
-//     } else {
-//         // Broadcast to subscribers asynchronously
-//         go func() {
-//             err := BroadcastToUsers(subscribers, message) // Use your stage name
-//             if err != nil {
-//                 log.Printf("Failed to broadcast message: %v", err)
-//             }
-//         }()
-//     }
+    subscribers, err := getSpotSubscribers(report.Country, report.Region, report.Spot)
+    log.Print("subscribers", subscribers)
+    if err != nil {
+        log.Printf("Failed to get subscribers: %v", err)
+    } else {
+        // Broadcast to subscribers asynchronously
+        go func() {
+            err := BroadcastToUsers(subscribers, message) // Use your stage name
+            if err != nil {
+                log.Printf("Failed to broadcast message: %v", err)
+            }
+        }()
+    }
 
     c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
