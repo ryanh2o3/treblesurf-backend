@@ -215,7 +215,7 @@ func deleteConnection(connectionID string) error {
     input := &dynamodb.DeleteItemInput{
         TableName: aws.String("WebSocketConnections"),
         Key: map[string]*dynamodb.AttributeValue{
-            "ConnectionID": {
+            "connection_id": {
                 S: aws.String(connectionID),
             },
         },
@@ -230,7 +230,7 @@ func updateConnectionLastActive(connectionID string) error {
     input := &dynamodb.UpdateItemInput{
         TableName: aws.String("WebSocketConnections"),
         Key: map[string]*dynamodb.AttributeValue{
-            "ConnectionID": {
+            "connection_id": {
                 S: aws.String(connectionID),
             },
         },
@@ -306,6 +306,7 @@ func BroadcastToUsers(userIDs []string, message interface{}) error {
     if err != nil {
         return err
     }
+	log.Print("connections", connections)
     
     // Send to each connection
     var sendErr error
