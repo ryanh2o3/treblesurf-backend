@@ -37,7 +37,7 @@ jobs:
         run: |
           # Build each function with distinct names from the start
           GOOS=linux GOARCH=amd64 go build -o api-bootstrap main.go
-          GOOS=linux GOARCH=amd64 go build -o websocket-bootstrap ./cmd/websocket/main.go
+          GOOS=linux GOARCH=amd64 go build -o websocket-bootstrap ./websocket/main.go
 
       - name: Package the application
         run: |
