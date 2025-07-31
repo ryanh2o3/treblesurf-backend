@@ -35,13 +35,21 @@ jobs:
 
       - name: Build the Go application
         run: |
-          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
-          GOOS=linux GOARCH=amd64 go build -o websocket-bootstrap ./websocket/main.go
+          # Build each function with distinct names from the start
+          GOOS=linux GOARCH=amd64 go build -o api-bootstrap main.go
+          GOOS=linux GOARCH=amd64 go build -o websocket-bootstrap ./cmd/websocket/main.go
 
       - name: Package the application
         run: |
+          # Package API Lambda
+          cp api-bootstrap bootstrap
           zip bootstrap.zip bootstrap
-          zip websocket-bootstrap.zip websocket-bootstrap
+          rm bootstrap
+
+          # Package WebSocket Lambda
+          cp websocket-bootstrap bootstrap
+          zip websocket-bootstrap.zip bootstrap
+          rm bootstrap
 
       - name: Deploy Lambdas and Setup API Gateway
         run: |
