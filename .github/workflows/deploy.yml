@@ -65,7 +65,7 @@ jobs:
 
       - name: Deploy WebSocket Lambda
         run: |
-          WS_FUNCTION_NAME="treblesurf-websocket"
+          WS_FUNCTION_NAME="websockets"
           WS_ZIP_FILE="websocket-bootstrap.zip"
           REGION="eu-west-1"
 
