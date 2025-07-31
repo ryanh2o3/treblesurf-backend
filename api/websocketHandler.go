@@ -298,12 +298,14 @@ func BroadcastToUsers(userIDs []string, message interface{}) error {
     // Convert message to JSON
     msgJSON, err := json.Marshal(message)
     if err != nil {
+		log.Print("json err", err)
         return err
     }
     
     // Query connections for these users
     connections, err := getConnectionsByUsers(userIDs)
     if err != nil {
+		log.Print("conn err", err)
         return err
     }
 	log.Print("connections", connections)
