@@ -27,6 +27,7 @@ type ConnectionInfo struct {
     LastActive   time.Time `json:"last_active"`
     UserAgent    string    `json:"user_agent"`
     IPAddress    string    `json:"ip_address"`
+	CurrentSpot  string    `json:"current_spot,omitempty"`
 }
 
 // WebSocketMessage represents the structure of incoming messages
@@ -165,56 +166,32 @@ func handleDefault(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewa
     return handleCustomRoute(req)
 }
 
+// handleCustomRoute processes custom WebSocket messages
 func handleCustomRoute(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
     var message WebSocketMessage
     if err := json.Unmarshal([]byte(req.Body), &message); err != nil {
+        log.Printf("Error parsing message: %v", err)
         return events.APIGatewayProxyResponse{
             StatusCode: http.StatusBadRequest,
             Body:       "Invalid message format",
         }, nil
     }
 
+    connectionID := req.RequestContext.ConnectionID
+    log.Printf("Received action: %s from connection: %s", message.Action, connectionID)
+
     switch message.Action {
-    case "ping":
-        return handlePing(req)
     case "subscribe":
-        return handleSubscribe(req, message.Data)
-    // Add more custom actions as needed
+        return handleSubscribeAction(req, message.Data)
+    case "ping":
+        return handlePingAction(req)
     default:
+        log.Printf("Unknown action: %s", message.Action)
         return events.APIGatewayProxyResponse{
-            StatusCode: http.StatusBadRequest,
+            StatusCode: http.StatusOK,
             Body:       "Unknown action",
         }, nil
     }
-}
-
-func handlePing(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
-    // Send pong response
-    response := map[string]interface{}{
-        "action": "pong",
-        "time":   time.Now().Format(time.RFC3339),
-    }
-    
-    responseJSON, _ := json.Marshal(response)
-    err := sendToConnection(req.RequestContext.ConnectionID, string(responseJSON), 
-        req.RequestContext.DomainName, req.RequestContext.Stage)
-    
-    if err != nil {
-        log.Printf("Error sending pong: %v", err)
-    }
-    
-    return events.APIGatewayProxyResponse{
-        StatusCode: http.StatusOK,
-    }, nil
-}
-
-func handleSubscribe(req events.APIGatewayWebsocketProxyRequest, data json.RawMessage) (events.APIGatewayProxyResponse, error) {
-    // Handle subscription logic
-    // This is where you'd implement subscription to different channels/topics
-    
-    return events.APIGatewayProxyResponse{
-        StatusCode: http.StatusOK,
-    }, nil
 }
 
 // saveConnection stores connection info in DynamoDB
@@ -270,7 +247,18 @@ func updateConnectionLastActive(connectionID string) error {
 }
 
 // sendToConnection sends a message to a specific WebSocket client
-func sendToConnection(connectionID, message, endpoint, stage string) error {
+func sendToConnection(connectionID, message string) error {
+    // Get endpoint and stage from environment variables
+    endpoint := os.Getenv("WEBSOCKET_API_ENDPOINT")
+    if endpoint == "" {
+        return fmt.Errorf("WEBSOCKET_API_ENDPOINT not configured")
+    }
+    
+    stage := os.Getenv("WEBSOCKET_API_STAGE") 
+    if stage == "" {
+        stage = "production" // Default stage name
+    }
+    
     sess := session.Must(session.NewSession())
     
     // Create API Gateway Management API client
@@ -306,17 +294,11 @@ func getSourceIP(req events.APIGatewayWebsocketProxyRequest) string {
 // Add this function to your websocketHandler.go
 
 // BroadcastToUsers sends a message to all connections for specific users
-func BroadcastToUsers(userIDs []string, message interface{}, stage string) error {
+func BroadcastToUsers(userIDs []string, message interface{}) error {
     // Convert message to JSON
     msgJSON, err := json.Marshal(message)
     if err != nil {
         return err
-    }
-    
-    // Get endpoint from environment variable
-    endpoint := os.Getenv("WEBSOCKET_API_ENDPOINT")
-    if endpoint == "" {
-        return fmt.Errorf("WEBSOCKET_API_ENDPOINT not configured")
     }
     
     // Query connections for these users
@@ -326,15 +308,16 @@ func BroadcastToUsers(userIDs []string, message interface{}, stage string) error
     }
     
     // Send to each connection
+    var sendErr error
     for _, conn := range connections {
-        err := sendToConnection(conn.ConnectionID, string(msgJSON), endpoint, stage)
+        err := sendToConnection(conn.ConnectionID, string(msgJSON))
         if err != nil {
             log.Printf("Failed to send to connection %s: %v", conn.ConnectionID, err)
-            // Consider removing stale connections here
+            sendErr = err // Keep last error but continue trying other connections
         }
     }
     
-    return nil
+    return sendErr
 }
 
 // getConnectionsByUsers queries DynamoDB for connections by user IDs
@@ -384,4 +367,165 @@ func getConnectionsByUsers(userIDs []string) ([]ConnectionInfo, error) {
     }
     
     return connections, nil
+}
+
+
+
+// handleSubscribeAction processes WebSocket subscription requests
+func handleSubscribeAction(req events.APIGatewayWebsocketProxyRequest, data json.RawMessage) (events.APIGatewayProxyResponse, error) {
+    // Parse the subscription data
+    var subRequest struct {
+        Country string `json:"country"`
+        Region  string `json:"region"`
+        Spot    string `json:"spot"`
+    }
+
+    if err := json.Unmarshal(data, &subRequest); err != nil {
+        log.Printf("Error parsing subscription data: %v", err)
+        return events.APIGatewayProxyResponse{
+            StatusCode: http.StatusBadRequest,
+            Body:       "Invalid subscription data",
+        }, nil
+    }
+
+    connectionID := req.RequestContext.ConnectionID
+
+    // Get the connection info to know which user is subscribing
+    connection, err := getConnection(connectionID)
+    if err != nil {
+        log.Printf("Error getting connection info: %v", err)
+        return events.APIGatewayProxyResponse{
+            StatusCode: http.StatusInternalServerError,
+            Body:       "Failed to process subscription",
+        }, nil
+    }
+
+    userID := connection.UserID
+    spotIdentifier := fmt.Sprintf("%s/%s/%s", subRequest.Country, subRequest.Region, subRequest.Spot)
+
+    // Store the subscription in DynamoDB
+    input := &dynamodb.PutItemInput{
+        TableName: aws.String("SpotSubscriptions"),
+        Item: map[string]*dynamodb.AttributeValue{
+            "spot_id": {
+                S: aws.String(spotIdentifier),
+            },
+            "user_id": {
+                S: aws.String(userID),
+            },
+            "subscribed_at": {
+                S: aws.String(time.Now().Format(time.RFC3339)),
+            },
+            "connection_id": {
+                S: aws.String(connectionID),
+            },
+        },
+    }
+
+    _, err = db.PutItem(input)
+    if err != nil {
+        log.Printf("Failed to save subscription: %v", err)
+        return events.APIGatewayProxyResponse{
+            StatusCode: http.StatusInternalServerError,
+            Body:       "Failed to subscribe",
+        }, nil
+    }
+
+    // Update connection metadata with current spot
+    updateConnectionSpot(connectionID, spotIdentifier)
+
+    // Send confirmation back to client
+    response := map[string]interface{}{
+        "action": "subscribed",
+        "data": map[string]interface{}{
+            "spot_id": spotIdentifier,
+            "success": true,
+        },
+    }
+
+    responseJSON, _ := json.Marshal(response)
+    sendToConnection(connectionID, string(responseJSON))
+
+    log.Printf("User %s subscribed to spot: %s via connection %s", userID, spotIdentifier, connectionID)
+    return events.APIGatewayProxyResponse{
+        StatusCode: http.StatusOK,
+        Body:       "Subscribed",
+    }, nil
+}
+
+// handlePingAction responds to ping messages to keep the connection alive
+func handlePingAction(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+    connectionID := req.RequestContext.ConnectionID
+    
+    // Update last active time
+    updateConnectionLastActive(connectionID)
+    
+    // Send pong response
+    response := map[string]interface{}{
+        "action": "pong",
+        "data": map[string]interface{}{
+            "time": time.Now().Format(time.RFC3339),
+        },
+    }
+    
+    responseJSON, _ := json.Marshal(response)
+    sendToConnection(connectionID, string(responseJSON))
+    
+    return events.APIGatewayProxyResponse{
+        StatusCode: http.StatusOK,
+        Body:       "Ping received",
+    }, nil
+}
+
+// getConnection retrieves connection info from DynamoDB
+func getConnection(connectionID string) (*ConnectionInfo, error) {
+    input := &dynamodb.GetItemInput{
+        TableName: aws.String("WebSocketConnections"),
+        Key: map[string]*dynamodb.AttributeValue{
+            "connection_id": {
+                S: aws.String(connectionID),
+            },
+        },
+    }
+
+    result, err := db.GetItem(input)
+    if err != nil {
+        return nil, err
+    }
+
+    if len(result.Item) == 0 {
+        return nil, fmt.Errorf("connection not found")
+    }
+
+    var connection ConnectionInfo
+    err = dynamodbattribute.UnmarshalMap(result.Item, &connection)
+    if err != nil {
+        return nil, err
+    }
+
+    return &connection, nil
+}
+
+// updateConnectionSpot updates the current spot for a connection
+func updateConnectionSpot(connectionID string, spotIdentifier string) error {
+    input := &dynamodb.UpdateItemInput{
+        TableName: aws.String("WebSocketConnections"),
+        Key: map[string]*dynamodb.AttributeValue{
+            "connection_id": {
+                S: aws.String(connectionID),
+            },
+        },
+        UpdateExpression: aws.String("SET CurrentSpot = :spot, LastActive = :time"),
+        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":spot": {
+                S: aws.String(spotIdentifier),
+            },
+            ":time": {
+                S: aws.String(time.Now().Format(time.RFC3339)),
+            },
+        },
+    }
+
+    _, err := db.UpdateItem(input)
+    return err
 }

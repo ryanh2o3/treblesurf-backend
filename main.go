@@ -130,7 +130,6 @@ func init() {
         authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
         authorized.GET("getReportImage", api.GetReportImage) // Expects ?key=
         authorized.GET("/ws-token", api.GetWebSocketTokenHandler)
-
     }
 
     ginLambda = ginadapter.New(r)
