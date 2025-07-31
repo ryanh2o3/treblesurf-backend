@@ -773,6 +773,32 @@ func SubmitCurrentSurfReport(c *gin.Context) {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
+
+    message := map[string]interface{}{
+    "action": "new_report",
+    "data": map[string]interface{}{
+        "country":    report.Country,
+        "region":     report.Region,
+        "spot":       report.Spot,
+        "surfSize":   report.SurfSize,
+        "reporter":   user.GivenName,
+        "reportTime": currentTime.Format(time.RFC3339),
+    },
+}
+
+    subscribers, err := getSpotSubscribers(report.Country, report.Region, report.Spot)
+    if err != nil {
+        log.Printf("Failed to get subscribers: %v", err)
+    } else {
+        // Broadcast to subscribers asynchronously
+        go func() {
+            err := BroadcastToUsers(subscribers, message, "prod") // Use your stage name
+            if err != nil {
+                log.Printf("Failed to broadcast message: %v", err)
+            }
+        }()
+    }
+
     c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
@@ -1187,4 +1213,36 @@ func SetUserTheme(c *gin.Context) {
      }
  
      c.JSON(http.StatusOK, gin.H{"message": "Theme updated successfully"})
+}
+
+// getSpotSubscribers returns a list of user IDs who are subscribed to a specific spot
+func getSpotSubscribers(country, region, spot string) ([]string, error) {
+    // Create the spot identifier
+    spotIdentifier := fmt.Sprintf("%s/%s/%s", country, region, spot)
+    
+    // Query the SpotSubscriptions table
+    input := &dynamodb.QueryInput{
+        TableName: aws.String("SpotSubscriptions"),
+        KeyConditionExpression: aws.String("spot_id = :spotId"),
+        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":spotId": {
+                S: aws.String(spotIdentifier),
+            },
+        },
+    }
+    
+    result, err := db.Query(input)
+    if err != nil {
+        return nil, fmt.Errorf("error querying subscriptions: %v", err)
+    }
+    
+    // Extract user IDs from the results
+    var subscribers []string
+    for _, item := range result.Items {
+        if userID, ok := item["user_id"]; ok && userID.S != nil {
+            subscribers = append(subscribers, *userID.S)
+        }
+    }
+    
+    return subscribers, nil
 }
