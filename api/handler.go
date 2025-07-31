@@ -698,6 +698,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
             S: aws.String(user.GivenName),
         },
     }
+    var s3KeyReport = ""
 
     // Process image if provided
     if report.ImageData != "" {
@@ -752,6 +753,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
             item["ImageKey"] = &dynamodb.AttributeValue{
                 S: aws.String(s3Key),
             }
+            s3KeyReport = s3Key
         } else {
             c.JSON(http.StatusBadRequest, gin.H{"error": "Image validation failed"})
             return
@@ -777,12 +779,18 @@ func SubmitCurrentSurfReport(c *gin.Context) {
     message := map[string]interface{}{
     "action": "new_report",
     "data": map[string]interface{}{
-        "country":    report.Country,
-        "region":     report.Region,
-        "spot":       report.Spot,
-        "surfSize":   report.SurfSize,
-        "reporter":   user.GivenName,
-        "reportTime": currentTime.Format(time.RFC3339),
+        "country":       report.Country,
+        "region":        report.Region,
+        "spot":          report.Spot,
+        "quality":       report.Quality,
+        "surfSize":      report.SurfSize,
+        "windAmount":    report.WindAmount,
+        "windDirection": report.WindDirection,
+        "messiness":     report.Messiness,
+        "consistency":   report.Consistency,
+        "reporter":      user.GivenName,
+        "imageKey":      s3KeyReport,
+        "reportTime":    time.Now().Format(time.RFC3339),
     },
 }
 
@@ -792,7 +800,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
     } else {
         // Broadcast to subscribers asynchronously
         go func() {
-            err := BroadcastToUsers(subscribers, message, "prod") // Use your stage name
+            err := BroadcastToUsers(subscribers, message) // Use your stage name
             if err != nil {
                 log.Printf("Failed to broadcast message: %v", err)
             }

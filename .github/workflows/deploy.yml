@@ -77,22 +77,12 @@ jobs:
           WS_ZIP_FILE="websocket-bootstrap.zip"
           REGION="eu-west-1"
 
-          # Check if WebSocket Lambda exists
-          if aws lambda get-function --function-name $WS_FUNCTION_NAME 2>/dev/null; then
-            # Update existing WebSocket Lambda
-            aws lambda update-function-code --function-name $WS_FUNCTION_NAME --zip-file fileb://$WS_ZIP_FILE
-            
-            # Wait for the function update to complete
-            aws lambda wait function-updated --function-name $WS_FUNCTION_NAME
-          else
-            # Create new WebSocket Lambda if it doesn't exist
-            aws lambda create-function \
-              --function-name $WS_FUNCTION_NAME \
-              --runtime go1.x \
-              --handler websocket-bootstrap \
-              --role arn:aws:iam::759663378274:role/service-role/api-role-pydrwpue \
-              --zip-file fileb://$WS_ZIP_FILE
-          fi
+          # Update existing WebSocket Lambda
+          aws lambda update-function-code --function-name $WS_FUNCTION_NAME --zip-file fileb://$WS_ZIP_FILE
+
+          # Wait for the function update to complete
+          aws lambda wait function-updated --function-name $WS_FUNCTION_NAME
+
 
           # Update WebSocket Lambda environment variables
           aws lambda update-function-configuration \
