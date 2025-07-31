@@ -775,6 +775,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
+    log.Print("done putting")
 
     message := map[string]interface{}{
     "action": "new_report",
@@ -795,6 +796,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 }
 
     subscribers, err := getSpotSubscribers(report.Country, report.Region, report.Spot)
+    log.Print("subscribers", subscribers)
     if err != nil {
         log.Printf("Failed to get subscribers: %v", err)
     } else {
