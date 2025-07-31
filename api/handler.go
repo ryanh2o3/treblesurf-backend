@@ -638,6 +638,7 @@ func GetLast24HoursBuoyData(c *gin.Context) {
 }
 
 func SubmitCurrentSurfReport(c *gin.Context) {
+    log.Print("start of submit report")
     var report ReportWithImage
     if err := c.BindJSON(&report); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
