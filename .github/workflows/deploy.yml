@@ -36,10 +36,12 @@ jobs:
       - name: Build the Go application
         run: |
           GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+          GOOS=linux GOARCH=amd64 go build -o websocket-bootstrap ./websocket/main.go
 
       - name: Package the application
         run: |
           zip bootstrap.zip bootstrap
+          zip websocket-bootstrap.zip websocket-bootstrap
 
       - name: Deploy Lambdas and Setup API Gateway
         run: |
@@ -59,4 +61,44 @@ jobs:
           # Update Lambda environment variables
           aws lambda update-function-configuration \
             --function-name $FUNCTION_NAME \
-            --environment "Variables={JWT_SECRET='$JWT_SECRET'}"
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+
+      - name: Deploy WebSocket Lambda
+        run: |
+          WS_FUNCTION_NAME="treblesurf-websocket"
+          WS_ZIP_FILE="websocket-bootstrap.zip"
+          REGION="eu-west-1"
+
+          # Check if WebSocket Lambda exists
+          if aws lambda get-function --function-name $WS_FUNCTION_NAME 2>/dev/null; then
+            # Update existing WebSocket Lambda
+            aws lambda update-function-code --function-name $WS_FUNCTION_NAME --zip-file fileb://$WS_ZIP_FILE
+            
+            # Wait for the function update to complete
+            aws lambda wait function-updated --function-name $WS_FUNCTION_NAME
+          else
+            # Create new WebSocket Lambda if it doesn't exist
+            aws lambda create-function \
+              --function-name $WS_FUNCTION_NAME \
+              --runtime go1.x \
+              --handler websocket-bootstrap \
+              --role arn:aws:iam::759663378274:role/service-role/api-role-pydrwpue \
+              --zip-file fileb://$WS_ZIP_FILE
+          fi
+
+          # Update WebSocket Lambda environment variables
+          aws lambda update-function-configuration \
+            --function-name $WS_FUNCTION_NAME \
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+
+          # Configure permissions for WebSocket API Gateway
+          WEBSOCKET_API_ID="9q47dtf5qe"
+
+          # Add permission for WebSocket API Gateway to invoke the Lambda (if not already added)
+          aws lambda add-permission \
+            --function-name $WS_FUNCTION_NAME \
+            --action lambda:InvokeFunction \
+            --principal apigateway.amazonaws.com \
+            --source-arn "arn:aws:execute-api:$REGION:759663378274:$WEBSOCKET_API_ID/*" \
+            --statement-id AllowWebSocketInvoke-$WEBSOCKET_API_ID \
+            || echo "Permission already exists or couldn't be added"

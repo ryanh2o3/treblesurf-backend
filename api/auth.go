@@ -711,3 +711,30 @@ func getClientIP(c *gin.Context) string {
 
     return c.ClientIP() 
 }
+
+func GetWebSocketTokenHandler(c *gin.Context) {
+    // Verify user is already authenticated with a session
+    userSession, err := sessionService.GetUserSession(c.Request)
+    if err != nil || userSession == nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired or invalid"})
+        return
+    }
+    
+    // Generate a temporary token with 5 minute expiration
+    tempToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+        "session_id": userSession.ID,
+        "user_id":    userSession.UserID,
+        "exp":        time.Now().Add(5 * time.Minute).Unix(),
+    })
+    
+    tokenString, err := tempToken.SignedString(jwtSecret)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate WebSocket token"})
+        return
+    }
+    
+    c.JSON(http.StatusOK, gin.H{
+        "ws_token": tokenString,
+        "expires_in": 300, // 5 minutes in seconds
+    })
+}
