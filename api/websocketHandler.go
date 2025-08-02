@@ -28,6 +28,8 @@ type ConnectionInfo struct {
     UserAgent    string    `json:"user_agent"`
     IPAddress    string    `json:"ip_address"`
 	CurrentSpot  string    `json:"current_spot,omitempty"`
+	TTL 		 int64 	   `json:"ttl"`
+	
 }
 
 // WebSocketMessage represents the structure of incoming messages
@@ -196,6 +198,9 @@ func handleCustomRoute(req events.APIGatewayWebsocketProxyRequest) (events.APIGa
 
 // saveConnection stores connection info in DynamoDB
 func saveConnection(conn ConnectionInfo) error {
+
+	conn.TTL = time.Now().Add(24 * time.Hour).Unix()
+
     item, err := dynamodbattribute.MarshalMap(conn)
     if err != nil {
         return err
@@ -227,6 +232,8 @@ func deleteConnection(connectionID string) error {
 
 // updateConnectionLastActive updates the LastActive timestamp for a connection
 func updateConnectionLastActive(connectionID string) error {
+	newTTL := time.Now().Add(24 * time.Hour).Unix()
+
     input := &dynamodb.UpdateItemInput{
         TableName: aws.String("WebSocketConnections"),
         Key: map[string]*dynamodb.AttributeValue{
@@ -238,6 +245,9 @@ func updateConnectionLastActive(connectionID string) error {
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":t": {
                 S: aws.String(time.Now().Format(time.RFC3339)),
+            },
+			":ttl": {
+                N: aws.String(fmt.Sprintf("%d", newTTL)),
             },
         },
     }
@@ -511,7 +521,9 @@ func getConnection(connectionID string) (*ConnectionInfo, error) {
 
 // updateConnectionSpot updates the current spot for a connection
 func updateConnectionSpot(connectionID string, spotIdentifier string) error {
-    input := &dynamodb.UpdateItemInput{
+    newTTL := time.Now().Add(24 * time.Hour).Unix()
+
+	input := &dynamodb.UpdateItemInput{
         TableName: aws.String("WebSocketConnections"),
         Key: map[string]*dynamodb.AttributeValue{
             "connection_id": {
@@ -525,6 +537,9 @@ func updateConnectionSpot(connectionID string, spotIdentifier string) error {
             },
             ":time": {
                 S: aws.String(time.Now().Format(time.RFC3339)),
+            },
+			":ttl": {
+                N: aws.String(fmt.Sprintf("%d", newTTL)),
             },
         },
     }
