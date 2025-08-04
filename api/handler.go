@@ -1280,7 +1280,7 @@ func GetStreamingCredentials(c *gin.Context) {
     // Request temporary credentials with proper permissions
     stsClient := sts.New(sess)
     result, err := stsClient.AssumeRole(&sts.AssumeRoleInput{
-        RoleArn:         aws.String("arn:aws:iam::YOUR_ACCOUNT_ID:role/TreblesurfPiStreamingRole"),
+        RoleArn:         aws.String("arn:aws:iam::759663378274:role/TreblesurfPiStreamingRole"),
         RoleSessionName: aws.String("device-stream-" + key.KeyID),
         DurationSeconds: aws.Int64(3600), // 1 hour
     })
