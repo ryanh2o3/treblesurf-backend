@@ -1672,6 +1672,7 @@ func GetLatestSnapshotHandler(c *gin.Context) {
     })
     
     if err != nil {
+        fmt.Print("Failed to retrieve:", err)
         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve snapshot data"})
         return
     }
