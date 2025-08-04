@@ -1664,11 +1664,14 @@ func GetLatestSnapshotHandler(c *gin.Context) {
     }
     
     // Query DynamoDB for the latest snapshot
-    result, err := db.GetItem(&dynamodb.GetItemInput{
+    result, err := db.Query(&dynamodb.QueryInput{
         TableName: aws.String("SpotSnapshots"),
-        Key: map[string]*dynamodb.AttributeValue{
-            "spot_id": {S: aws.String(spotID)},
+        KeyConditionExpression: aws.String("spot_id = :spotId"),
+        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":spotId": {S: aws.String(spotID)},
         },
+        ScanIndexForward: aws.Bool(false), // Sort in descending order (newest first)
+        Limit: aws.Int64(1), // Get only the most recent item
     })
     
     if err != nil {
