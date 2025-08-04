@@ -93,17 +93,20 @@ func validateAPIKey(keyValue string, requiredScope string) (*APIKey, bool) {
     
     result, err := db.Scan(input)
     if err != nil || len(result.Items) == 0 {
+        fmt.Print("nothing found for key")
         return nil, false
     }
     
     var apiKey APIKey
     err = dynamodbattribute.UnmarshalMap(result.Items[0], &apiKey)
     if err != nil {
+        fmt.Print("error unmarshalling")
         return nil, false
     }
     
     // Check if the key is expired
     if time.Now().After(apiKey.ExpiresAt) {
+        fmt.Print("key expired")
         return nil, false
     }
     
@@ -117,6 +120,7 @@ func validateAPIKey(keyValue string, requiredScope string) (*APIKey, bool) {
             }
         }
         if !hasScope {
+            fmt.Print("wrong scope")
             return nil, false
         }
     }
