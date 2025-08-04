@@ -1642,6 +1642,7 @@ func UploadSnapshotHandler(c *gin.Context) {
     })
     
     if err != nil {
+        fmt.Print("Failed to store snapshot:", err)
         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store snapshot metadata"})
         return
     }
