@@ -1654,16 +1654,14 @@ func UploadSnapshotHandler(c *gin.Context) {
     })
 }
 
-// GetLatestSnapshotHandler returns the latest snapshot for a specific spot
 func GetLatestSnapshotHandler(c *gin.Context) {
-    // This endpoint can be accessed by authenticated users
     spotID := c.Query("spot_id")
     if spotID == "" {
         c.JSON(http.StatusBadRequest, gin.H{"error": "spot_id parameter is required"})
         return
     }
     
-    // Query DynamoDB for the latest snapshot
+    // Query DynamoDB for the latest snapshot using Query instead of GetItem
     result, err := db.Query(&dynamodb.QueryInput{
         TableName: aws.String("SpotSnapshots"),
         KeyConditionExpression: aws.String("spot_id = :spotId"),
@@ -1681,30 +1679,23 @@ func GetLatestSnapshotHandler(c *gin.Context) {
     }
     
     // Check if snapshot exists
-    if result.Item == nil {
+    if len(result.Items) == 0 {
         c.JSON(http.StatusNotFound, gin.H{"error": "No snapshots available for this spot"})
         return
     }
     
-    // Extract image key
-    imageKey := ""
-    timestampStr := ""
-    
-    if v, ok := result.Item["image_key"]; ok && v.S != nil {
-        imageKey = *v.S
-    } else {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid snapshot data"})
+    // Extract image key from the first (most recent) item
+    var snapshot SpotSnapshot
+    err = dynamodbattribute.UnmarshalMap(result.Items[0], &snapshot)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse snapshot data"})
         return
-    }
-    
-    if v, ok := result.Item["timestamp"]; ok && v.S != nil {
-        timestampStr = *v.S
     }
     
     // Generate presigned URL for the image
     req, _ := s3Client.GetObjectRequest(&s3.GetObjectInput{
         Bucket: aws.String("treblesurf-images"),
-        Key:    aws.String(imageKey),
+        Key:    aws.String(snapshot.ImageKey),
     })
     
     presignedURL, err := req.Presign(15 * time.Minute) // URL valid for 15 minutes
@@ -1713,18 +1704,9 @@ func GetLatestSnapshotHandler(c *gin.Context) {
         return
     }
     
-    // Parse timestamp
-    var timestamp time.Time
-    if timestampStr != "" {
-        timestamp, err = time.Parse(time.RFC3339, timestampStr)
-        if err != nil {
-            timestamp = time.Time{} // Use zero time if parsing fails
-        }
-    }
-    
     c.JSON(http.StatusOK, gin.H{
-        "image_url":  presignedURL,
-        "timestamp":  timestamp.Format(time.RFC3339),
-        "image_key": imageKey,
+        "image_url": presignedURL,
+        "timestamp": snapshot.Timestamp.Format(time.RFC3339),
+        "image_key": snapshot.ImageKey,
     })
 }
