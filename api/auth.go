@@ -738,3 +738,42 @@ func GetWebSocketTokenHandler(c *gin.Context) {
         "expires_in": 300, // 5 minutes in seconds
     })
 }
+
+func AdminMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        email, exists := c.Get("email")
+        if !exists {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
+        
+        if !isAdminUser(email.(string)) {
+            c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+            return
+        }
+        
+        c.Next()
+    }
+}
+
+func APIKeyAuthMiddleware(requiredScope string) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        authHeader := c.GetHeader("Authorization")
+        if !strings.HasPrefix(authHeader, "ApiKey ") {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key format"})
+            return
+        }
+        
+        keyValue := strings.TrimPrefix(authHeader, "ApiKey ")
+        apiKey, valid := validateAPIKey(keyValue, requiredScope)
+        
+        if !valid {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired API key"})
+            return
+        }
+        
+        // Set the API key in the context for use by handlers
+        c.Set("apiKey", apiKey)
+        c.Next()
+    }
+}

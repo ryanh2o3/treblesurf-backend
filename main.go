@@ -97,6 +97,7 @@ func init() {
     r.GET("/individualBuoyLocation", api.IndividualBuoyLocationInfo) // Expects ?buoyName=
     r.GET("/locationInfo", api.GetLocationInfo)   
     r.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
+    r.GET("/streaming-credentials", api.GetStreamingCredentials) // Protected by API key, not session auth
 
 
     // Protected routes (auth required)
@@ -122,14 +123,29 @@ func init() {
             webModifyGroup.DELETE("/deleteMyAccount", api.DeleteMyAccount)
             webModifyGroup.PUT("/setTheme", api.SetUserTheme)
             webModifyGroup.DELETE("/sessions/:sessionId", api.TerminateSessionHandler)
-
-        // Other state-changing endpoints
         }
         authorized.GET("/sessions", api.GetUserSessionsHandler)
         authorized.GET("/getTheme", api.GetUserTheme)
         authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
         authorized.GET("getReportImage", api.GetReportImage) // Expects ?key=
         authorized.GET("/ws-token", api.GetWebSocketTokenHandler)
+        authorized.GET("/stream-url", api.GetStreamPlaybackURL)
+
+    }
+
+    apiKeyRoutes := r.Group("/")
+    apiKeyRoutes.Use(api.APIKeyAuthMiddleware("streaming"))
+    {
+        apiKeyRoutes.GET("/streaming-credentials", api.GetStreamingCredentials)
+    }
+
+    // Admin routes
+    adminRoutes := r.Group("/admin")
+    adminRoutes.Use(api.AuthMiddleware(), api.AdminMiddleware())
+    {
+        adminRoutes.POST("/api-keys", api.CreateAPIKeyHandler)
+        adminRoutes.GET("/api-keys", api.ListAPIKeysHandler)
+        adminRoutes.DELETE("/api-keys/:keyID", api.RevokeAPIKeyHandler)
     }
 
     ginLambda = ginadapter.New(r)
