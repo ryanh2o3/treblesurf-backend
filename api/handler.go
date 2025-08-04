@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/rwcarlsen/goexif/exif"
 )
 
@@ -1437,4 +1439,290 @@ func RevokeAPIKeyHandler(c *gin.Context) {
     }
     
     c.JSON(http.StatusOK, gin.H{"message": "API key revoked successfully"})
+}
+
+type StreamRequest struct {
+    SpotID     string    `json:"spot_id"`
+    RequestedBy string    `json:"requested_by"`
+    RequestedAt time.Time `json:"requested_at"`
+    Expiration  int64     `json:"expiration"`
+}
+
+func RequestStreamHandler(c *gin.Context) {
+    email, exists := c.Get("email")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+        return
+    }
+
+    var request struct {
+        SpotID string `json:"spot_id" binding:"required"`
+    }
+
+    if err := c.ShouldBindJSON(&request); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format. Spot ID is required."})
+        return
+    }
+
+    now := time.Now()
+    expiration := now.Add(5 * time.Minute).Unix()
+    
+    streamRequest := StreamRequest{
+        SpotID:     request.SpotID,
+        RequestedBy: email.(string),
+        RequestedAt: now,
+        Expiration:  expiration,
+    }
+
+    item, err := dynamodbattribute.MarshalMap(streamRequest)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process request"})
+        return
+    }
+
+    _, err = db.PutItem(&dynamodb.PutItemInput{
+        TableName: aws.String("StreamRequests"),
+        Item:      item,
+    })
+
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save stream request"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "message": "Stream requested successfully",
+        "expires_at": now.Add(5 * time.Minute).Format(time.RFC3339),
+    })
+}
+
+func CheckStreamRequestHandler(c *gin.Context) {
+    spotID := c.Query("spot_id")
+    if spotID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Missing spot_id parameter"})
+        return
+    }
+
+    // Query DynamoDB for this spot ID
+    result, err := db.GetItem(&dynamodb.GetItemInput{
+        TableName: aws.String("StreamRequests"),
+        Key: map[string]*dynamodb.AttributeValue{
+            "spot_id": {S: aws.String(spotID)},
+        },
+    })
+
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check stream request status"})
+        return
+    }
+
+    streamRequested := len(result.Item) > 0
+
+    if streamRequested {
+        var request StreamRequest
+        if err := dynamodbattribute.UnmarshalMap(result.Item, &request); err == nil {
+            if time.Now().Unix() > request.Expiration {
+                streamRequested = false
+            }
+        }
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "stream_requested": streamRequested,
+    })
+}
+
+type SpotSnapshot struct {
+    SpotID     string    `json:"spot_id"`
+    ImageKey   string    `json:"image_key"`
+    Timestamp  time.Time `json:"timestamp"`
+    UploadedAt time.Time `json:"uploaded_at"`
+}
+
+// UploadSnapshotHandler handles image uploads from devices
+func UploadSnapshotHandler(c *gin.Context) {    
+    // Get the spot ID from form data
+    spotID := c.PostForm("spot_id")
+    if spotID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "spot_id is required"})
+        return
+    }
+    
+    // Parse timestamp if provided, otherwise use current time
+    timestampStr := c.PostForm("timestamp")
+    var timestamp time.Time
+    var err error
+    if timestampStr != "" {
+        timestamp, err = time.Parse(time.RFC3339, timestampStr)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid timestamp format. Use ISO 8601/RFC3339"})
+            return
+        }
+    } else {
+        timestamp = time.Now()
+    }
+    
+    // Get the uploaded file
+    file, err := c.FormFile("file")
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+        return
+    }
+    
+    // Validate file is an image
+    if !strings.HasPrefix(file.Header.Get("Content-Type"), "image/") {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Uploaded file must be an image"})
+        return
+    }
+    
+    // Open the file
+    src, err := file.Open()
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open uploaded file"})
+        return
+    }
+    defer src.Close()
+    
+    // Generate a unique filename
+    ext := filepath.Ext(file.Filename)
+    uniqueID := uuid.New().String()
+    s3Key := fmt.Sprintf("snapshots/%s/%s%s", spotID, uniqueID, ext)
+    
+    // Upload to S3
+    _, err = s3Client.PutObject(&s3.PutObjectInput{
+        Bucket:      aws.String("treblesurf-images"),
+        Key:         aws.String(s3Key),
+        Body:        src,
+        ContentType: aws.String(file.Header.Get("Content-Type")),
+        Metadata: map[string]*string{
+            "SpotId":    aws.String(spotID),
+            "Timestamp": aws.String(timestamp.Format(time.RFC3339)),
+        },
+    })
+    
+    if err != nil {
+        log.Printf("S3 upload error: %v", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
+        return
+    }
+    
+    // Store metadata in DynamoDB
+    snapshot := SpotSnapshot{
+        SpotID:     spotID,
+        ImageKey:   s3Key,
+        Timestamp:  timestamp,
+        UploadedAt: time.Now(),
+    }
+    
+    item, err := dynamodbattribute.MarshalMap(snapshot)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process snapshot metadata"})
+        return
+    }
+    
+    // Use UpdateItem to ensure we're always storing the latest snapshot
+    _, err = db.PutItem(&dynamodb.PutItemInput{
+        TableName: aws.String("SpotSnapshots"),
+        Item:      item,
+    })
+    
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store snapshot metadata"})
+        return
+    }
+    
+    // Store as latest snapshot for this spot
+    _, err = db.UpdateItem(&dynamodb.UpdateItemInput{
+        TableName: aws.String("SpotLatestSnapshots"),
+        Key: map[string]*dynamodb.AttributeValue{
+            "spot_id": {S: aws.String(spotID)},
+        },
+        UpdateExpression: aws.String("SET image_key = :imageKey, timestamp = :timestamp, uploaded_at = :uploadedAt"),
+        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+            ":imageKey":   {S: aws.String(s3Key)},
+            ":timestamp":  {S: aws.String(timestamp.Format(time.RFC3339))},
+            ":uploadedAt": {S: aws.String(time.Now().Format(time.RFC3339))},
+        },
+    })
+    
+    if err != nil {
+        log.Printf("Error updating latest snapshot: %v", err)
+        // Continue anyway, not critical
+    }
+    
+    c.JSON(http.StatusOK, gin.H{
+        "message":   "Snapshot uploaded successfully",
+        "image_key": s3Key,
+    })
+}
+
+// GetLatestSnapshotHandler returns the latest snapshot for a specific spot
+func GetLatestSnapshotHandler(c *gin.Context) {
+    // This endpoint can be accessed by authenticated users
+    spotID := c.Query("spot_id")
+    if spotID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "spot_id parameter is required"})
+        return
+    }
+    
+    // Query DynamoDB for the latest snapshot
+    result, err := db.GetItem(&dynamodb.GetItemInput{
+        TableName: aws.String("SpotLatestSnapshots"),
+        Key: map[string]*dynamodb.AttributeValue{
+            "spot_id": {S: aws.String(spotID)},
+        },
+    })
+    
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve snapshot data"})
+        return
+    }
+    
+    // Check if snapshot exists
+    if result.Item == nil {
+        c.JSON(http.StatusNotFound, gin.H{"error": "No snapshots available for this spot"})
+        return
+    }
+    
+    // Extract image key
+    imageKey := ""
+    timestampStr := ""
+    
+    if v, ok := result.Item["image_key"]; ok && v.S != nil {
+        imageKey = *v.S
+    } else {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid snapshot data"})
+        return
+    }
+    
+    if v, ok := result.Item["timestamp"]; ok && v.S != nil {
+        timestampStr = *v.S
+    }
+    
+    // Generate presigned URL for the image
+    req, _ := s3Client.GetObjectRequest(&s3.GetObjectInput{
+        Bucket: aws.String("treblesurf-images"),
+        Key:    aws.String(imageKey),
+    })
+    
+    presignedURL, err := req.Presign(15 * time.Minute) // URL valid for 15 minutes
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate image URL"})
+        return
+    }
+    
+    // Parse timestamp
+    var timestamp time.Time
+    if timestampStr != "" {
+        timestamp, err = time.Parse(time.RFC3339, timestampStr)
+        if err != nil {
+            timestamp = time.Time{} // Use zero time if parsing fails
+        }
+    }
+    
+    c.JSON(http.StatusOK, gin.H{
+        "image_url":  presignedURL,
+        "timestamp":  timestamp.Format(time.RFC3339),
+        "image_key": imageKey,
+    })
 }
