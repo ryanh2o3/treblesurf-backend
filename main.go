@@ -121,6 +121,8 @@ func init() {
             webModifyGroup.DELETE("/deleteMyAccount", api.DeleteMyAccount)
             webModifyGroup.PUT("/setTheme", api.SetUserTheme)
             webModifyGroup.DELETE("/sessions/:sessionId", api.TerminateSessionHandler)
+            webModifyGroup.POST("/request-stream", api.RequestStreamHandler)
+
         }
         authorized.GET("/sessions", api.GetUserSessionsHandler)
         authorized.GET("/getTheme", api.GetUserTheme)
@@ -128,6 +130,8 @@ func init() {
         authorized.GET("getReportImage", api.GetReportImage) // Expects ?key=
         authorized.GET("/ws-token", api.GetWebSocketTokenHandler)
         authorized.GET("/stream-url", api.GetStreamPlaybackURL)
+        authorized.GET("/latest-snapshot", api.GetLatestSnapshotHandler) // For web users to view snapshots
+
 
     }
 
@@ -135,6 +139,10 @@ func init() {
     apiKeyRoutes.Use(api.APIKeyAuthMiddleware("streaming"))
     {
         apiKeyRoutes.GET("/streaming-credentials", api.GetStreamingCredentials)
+        apiKeyRoutes.GET("/check-streaming-requested", api.CheckStreamRequestHandler)
+        apiKeyRoutes.POST("/upload-snapshot", api.UploadSnapshotHandler) // Add this line
+
+
     }
 
     // Admin routes
