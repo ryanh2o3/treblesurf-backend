@@ -136,7 +136,7 @@ func init() {
     }
 
     apiKeyRoutes := r.Group("/")
-    apiKeyRoutes.Use(api.APIKeyAuthMiddleware("streaming"))
+    apiKeyRoutes.Use(api.APIKeyAuthMiddleware("stream"))
     {
         apiKeyRoutes.GET("/streaming-credentials", api.GetStreamingCredentials)
         apiKeyRoutes.GET("/check-streaming-requested", api.CheckStreamRequestHandler)
