@@ -15,8 +15,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/kinesisvideo"
+	"github.com/aws/aws-sdk-go/service/kinesisvideoarchivedmedia"
 	"github.com/aws/aws-sdk-go/service/rekognition"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/gin-gonic/gin"
 	"github.com/rwcarlsen/goexif/exif"
 )
@@ -1256,4 +1259,182 @@ func getSpotSubscribers(country, region, spot string) ([]string, error) {
     }
     
     return subscribers, nil
+}
+
+func GetStreamingCredentials(c *gin.Context) {
+    apiKey, exists := c.Get("apiKey")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "API key required"})
+        return
+    }
+
+    key := apiKey.(*APIKey)
+
+    // Create an STS client
+    sess := session.Must(session.NewSession(&aws.Config{
+        Region: aws.String("eu-west-1"),
+    }))
+
+    // Request temporary credentials with proper permissions
+    stsClient := sts.New(sess)
+    result, err := stsClient.AssumeRole(&sts.AssumeRoleInput{
+        RoleArn:         aws.String("arn:aws:iam::YOUR_ACCOUNT_ID:role/TreblesurfPiStreamingRole"),
+        RoleSessionName: aws.String("device-stream-" + key.KeyID),
+        DurationSeconds: aws.Int64(3600), // 1 hour
+    })
+
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "accessKey":    *result.Credentials.AccessKeyId,
+        "secretKey":    *result.Credentials.SecretAccessKey,
+        "sessionToken": *result.Credentials.SessionToken,
+        "expiration":   result.Credentials.Expiration.Format(time.RFC3339),
+    })
+}
+
+// GetStreamPlaybackURL generates a signed URL for viewing the stream
+func GetStreamPlaybackURL(c *gin.Context) {
+    // Only authenticated users can access this endpoint
+    email, exists := c.Get("email")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+        return
+    }
+    fmt.Print(email)
+    
+    // You can add additional authorization checks here
+    // For example, check if the user has permission to view this camera
+    
+    sess := session.Must(session.NewSession(&aws.Config{
+        Region: aws.String("eu-west-1"),
+    }))
+    
+    kvsClient := kinesisvideo.New(sess)
+    
+    getDataEndpointOutput, err := kvsClient.GetDataEndpoint(&kinesisvideo.GetDataEndpointInput{
+        StreamName:              aws.String("treblesurf-webcam"),
+        APIName:                 aws.String("GET_HLS_STREAMING_SESSION_URL"),
+    })
+    
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    
+    archiveClient := kinesisvideoarchivedmedia.New(sess, &aws.Config{
+        Endpoint: getDataEndpointOutput.DataEndpoint,
+    })
+    
+    hlsOutput, err := archiveClient.GetHLSStreamingSessionURL(&kinesisvideoarchivedmedia.GetHLSStreamingSessionURLInput{
+        StreamName:      aws.String("treblesurf-webcam"),
+        PlaybackMode:    aws.String("LIVE"), // Use "ON_DEMAND" for recorded content
+        HLSFragmentSelector: &kinesisvideoarchivedmedia.HLSFragmentSelector{
+            FragmentSelectorType: aws.String("SERVER_TIMESTAMP"),
+        },
+        ContainerFormat:  aws.String("FRAGMENTED_MP4"),
+        DiscontinuityMode: aws.String("ALWAYS"),
+        Expires:          aws.Int64(3600), // URL valid for 1 hour
+    })
+    
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    
+    c.JSON(http.StatusOK, gin.H{
+        "hlsUrl": *hlsOutput.HLSStreamingSessionURL,
+    })
+}
+
+
+// CreateAPIKeyHandler handles requests to create a new API key
+func CreateAPIKeyHandler(c *gin.Context) {
+    email, _ := c.Get("email")
+    
+    var request struct {
+        Description string   `json:"description" binding:"required"`
+        ExpiryDays  int      `json:"expiry_days"`
+        Scopes      []string `json:"scopes" binding:"required"`
+    }
+    
+    if err := c.ShouldBindJSON(&request); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+        return
+    }
+    
+    apiKey, err := GenerateAPIKey(
+        request.Description,
+        email.(string),
+        request.ExpiryDays,
+        request.Scopes,
+    )
+    
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate API key"})
+        return
+    }
+    
+    err = storeAPIKey(apiKey)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store API key"})
+        return
+    }
+    
+    // Return the API key (this is the only time the client will see the full key)
+    c.JSON(http.StatusCreated, gin.H{
+        "message": "API key created successfully",
+        "key": apiKey,
+    })
+}
+
+// ListAPIKeysHandler returns all API keys (without their values)
+func ListAPIKeysHandler(c *gin.Context) {
+    input := &dynamodb.ScanInput{
+        TableName: aws.String("ApiKeys"),
+        ProjectionExpression: aws.String("key_id, description, created_by, created_at, expires_at, scopes"),
+    }
+    
+    result, err := db.Scan(input)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API keys"})
+        return
+    }
+    
+    var apiKeys []map[string]interface{}
+    err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &apiKeys)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse API keys"})
+        return
+    }
+    
+    c.JSON(http.StatusOK, gin.H{
+        "keys": apiKeys,
+        "count": len(apiKeys),
+    })
+}
+
+// RevokeAPIKeyHandler deletes an API key
+func RevokeAPIKeyHandler(c *gin.Context) {
+    keyID := c.Param("keyID")
+    
+    input := &dynamodb.DeleteItemInput{
+        TableName: aws.String("ApiKeys"),
+        Key: map[string]*dynamodb.AttributeValue{
+            "key_id": {
+                S: aws.String(keyID),
+            },
+        },
+    }
+    
+    _, err := db.DeleteItem(input)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke API key"})
+        return
+    }
+    
+    c.JSON(http.StatusOK, gin.H{"message": "API key revoked successfully"})
 }
