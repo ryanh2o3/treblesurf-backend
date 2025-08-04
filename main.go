@@ -121,7 +121,7 @@ func init() {
             webModifyGroup.DELETE("/deleteMyAccount", api.DeleteMyAccount)
             webModifyGroup.PUT("/setTheme", api.SetUserTheme)
             webModifyGroup.DELETE("/sessions/:sessionId", api.TerminateSessionHandler)
-            webModifyGroup.POST("/request-stream", api.RequestStreamHandler)
+            webModifyGroup.POST("/requestStream", api.RequestStreamHandler)
 
         }
         authorized.GET("/sessions", api.GetUserSessionsHandler)
@@ -129,8 +129,8 @@ func init() {
         authorized.GET("/getTodaySpotReports", api.RetrieveTodaysSurfReports) // Expects ?country= &region= &spot=
         authorized.GET("getReportImage", api.GetReportImage) // Expects ?key=
         authorized.GET("/ws-token", api.GetWebSocketTokenHandler)
-        authorized.GET("/stream-url", api.GetStreamPlaybackURL)
-        authorized.GET("/latest-snapshot", api.GetLatestSnapshotHandler) // For web users to view snapshots
+        authorized.GET("/streamUrl", api.GetStreamPlaybackURL)
+        authorized.GET("/latestSnapshot", api.GetLatestSnapshotHandler) // For web users to view snapshots
 
 
     }
