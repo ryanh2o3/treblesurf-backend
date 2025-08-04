@@ -1647,24 +1647,6 @@ func UploadSnapshotHandler(c *gin.Context) {
         return
     }
     
-    // Store as latest snapshot for this spot
-    _, err = db.UpdateItem(&dynamodb.UpdateItemInput{
-        TableName: aws.String("SpotLatestSnapshots"),
-        Key: map[string]*dynamodb.AttributeValue{
-            "spot_id": {S: aws.String(spotID)},
-        },
-        UpdateExpression: aws.String("SET image_key = :imageKey, timestamp = :timestamp, uploaded_at = :uploadedAt"),
-        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-            ":imageKey":   {S: aws.String(s3Key)},
-            ":timestamp":  {S: aws.String(timestamp.Format(time.RFC3339))},
-            ":uploadedAt": {S: aws.String(time.Now().Format(time.RFC3339))},
-        },
-    })
-    
-    if err != nil {
-        log.Printf("Error updating latest snapshot: %v", err)
-        // Continue anyway, not critical
-    }
     
     c.JSON(http.StatusOK, gin.H{
         "message":   "Snapshot uploaded successfully",
@@ -1683,7 +1665,7 @@ func GetLatestSnapshotHandler(c *gin.Context) {
     
     // Query DynamoDB for the latest snapshot
     result, err := db.GetItem(&dynamodb.GetItemInput{
-        TableName: aws.String("SpotLatestSnapshots"),
+        TableName: aws.String("SpotSnapshots"),
         Key: map[string]*dynamodb.AttributeValue{
             "spot_id": {S: aws.String(spotID)},
         },
