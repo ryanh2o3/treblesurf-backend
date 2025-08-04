@@ -121,7 +121,6 @@ func init() {
             webModifyGroup.DELETE("/deleteMyAccount", api.DeleteMyAccount)
             webModifyGroup.PUT("/setTheme", api.SetUserTheme)
             webModifyGroup.DELETE("/sessions/:sessionId", api.TerminateSessionHandler)
-            webModifyGroup.POST("/requestStream", api.RequestStreamHandler)
 
         }
         authorized.GET("/sessions", api.GetUserSessionsHandler)
@@ -131,6 +130,8 @@ func init() {
         authorized.GET("/ws-token", api.GetWebSocketTokenHandler)
         authorized.GET("/streamUrl", api.GetStreamPlaybackURL)
         authorized.GET("/latestSnapshot", api.GetLatestSnapshotHandler) // For web users to view snapshots
+        authorized.POST("/requestStream", api.RequestStreamHandler)
+
 
 
     }
