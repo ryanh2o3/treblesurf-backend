@@ -97,8 +97,6 @@ func init() {
     r.GET("/individualBuoyLocation", api.IndividualBuoyLocationInfo) // Expects ?buoyName=
     r.GET("/locationInfo", api.GetLocationInfo)   
     r.GET("/forecast", api.GetSpotForecast)               // Expects ?country= &region= &spot=
-    r.GET("/streaming-credentials", api.GetStreamingCredentials) // Protected by API key, not session auth
-
 
     // Protected routes (auth required)
     authorized := r.Group("/")
