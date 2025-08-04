@@ -1553,8 +1553,23 @@ func UploadSnapshotHandler(c *gin.Context) {
     var timestamp time.Time
     var err error
     if timestampStr != "" {
-        timestamp, err = time.Parse(time.RFC3339, timestampStr)
-        if err != nil {
+        // Try multiple timestamp formats
+        formats := []string{
+            time.RFC3339,
+            "2006-01-02T15:04:05.999999",  // Python's isoformat()
+            "2006-01-02T15:04:05",         // isoformat without microseconds
+            "2006-01-02 15:04:05",
+        }
+        
+        var parseError error
+        for _, format := range formats {
+            timestamp, parseError = time.Parse(format, timestampStr)
+            if parseError == nil {
+                break
+            }
+        }
+        
+        if parseError != nil {
             c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid timestamp format. Use ISO 8601/RFC3339"})
             return
         }
