@@ -28,7 +28,7 @@ type TokenClaims struct {
 // Replace this with a proper secret from environment variable in production
 var jwtSecret []byte
 
-func init() {
+func InitJWTSecret() {
     secretKey := os.Getenv("JWT_SECRET")
     if secretKey == "" {
         log.Fatal("JWT_SECRET environment variable must be set")
@@ -361,59 +361,77 @@ func ValidateTokenHandler(c *gin.Context) {
     c.Header("Pragma", "no-cache")
     c.Header("Expires", "0")
 
-        if sessionService == nil {
-            c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Session service unavailable"})
-            return
-        }
-
-        userSession, err := sessionService.GetUserSession(c.Request)
-        if err != nil || userSession == nil {
-            c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired or invalid"})
-            return
-        }
-        
-        // Session is valid, get user data
-        email := userSession.UserID
-        user, err := getUserByEmail(email)
-        if err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
-            return
-        }
-
-        if user == nil {
-            c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
-            return
-        }
-
-        // Get CSRF token from session and update last active time
-        var sessionData SessionJSON
-        if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
-            sessionData.LastActive = time.Now()
-            updatedJSON, _ := json.Marshal(sessionData)
-            userSession.JSON = string(updatedJSON)
-            
-            if sessionData.CSRF != "" {
-                c.Header("X-CSRF-Token", sessionData.CSRF)
-            }
-        }
-
-        // Extend session validity
-        _ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
-
-        // Return user data for web client
+    if os.Getenv("GO_ENV") == "development" {
+        // In development mode, always return valid mock user without checking for email
+        log.Println("Development mode: returning mock user for validation")
         c.JSON(http.StatusOK, gin.H{
             "valid": true,
-            "auth_type": "session",
+            "auth_type": "development",
             "user": gin.H{
-                "email":       user.Email,
-                "name":        user.Name,
-                "picture":     user.Picture,
-                "family_name": user.FamilyName,
-                "given_name":  user.GivenName,
-                "theme":       user.Theme,
+                "email":       "testuser@example.com",
+                "name":        "Test User",
+                "picture":     "https://via.placeholder.com/150",
+                "family_name": "User",
+                "given_name":  "Test",
+                "theme":       "dark",
             },
         })
         return
+    }
+
+    if sessionService == nil {
+        c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Session service unavailable"})
+        return
+    }
+
+    userSession, err := sessionService.GetUserSession(c.Request)
+    if err != nil || userSession == nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired or invalid"})
+        return
+    }
+    
+    // Session is valid, get user data
+    email := userSession.UserID
+    user, err := getUserByEmail(email)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
+        return
+    }
+
+    if user == nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+        return
+    }
+
+    // Get CSRF token from session and update last active time
+    var sessionData SessionJSON
+    if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
+        sessionData.LastActive = time.Now()
+        updatedJSON, _ := json.Marshal(sessionData)
+        userSession.JSON = string(updatedJSON)
+        
+        if sessionData.CSRF != "" {
+            c.Header("X-CSRF-Token", sessionData.CSRF)
+        }
+    }
+
+    // Extend session validity
+    _ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
+
+    // Return user data for web client
+    c.JSON(http.StatusOK, gin.H{
+        "valid": true,
+        "auth_type": "session",
+        "user": gin.H{
+            "email":       user.Email,
+            "name":        user.Name,
+            "picture":     user.Picture,
+            "family_name": user.FamilyName,
+            "given_name":  user.GivenName,
+            "theme":       user.Theme,
+        },
+    })
+    return
 }
 
 type User struct {
@@ -774,6 +792,73 @@ func APIKeyAuthMiddleware(requiredScope string) gin.HandlerFunc {
         
         // Set the API key in the context for use by handlers
         c.Set("apiKey", apiKey)
+        c.Next()
+    }
+}
+
+// DevAuthMiddleware automatically authenticates requests in local development
+func DevAuthMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Set a mock authenticated user
+        email := "testuser@example.com"
+        c.Set("email", email)
+        c.Set("authenticated", true)
+        c.Set("user", map[string]interface{}{
+            "email":      email,
+            "name":       "Test User",
+            "GivenName":  "Test",
+            "FamilyName": "User",
+            "Theme":      "dark",
+            "Picture":    "https://via.placeholder.com/150",
+        })
+        
+        // Check if this is a validate request and create a mock session if needed
+        if sessionService != nil{
+            // Generate CSRF token
+            csrfToken, _ := GenerateCSRFToken()
+            
+            // Create session data
+            sessionData := SessionJSON{
+                CSRF:       csrfToken,
+                UserAgent:  c.Request.UserAgent(),
+                IPAddress:  getClientIP(c),
+                CreatedAt:  time.Now(),
+                LastActive: time.Now(),
+            }
+            
+            // Marshal the session data to JSON
+            jsonBytes, _ := json.Marshal(sessionData)
+            
+            // Create a session and attach it to the response
+            userSession, err := sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
+            if err == nil {
+                // Set the session in the context so ValidateTokenHandler can find it
+                c.Set("session", userSession)
+                
+                // Set the CSRF token in the header
+                c.Header("X-CSRF-Token", csrfToken)
+            }
+        }
+        
+        c.Next()
+    }
+}
+
+// DevAdminAuthMiddleware automatically authenticates requests as an admin in local development
+func DevAdminAuthMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Set a mock authenticated admin user
+        c.Set("email", "admin@example.com")
+        c.Set("authenticated", true)
+        c.Set("user", map[string]interface{}{
+            "email":      "admin@example.com",
+            "name":       "Admin User",
+            "GivenName":  "Admin",
+            "FamilyName": "User",
+            "Theme":      "dark",
+            "Picture":    "https://via.placeholder.com/150",
+            "Role":       "admin",
+        })
         c.Next()
     }
 }

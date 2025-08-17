@@ -7,10 +7,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+	"treblesurf-backend/local/storage"
+	"treblesurf-backend/models"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -39,6 +42,10 @@ func init() {
     db = dynamodb.New(sess)
     s3Client = s3.New(sess)
     rekognitionClient = rekognition.New(sess)
+
+    models.Registry.DynamoDB = db
+    models.Registry.S3Client = s3Client
+    models.Registry.Rekognition = rekognitionClient
 
 }
 
@@ -222,8 +229,7 @@ func BuoyLocationInfo(c *gin.Context) {
 
 func IndividualBuoyLocationInfo(c *gin.Context) {
     regionName := c.Query("region")
-    buoyName := c.Query("buoyName")
-
+    buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")        
     input := &dynamodb.QueryInput{
         TableName: aws.String("BuoyLocations"),
         KeyConditionExpression: aws.String("region_buoy = :region_buoy"),
@@ -241,7 +247,7 @@ func IndividualBuoyLocationInfo(c *gin.Context) {
     }
 
     if len(result.Items) == 0 {
-        c.JSON(http.StatusNotFound, gin.H{"error": "No buoy location found"})
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "No buoy location found"})
         return
     }
 
@@ -449,7 +455,7 @@ func GetRegionForecast(c *gin.Context) {
     forecastDate := time.Now().Format("2006-01-02")
 
     input := &dynamodb.QueryInput{
-        TableName: aws.String("SurfSpotForecastData"),
+        TableName: aws.String("SpotForecastData"),
         KeyConditionExpression: aws.String("ForecastDate = :date AND begins_with(country_region_spot, :location)"),
         ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
             ":date": {
@@ -602,7 +608,7 @@ func GetBuoyDataRange(c *gin.Context) {
 }
 
 func GetSingleBuoyData(c *gin.Context) {
-    buoyName := c.Query("buoyName")
+    buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")    
     var data map[string]interface{}
     // Start from current time rounded down to the nearest hour
     now := time.Now()
@@ -621,8 +627,7 @@ func GetSingleBuoyData(c *gin.Context) {
 }
 
 func GetLast24HoursBuoyData(c *gin.Context) {
-    buoyName := c.Query("buoyName")
-    
+    buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")    
     // Calculate time range
     endTime := time.Now().UTC()
     startTime := endTime.AddDate(0, 0, -1) // 7 days ago
@@ -819,6 +824,31 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 }
 
 func validateImageWithRekognition(imageData []byte) (bool, error) {
+     if os.Getenv("GO_ENV") == "development" {
+        // Use mock rekognition
+        mockRekognition := &storage.MockRekognition{}
+        result, err := mockRekognition.DetectLabels(&rekognition.DetectLabelsInput{
+            Image: &rekognition.Image{
+                Bytes: imageData,
+            },
+            MinConfidence: aws.Float64(90.0),
+        })
+        
+        if err != nil {
+            return false, err
+        }
+        
+        validLabels := []string{"Sea", "Water", "Sea Waves", "Beach", "Coast"}
+        for _, label := range result.Labels {
+            for _, validLabel := range validLabels {
+                if strings.EqualFold(*label.Name, validLabel) {
+                    return true, nil
+                }
+            }
+        }
+        
+        return false, nil
+    }
     input := &rekognition.DetectLabelsInput{
         Image: &rekognition.Image{
             Bytes: imageData,
@@ -959,7 +989,8 @@ func GetMultipleBuoyData(c *gin.Context) {
         for i := 0; i < 12; i++ {
             searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
             dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-            data = getBuoyData(buoy, dateStr)
+            buoyName := strings.ReplaceAll(buoy, " ", "")
+            data = getBuoyData(buoyName, dateStr)
             if data != nil {
                 break
             }
@@ -1001,7 +1032,8 @@ func mergeMaps(maps ...map[string]interface{}) map[string]interface{} {
 
 func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
     var buoyData map[string]interface{}
-    print(dateStr)
+    log.Print("buoy name", buoyName)
+
     input := &dynamodb.QueryInput{
         TableName: aws.String("BuoyData"),
         KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime = :dt"),
@@ -1041,7 +1073,7 @@ func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
 func getBuoyDataRange(buoyName string, startTime, endTime time.Time) ([]map[string]interface{}, error) {
     startStr := startTime.UTC().Format("2006-01-02T15:00:00Z")
     endStr := endTime.UTC().Format("2006-01-02T15:00:00Z")
-    
+    log.Print("buoy name", buoyName)
     input := &dynamodb.QueryInput{
         TableName: aws.String("BuoyData"),
         KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime BETWEEN :start AND :end"),
