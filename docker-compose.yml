@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local
+    ports:
+      - "8000:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data"
+    volumes:
+      - ./local/data/dynamodb:/home/dynamodblocal/data
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+
+  localstack:
+    image: localstack/localstack:1.4.0
+    container_name: treblesurf-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,iam,sts,rekognition
+      - DEBUG=1
+      - PERSISTENCE=1
+      - SKIP_CORS_HOSTS=*
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - LOCALSTACK_HOSTNAME=localhost
+      - TMPDIR=/tmp/localstack_tmp
+    volumes:
+      - "${TMPDIR:-/tmp}/localstack:/tmp/localstack_tmp"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
