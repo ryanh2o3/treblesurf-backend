@@ -16,6 +16,8 @@ jobs:
 
     env:
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      GO_ENV: production
+      AWS_REGION: eu-west-1
 
     steps:
       - name: Checkout code
@@ -25,6 +27,7 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: "1.24"
+          cache: true
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -33,11 +36,25 @@ jobs:
           aws-region: eu-west-1
           audience: sts.amazonaws.com
 
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Verify Go module structure
+        run: |
+          echo "Go module structure:"
+          go mod graph | head -20
+          echo "Internal packages:"
+          find internal/ -name "*.go" | head -10
+          echo "Command packages:"
+          find cmd/ -name "*.go" | head -10
+
       - name: Build the Go application
         run: |
           # Build each function with distinct names from the start
-          GOOS=linux GOARCH=amd64 go build -o api-bootstrap main.go
-          GOOS=linux GOARCH=amd64 go build -o websocket-bootstrap ./websocket/main.go
+          # API Lambda - using new cmd/api/main.go structure
+          GOOS=linux GOARCH=amd64 go build -o api-bootstrap ./cmd/api/main.go
+          # WebSocket Lambda - using new cmd/websocket/main.go structure  
+          GOOS=linux GOARCH=amd64 go build -o websocket-bootstrap ./cmd/websocket/main.go
 
       - name: Package the application
         run: |
@@ -50,6 +67,13 @@ jobs:
           cp websocket-bootstrap bootstrap
           zip websocket-bootstrap.zip bootstrap
           rm bootstrap
+
+      - name: Verify build artifacts
+        run: |
+          echo "Build artifacts created:"
+          ls -la *.zip
+          echo "API Lambda size: $(stat -c%s bootstrap.zip) bytes"
+          echo "WebSocket Lambda size: $(stat -c%s websocket-bootstrap.zip) bytes"
 
       - name: Deploy Lambdas and Setup API Gateway
         run: |
@@ -69,7 +93,7 @@ jobs:
           # Update Lambda environment variables
           aws lambda update-function-configuration \
             --function-name $FUNCTION_NAME \
-            --environment "Variables={JWT_SECRET='$JWT_SECRET',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
 
       - name: Deploy WebSocket Lambda
         run: |
@@ -87,7 +111,7 @@ jobs:
           # Update WebSocket Lambda environment variables
           aws lambda update-function-configuration \
             --function-name $WS_FUNCTION_NAME \
-            --environment "Variables={JWT_SECRET='$JWT_SECRET',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
 
           # Configure permissions for WebSocket API Gateway
           WEBSOCKET_API_ID="9q47dtf5qe"

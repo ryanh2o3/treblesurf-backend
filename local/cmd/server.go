@@ -3,10 +3,10 @@ package main
 import (
 	"log"
 	"os"
-	"treblesurf-backend/api"
+	internalapi "treblesurf-backend/internal/api"
+	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/local/config"
 	"treblesurf-backend/local/storage"
-	"treblesurf-backend/models"
 
 	"github.com/joho/godotenv"
 )
@@ -30,7 +30,7 @@ func main() {
 
     log.Println("Starting Treble Surf backend in local development mode")
 
-	api.InitJWTSecret()
+	auth.InitJWTSecret()
 
     // Load local configuration
     cfg, err := config.Load(true)
@@ -43,18 +43,18 @@ func main() {
         log.Fatalf("Failed to initialize storage: %v", err)
     }
 
-	if models.Registry.DynamoDB != nil {
-    api.SetDynamoDB(models.Registry.DynamoDB)
-    api.SetS3Client(models.Registry.S3Client)
-    api.SetRekognitionClient(models.Registry.Rekognition)
-}
+	// Initialize the new container
+	container, err := internalapi.NewContainer()
+	if err != nil {
+		log.Fatalf("Failed to create container: %v", err)
+	}
 
-    // Initialize API session service
-    if err := api.InitSessionService(); err != nil {
-        log.Printf("Failed to initialize session service: %v", err)
-    }
+	// Initialize API session service
+	if err := auth.InitSessionService(); err != nil {
+		log.Printf("Failed to initialize session service: %v", err)
+	}
 
-    r := api.SetupRouter()
+	r := internalapi.SetupRouter(container)
     
     // Start server
     port := cfg.Port
