@@ -4,9 +4,9 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/controller"
-	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
