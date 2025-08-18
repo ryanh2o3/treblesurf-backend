@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"log"
 	"net/http"
-	"time"
 	"treblesurf-backend/internal/model"
 
 	"github.com/gin-gonic/gin"
@@ -37,37 +36,6 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 		log.Printf("Failed to submit report: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit report"})
 		return
-	}
-
-	message := map[string]interface{}{
-		"action": "new_report",
-		"data": map[string]interface{}{
-			"country":       report.Country,
-			"region":        report.Region,
-			"spot":          report.Spot,
-			"quality":       report.Quality,
-			"surfSize":      report.SurfSize,
-			"windAmount":    report.WindAmount,
-			"windDirection": report.WindDirection,
-			"messiness":     report.Messiness,
-			"consistency":   report.Consistency,
-			"reporter":      user.GivenName,
-			"reportTime":    time.Now().Format(time.RFC3339),
-		},
-	}
-
-	subscribers, err := getSpotSubscribers(report.Country, report.Region, report.Spot)
-	log.Print("subscribers", subscribers)
-	if err != nil {
-		log.Printf("Failed to get subscribers: %v", err)
-	} else {
-		// Broadcast to subscribers asynchronously
-		go func() {
-			err := BroadcastToUsers(subscribers, message)
-			if err != nil {
-				log.Printf("Failed to broadcast message: %v", err)
-			}
-		}()
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
@@ -120,18 +88,5 @@ func GetReportImage(c *gin.Context) {
 // Helper functions
 func getUserByEmail(email string) (*model.User, error) {
 	return UserService.GetUserByEmail(email)
-}
-
-func getSpotSubscribers(country, region, spot string) ([]string, error) {
-	// TODO: Implement spot subscribers retrieval
-	// For now, return empty list
-	return []string{}, nil
-}
-
-func BroadcastToUsers(subscribers []string, message map[string]interface{}) error {
-	// TODO: Implement user broadcasting
-	// For now, just log the message
-	log.Printf("Broadcasting message to %d subscribers: %v", len(subscribers), message)
-	return nil
 }
 

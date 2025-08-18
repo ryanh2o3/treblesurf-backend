@@ -63,6 +63,7 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 	if report.ImageData != "" {
 		// Extract base64 data
 		base64String := report.ImageData
+		
 		// Handle data URIs by removing the prefix
 		if strings.HasPrefix(base64String, "data:") {
 			// Find the comma that separates the header from the data
@@ -71,6 +72,7 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 				base64String = base64String[commaIndex+1:]
 			}
 		}
+		
 		imageData, err := base64.StdEncoding.DecodeString(base64String)
 		if err != nil {
 			return fmt.Errorf("invalid image data: %v", err)
@@ -122,7 +124,41 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		return fmt.Errorf("failed to store report: %v", err)
 	}
 
-	log.Printf("Report submitted successfully with image key: %s", s3KeyReport)
+	log.Print("done putting")
+
+	// Build message for WebSocket broadcasting
+	message := map[string]interface{}{
+		"action": "new_report",
+		"data": map[string]interface{}{
+			"country":       report.Country,
+			"region":        report.Region,
+			"spot":          report.Spot,
+			"quality":       report.Quality,
+			"surfSize":      report.SurfSize,
+			"windAmount":    report.WindAmount,
+			"windDirection": report.WindDirection,
+			"messiness":     report.Messiness,
+			"consistency":   report.Consistency,
+			"reporter":      userName,
+			"imageKey":      s3KeyReport,
+			"reportTime":    time.Now().Format(time.RFC3339),
+		},
+	}
+
+	// Get spot subscribers and broadcast (this is what was missing!)
+	subscribers, err := s.getSpotSubscribers(report.Country, report.Region, report.Spot)
+	if err != nil {
+		log.Printf("Failed to get subscribers: %v", err)
+	} else {
+		// Broadcast to subscribers asynchronously
+		go func() {
+			err := s.broadcastToUsers(subscribers, message)
+			if err != nil {
+				log.Printf("Failed to broadcast message: %v", err)
+			}
+		}()
+	}
+
 	return nil
 }
 
@@ -229,4 +265,19 @@ func (s *ReportService) IsValidSurfConditions(surfConditions string) bool {
 
 func (s *ReportService) IsValidSurfDifficulty(surfDifficulty string) bool {
 	return validation.IsValidSurfDifficulty(surfDifficulty)
+}
+
+// getSpotSubscribers retrieves subscribers for a specific spot
+func (s *ReportService) getSpotSubscribers(country, region, spot string) ([]string, error) {
+	// TODO: Implement spot subscribers retrieval
+	// For now, return empty list
+	return []string{}, nil
+}
+
+// broadcastToUsers broadcasts a message to multiple users via WebSocket
+func (s *ReportService) broadcastToUsers(subscribers []string, message interface{}) error {
+	// TODO: Implement user broadcasting
+	// For now, just log the message
+	log.Printf("Broadcasting message to %d subscribers: %v", len(subscribers), message)
+	return nil
 }
