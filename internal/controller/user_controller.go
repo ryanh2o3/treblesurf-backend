@@ -8,24 +8,8 @@ import (
 )
 
 // This controller uses the shared service registry
-
-// TerminateSessionHandler terminates a user session
-func TerminateSessionHandler(c *gin.Context) {
-	// TODO: Implement session termination
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented yet"})
-}
-
-// GetUserSessionsHandler retrieves user sessions
-func GetUserSessionsHandler(c *gin.Context) {
-	// TODO: Implement session retrieval
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented yet"})
-}
-
-// GetWebSocketTokenHandler generates a WebSocket token
-func GetWebSocketTokenHandler(c *gin.Context) {
-	// TODO: Implement WebSocket token generation
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented yet"})
-}
+// Note: Session handlers (TerminateSessionHandler, GetUserSessionsHandler, GetWebSocketTokenHandler)
+// are implemented in internal/auth/service.go and routed from there
 
 // SetUserTheme updates user theme preference
 func SetUserTheme(c *gin.Context) {
