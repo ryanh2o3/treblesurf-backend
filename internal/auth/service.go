@@ -163,6 +163,20 @@ func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, 
 	}, nil
 }
 
+// EnableTTL enables TTL on the Sessions table
+func (s *DynamoDBStore) EnableTTL() error {
+	input := &dynamodb.UpdateTimeToLiveInput{
+		TableName: aws.String(s.tableName),
+		TimeToLiveSpecification: &dynamodb.TimeToLiveSpecification{
+			AttributeName: aws.String("ttl"),
+			Enabled:       aws.Bool(true),
+		},
+	}
+
+	_, err := s.db.UpdateTimeToLive(input)
+	return err
+}
+
 // GetSessionsByUserID retrieves all sessions for a specific user
 func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, error) {
 	input := &dynamodb.QueryInput{
@@ -209,9 +223,41 @@ func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, err
 
 // EnsureSessionsTable ensures the Sessions table exists
 func (s *DynamoDBStore) EnsureSessionsTable() error {
-	// For now, assume the table exists
-	// TODO: Implement table creation if needed
-	return nil
+	// Check if table exists
+	tables, err := s.db.ListTables(&dynamodb.ListTablesInput{})
+	if err != nil {
+		return err
+	}
+
+	for _, tableName := range tables.TableNames {
+		if *tableName == s.tableName {
+			return nil // Table already exists
+		}
+	}
+
+	// Table doesn't exist, create it
+	input := &dynamodb.CreateTableInput{
+		AttributeDefinitions: []*dynamodb.AttributeDefinition{
+			{
+				AttributeName: aws.String("session_id"),
+				AttributeType: aws.String("S"),
+			},
+		},
+		KeySchema: []*dynamodb.KeySchemaElement{
+			{
+				AttributeName: aws.String("session_id"),
+				KeyType:       aws.String("HASH"),
+			},
+		},
+		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+			ReadCapacityUnits:  aws.Int64(5),
+			WriteCapacityUnits: aws.Int64(5),
+		},
+		TableName: aws.String(s.tableName),
+	}
+
+	_, err = s.db.CreateTable(input)
+	return err
 }
 
 // Global variables
@@ -247,6 +293,11 @@ func InitSessionService() error {
 	// Ensure the Sessions table exists
 	if err := sessionStore.EnsureSessionsTable(); err != nil {
 		return fmt.Errorf("failed to ensure Sessions table: %w", err)
+	}
+
+	// Enable TTL on the Sessions table
+	if err := sessionStore.EnableTTL(); err != nil {
+		log.Printf("Warning: Failed to enable TTL on Sessions table: %v", err)
 	}
 
 	// Create auth service with your JWT secret
@@ -783,4 +834,36 @@ func CreateDevSession(email string, c *gin.Context) error {
 	c.Header("X-CSRF-Token", csrfToken)
 
 	return nil
+}
+
+// SessionMiddleware attaches user session to the context if present
+func SessionMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userSession, err := sessionService.GetUserSession(c.Request)
+		if err != nil {
+			// Log the error but continue
+			fmt.Printf("Error fetching session: %v\n", err)
+		}
+
+		if userSession != nil {
+			// Store the session in the context
+			c.Set("session", userSession)
+
+			// Extend the session if needed
+			_ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
+
+			// Parse session JSON to get CSRF token
+			var sessionData SessionJSON
+			if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
+				if sessionData.CSRF != "" {
+					c.Header("X-CSRF-Token", sessionData.CSRF)
+				}
+			}
+
+			// Set email in context for compatibility with existing code
+			c.Set("email", userSession.UserID)
+		}
+
+		c.Next()
+	}
 }
