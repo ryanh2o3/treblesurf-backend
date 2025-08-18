@@ -2,10 +2,12 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"time"
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/controller"
 	"treblesurf-backend/internal/service"
@@ -203,7 +205,20 @@ func (l *localDynamoDBWrapper) GetItem(input *dynamodb.GetItemInput) (*dynamodb.
 }
 
 func (l *localDynamoDBWrapper) PutItem(input *dynamodb.PutItemInput) (*dynamodb.PutItemOutput, error) {
-	return l.client.PutItem(input)
+	// Add a timeout context to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	// Create a request with context
+	req, _ := l.client.PutItemRequest(input)
+	req.SetContext(ctx)
+	
+	err := req.Send()
+	if err != nil {
+		return nil, err
+	}
+	
+	return req.Data.(*dynamodb.PutItemOutput), nil
 }
 
 func (l *localDynamoDBWrapper) UpdateItem(input *dynamodb.UpdateItemInput) (*dynamodb.UpdateItemOutput, error) {
