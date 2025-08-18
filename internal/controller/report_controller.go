@@ -13,19 +13,38 @@ import (
 
 // SubmitCurrentSurfReport handles surf report submission
 func SubmitCurrentSurfReport(c *gin.Context) {
+	log.Printf("=== Report Submission Request ===")
+	log.Printf("User-Agent: %s", c.Request.UserAgent())
+	log.Printf("Method: %s", c.Request.Method)
+	log.Printf("Content-Type: %s", c.GetHeader("Content-Type"))
+	log.Printf("X-CSRF-Token: %s", c.GetHeader("X-CSRF-Token"))
+	log.Printf("Origin: %s", c.GetHeader("Origin"))
+	log.Printf("Referer: %s", c.GetHeader("Referer"))
+
 	log.Print("start of submit report")
 	var report model.ReportWithImage
 	if err := c.BindJSON(&report); err != nil {
+		log.Printf("Failed to bind JSON: %v", err)
+		log.Printf("Request body: %+v", c.Request.Body)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	log.Printf("Report data received: Country=%s, Region=%s, Spot=%s, SurfSize=%s",
+		report.Country, report.Region, report.Spot, report.SurfSize)
+
 	email, exists := c.Get("email")
 	if !exists {
+		log.Printf("No email found in context - authentication issue")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
+
+	log.Printf("User email from context: %s", email.(string))
+
 	user, err2 := getUserByEmail(email.(string))
 	if err2 != nil {
+		log.Printf("Failed to fetch user information: %v", err2)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return
 	}
@@ -38,6 +57,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Report submitted successfully for user: %s", email.(string))
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 

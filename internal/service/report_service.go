@@ -40,26 +40,8 @@ func NewReportService(dbStorage storage.DynamoDBStorage, s3Storage storage.S3Sto
 func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmail string, userName string) error {
 	currentTime := time.Now()
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
-	dateReported := fmt.Sprintf("%s_%s", currentTime, userEmail)
 
-	// Create the DynamoDB item
-	item := map[string]*dynamodb.AttributeValue{
-		"country_region_spot": {S: aws.String(countryRegionSpot)},
-		"dateReported":        {S: aws.String(dateReported)},
-		"SurfSize":            {S: aws.String(report.SurfSize)},
-		"WindAmount":          {S: aws.String(report.WindAmount)},
-		"WindDirection":       {S: aws.String(report.WindDirection)},
-		"Consistency":         {S: aws.String(report.Consistency)},
-		"Quality":             {S: aws.String(report.Quality)},
-		"Messiness":           {S: aws.String(report.Messiness)},
-		"UserEmail":           {S: aws.String(userEmail)},
-		"Reporter":            {S: aws.String(userName)},
-		"Time":                {S: aws.String(currentTime.String())},
-	}
-
-	var s3KeyReport = ""
-
-	// Process image if provided
+	// Process image if provided and extract EXIF time if available
 	if report.ImageData != "" {
 		// Extract base64 data
 		base64String := report.ImageData
@@ -83,7 +65,47 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		if err == nil {
 			if dateTime, err := exifData.DateTime(); err == nil {
 				currentTime = dateTime
+				log.Printf("Extracted EXIF time from image: %v", currentTime)
 			}
+		}
+	}
+
+	dateReported := fmt.Sprintf("%s_%s", currentTime, userEmail)
+
+	// Create the DynamoDB item
+	item := map[string]*dynamodb.AttributeValue{
+		"country_region_spot": {S: aws.String(countryRegionSpot)},
+		"dateReported":        {S: aws.String(dateReported)},
+		"SurfSize":            {S: aws.String(report.SurfSize)},
+		"WindAmount":          {S: aws.String(report.WindAmount)},
+		"WindDirection":       {S: aws.String(report.WindDirection)},
+		"Consistency":         {S: aws.String(report.Consistency)},
+		"Quality":             {S: aws.String(report.Quality)},
+		"Messiness":           {S: aws.String(report.Messiness)},
+		"UserEmail":           {S: aws.String(userEmail)},
+		"Reporter":            {S: aws.String(userName)},
+		"Time":                {S: aws.String(currentTime.String())},
+	}
+
+	var s3KeyReport = ""
+
+	// Process image if provided
+	if report.ImageData != "" {
+		// Extract base64 data again for validation and upload
+		base64String := report.ImageData
+		
+		// Handle data URIs by removing the prefix
+		if strings.HasPrefix(base64String, "data:") {
+			// Find the comma that separates the header from the data
+			commaIndex := strings.Index(base64String, ",")
+			if commaIndex != -1 {
+				base64String = base64String[commaIndex+1:]
+			}
+		}
+		
+		imageData, err := base64.StdEncoding.DecodeString(base64String)
+		if err != nil {
+			return fmt.Errorf("invalid image data: %v", err)
 		}
 
 		// Validate image using Rekognition
@@ -141,7 +163,7 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 			"consistency":   report.Consistency,
 			"reporter":      userName,
 			"imageKey":      s3KeyReport,
-			"reportTime":    time.Now().Format(time.RFC3339),
+			"reportTime":    currentTime.Format(time.RFC3339),
 		},
 	}
 
