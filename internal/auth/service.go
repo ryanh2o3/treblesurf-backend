@@ -179,21 +179,23 @@ func (s *DynamoDBStore) EnableTTL() error {
 
 // GetSessionsByUserID retrieves all sessions for a specific user
 func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, error) {
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(s.tableName),
-		IndexName:              aws.String("UserID-ExpiresAt-index"),
-		KeyConditionExpression: aws.String("user_id = :user_id"),
+	// Create a query input that filters by UserID
+	input := &dynamodb.ScanInput{
+		TableName:        aws.String(s.tableName),
+		FilterExpression: aws.String("user_id = :uid"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":user_id": {S: aws.String(userID)},
+			":uid": {
+				S: aws.String(userID),
+			},
 		},
 	}
 
-	result, err := s.db.Query(input)
+	result, err := s.db.Scan(input)
 	if err != nil {
 		return nil, err
 	}
 
-	var sessions []*user.Session
+	sessions := make([]*user.Session, 0)
 	now := time.Now()
 
 	for _, item := range result.Items {
