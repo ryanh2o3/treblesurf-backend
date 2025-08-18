@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/controller"
 
@@ -31,6 +32,16 @@ func SetupRouter(container *Container) *gin.Engine {
 		
 		apiGroup := r.Group("/api")
 		setupRoutes(apiGroup, container)
+	} else {
+		// Production CORS configuration for iOS PWA and other clients
+		r.Use(cors.New(cors.Config{
+			AllowOrigins:     []string{"*"}, // Allow all origins in production
+			AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+			AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-CSRF-Token", "User-Agent"},
+			ExposeHeaders:    []string{"Content-Length", "X-CSRF-Token"},
+			AllowCredentials: true,
+			MaxAge:           12 * time.Hour, // Cache preflight for 12 hours
+		}))
 	}
 	
 	// Enhanced logging middleware
