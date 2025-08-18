@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -42,7 +43,8 @@ func SetUserTheme(c *gin.Context) {
 	}
 
 	if user == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found" + user.Email})
+		log.Print("email address", email)
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 	theme := c.Query("theme")
