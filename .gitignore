@@ -1,0 +1,53 @@
+# Local database files
+**/shared-local-instance.db
+**/shared-local-instance.db-*
+**/shared-local-instance.db-journal
+
+# Local data directories
+local/data/**/*.db
+local/data/**/*.db-*
+local/data/**/*.db-journal
+
+# Go specific
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+bin/
+dist/
+build/
+
+# Temporary files
+tmp/
+temp/
