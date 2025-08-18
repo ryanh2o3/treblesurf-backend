@@ -82,13 +82,15 @@ func setupRoutes(r gin.IRouter, container *Container) {
 		authorized.Use(DevAuthMiddleware())
 	} else {
 		// In production, use the real auth middleware
-		authorized.Use(DevAuthMiddleware()) // TODO: Replace with real auth middleware
+		log.Print("using production auth middleware")
+		authorized.Use(auth.AuthMiddleware())
 	}
 
 	webModifyGroup := authorized.Group("/")
 	if !isLocal {
 		// Only apply CSRF in production, skip in local dev
-		webModifyGroup.Use(DevAuthMiddleware()) // TODO: Replace with CSRF middleware
+		log.Print("using production CSRF middleware")
+		webModifyGroup.Use(auth.CSRFMiddleware())
 	}
 	
 	webModifyGroup.POST("/submitSurfReport", controller.SubmitCurrentSurfReport)
@@ -126,7 +128,8 @@ func setupRoutes(r gin.IRouter, container *Container) {
 		adminRoutes.Use(DevAdminAuthMiddleware())
 	} else {
 		// In production, use real auth with admin check
-		adminRoutes.Use(DevAuthMiddleware(), AdminMiddleware()) // TODO: Replace with real auth middleware
+		log.Print("using production admin middleware")
+		adminRoutes.Use(auth.AuthMiddleware(), AdminMiddleware())
 	}
 	
 	adminRoutes.POST("/api-keys", controller.CreateAPIKeyHandler)
