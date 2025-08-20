@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"treblesurf-backend/internal/model"
@@ -76,6 +77,34 @@ func (s *LocationService) GetSpots(countryName, regionName string) ([]model.Loca
 		return nil, fmt.Errorf("failed to unmarshal spots: %v", err)
 	}
 
+	// Fetch and encode images for each location
+	for i := range locations {
+		// Extract spot name from CountryRegionSpot field
+		// Format: country/region/spot
+		parts := strings.Split(locations[i].CountryRegionSpot, "/")
+		if len(parts) >= 3 {
+			spotName := parts[2]
+			
+			// Construct the S3 key for the image
+			// Format: spot-images/country_region_spot.jpg
+			imageKey := fmt.Sprintf("spot-images/%s_%s_%s.jpg", 
+				strings.ReplaceAll(countryName, " ", "_"), 
+				strings.ReplaceAll(regionName, " ", "_"), 
+				strings.ReplaceAll(spotName, " ", "_"))
+			
+			// Try to fetch the image from S3
+			imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
+			if err != nil {
+				// Log error but don't fail the request
+				// locations[i].ImageString will remain empty
+				fmt.Printf("Failed to fetch image for %s: %v\n", imageKey, err)
+			} else {
+				// Encode the image data as base64
+				locations[i].ImageString = base64.StdEncoding.EncodeToString(imageData)
+			}
+		}
+	}
+
 	return locations, nil
 }
 
@@ -106,14 +135,21 @@ func (s *LocationService) GetLocationInfo(countryName, regionName, spotName stri
 	}
 
 	// Get image from S3 if available
-	if location.Image != "" {
-		imageData, err := s.s3Storage.GetObject(s.bucketName, location.Image+".jpg")
-		if err != nil {
-			// Log error but don't fail the request
-			// location.ImageString will remain empty
-		} else {
-			location.ImageString = string(imageData)
-		}
+	// Construct the S3 key for the image
+	// Format: spot-images/country_region_spot.jpg
+	imageKey := fmt.Sprintf("spot-images/%s_%s_%s.jpg", 
+		strings.ReplaceAll(countryName, " ", "_"), 
+		strings.ReplaceAll(regionName, " ", "_"), 
+		strings.ReplaceAll(spotName, " ", "_"))
+	
+	imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
+	if err != nil {
+		// Log error but don't fail the request
+		// location.ImageString will remain empty
+		fmt.Printf("Failed to fetch image for %s: %v\n", imageKey, err)
+	} else {
+		// Encode the image data as base64
+		location.ImageString = base64.StdEncoding.EncodeToString(imageData)
 	}
 
 	return &location, nil
