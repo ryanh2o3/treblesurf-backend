@@ -87,10 +87,11 @@ func (s *LocationService) GetSpots(countryName, regionName string) ([]model.Loca
 			
 			// Construct the S3 key for the image
 			// Format: spot-images/country_region_spot.jpg
+			// Remove all spaces from input strings since S3 image names have no spaces
 			imageKey := fmt.Sprintf("spot-images/%s_%s_%s.jpg", 
-				strings.ReplaceAll(countryName, " ", "_"), 
-				strings.ReplaceAll(regionName, " ", "_"), 
-				strings.ReplaceAll(spotName, " ", "_"))
+				strings.ReplaceAll(countryName, " ", ""), 
+				strings.ReplaceAll(regionName, " ", ""), 
+				strings.ReplaceAll(spotName, " ", ""))
 			
 			// Try to fetch the image from S3
 			imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
@@ -137,10 +138,11 @@ func (s *LocationService) GetLocationInfo(countryName, regionName, spotName stri
 	// Get image from S3 if available
 	// Construct the S3 key for the image
 	// Format: spot-images/country_region_spot.jpg
+	// Remove all spaces from input strings since S3 image names have no spaces
 	imageKey := fmt.Sprintf("spot-images/%s_%s_%s.jpg", 
-		strings.ReplaceAll(countryName, " ", "_"), 
-		strings.ReplaceAll(regionName, " ", "_"), 
-		strings.ReplaceAll(spotName, " ", "_"))
+		strings.ReplaceAll(countryName, " ", ""), 
+		strings.ReplaceAll(regionName, " ", ""), 
+		strings.ReplaceAll(spotName, " ", ""))
 	
 	imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
 	if err != nil {
