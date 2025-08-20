@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"treblesurf-backend/internal/model"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -257,4 +258,40 @@ func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
     }
     return buoyData
     
+}
+
+func GetRegionBuoys(c *gin.Context){
+    regionName := c.Query("region")
+    var buoys []model.Buoy
+
+
+
+    input := &dynamodb.ScanInput{
+		TableName: aws.String("BuoyLocations"),
+		FilterExpression: aws.String("begins_with(region_buoy, :region)"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":region": {
+				S: aws.String(fmt.Sprintf("%s_", regionName)),
+			},
+		},
+	}
+
+	result, err := DB.Scan(input)
+	if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to query"})
+        return
+	}
+
+	if len(result.Items) == 0 {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "no buoys found for this region"})
+        return
+	}
+
+    err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &buoys)
+    if err != nil {
+        log.Printf("Error unmarshalling buoy data: %v", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to find buoys for this region"})
+        return
+    }
+    c.JSON(http.StatusOK, buoys)
 }
