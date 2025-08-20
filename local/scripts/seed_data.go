@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"math"
+	"os"
 	"time"
 	"treblesurf-backend/local/config"
 	"treblesurf-backend/local/storage"
@@ -46,7 +49,7 @@ func seedRealForecastData() error {
     // Create timestamp for base forecast time
     baseTime := time.Now().Truncate(24 * time.Hour)
     
-    // Define locations with their metadata
+    // Define locations with their metadata and image paths
     locations := map[string]map[string]interface{}{
         "Ireland/Donegal/Ballyhiernan": {
             "BeachDirection":      200,
@@ -54,6 +57,7 @@ func seedRealForecastData() error {
             "Longitude":           -8.1533,
             "Type":                "BeachBreak",
             "IdealSwellDirection": "NW",
+            "ImagePath":           "../images/spotImages/Ireland/Donegal/BallyhiernanLow.jpg",
         },
         "Ireland/Donegal/Ballymastocker": {
             "BeachDirection":      170,
@@ -61,11 +65,44 @@ func seedRealForecastData() error {
             "Longitude":           -7.7118,
             "Type":                "BeachBreak",
             "IdealSwellDirection": "N",
+            "ImagePath":           "../images/spotImages/Ireland/Donegal/BallymastockerLow.jpg",
+        },
+        "Ireland/Donegal/Marble Hill": {
+            "BeachDirection":      170,
+            "Latitude":            55.1826, 
+            "Longitude":           -7.7118,
+            "Type":                "BeachBreak",
+            "IdealSwellDirection": "N",
+            "ImagePath":           "../images/spotImages/Ireland/Donegal/Marble HillLow.jpg",
+        },
+        "Ireland/Donegal/Rossnowlagh": {
+            "BeachDirection":      200,
+            "Latitude":            55.1938,
+            "Longitude":           -8.1533,
+            "Type":                "BeachBreak",
+            "IdealSwellDirection": "W",
+            "ImagePath":           "../images/spotImages/Ireland/Donegal/RossnowlaghLow.jpg",
+        },
+        "Ireland/Donegal/Tullan Strand": {
+            "BeachDirection":      170,
+            "Latitude":            55.1826, 
+            "Longitude":           -7.7118,
+            "Type":                "BeachBreak",
+            "IdealSwellDirection": "W",
+            "ImagePath":           "../images/spotImages/Ireland/Donegal/Tullan StrandLow.jpg",
         },
     }
     
-    // First, create location data entries
+    // First, create location data entries with base64 encoded images
     for spotID, metadata := range locations {
+        // Read and encode the image
+        imagePath := metadata["ImagePath"].(string)
+        base64Image, err := encodeImageToBase64(imagePath)
+        if err != nil {
+            log.Printf("Warning: Failed to encode image for %s: %v", spotID, err)
+            base64Image = "" // Set empty string if image encoding fails
+        }
+        
         locationItem := map[string]interface{}{
             "country_region_spot": spotID,
             "BeachDirection":      metadata["BeachDirection"],
@@ -73,6 +110,7 @@ func seedRealForecastData() error {
             "Longitude":           metadata["Longitude"],
             "Type":                metadata["Type"],
             "IdealSwellDirection": metadata["IdealSwellDirection"],
+            "ImageString":         base64Image,
         }
         
         item, err := dynamodbattribute.MarshalMap(locationItem)
@@ -88,6 +126,9 @@ func seedRealForecastData() error {
         if err != nil {
             return fmt.Errorf("failed to put location item: %w", err)
         }
+        
+        log.Printf("Successfully seeded location data for %s with image (size: %d bytes)", 
+            spotID, len(base64Image))
     }
     
     surfData1 := []map[string]interface{}{
@@ -437,7 +478,12 @@ surfData2 := []map[string]interface{}{
         for _, sample := range forecastSamples {
             // Calculate the forecast time
             forecastTime := baseTime.Add(time.Duration(sample["hourOffset"].(int)) * time.Hour)
-            timestampStr := fmt.Sprintf("%d", forecastTime.Unix())
+            currentTime := time.Now()
+            generatedAtTimestampStr := fmt.Sprintf("%d", currentTime.Unix())
+            // Get the nearest previous hour for forecast_timestamp
+            nearestHour := time.Now().Truncate(time.Hour)
+            forecastTimestampStr := fmt.Sprintf("%d", nearestHour.Unix())  
+
             dateForecastedFor := forecastTime.Format("2006-01-02 15:04:05")
             
             // Create the data field with raw values instead of type annotations
@@ -462,9 +508,9 @@ surfData2 := []map[string]interface{}{
                     
             forecast := map[string]interface{}{
                 "spot_id":            spotID,
-                "forecast_timestamp": timestampStr,
+                "forecast_timestamp": forecastTimestampStr,
                 "data":               dataMap,
-                "generated_at":       timestampStr,
+                "generated_at":       generatedAtTimestampStr,
             }
             
             item, err := dynamodbattribute.MarshalMap(forecast)
@@ -539,7 +585,7 @@ surfData2 := []map[string]interface{}{
                             "spot_id":            spotID,
                             "forecast_timestamp": stepTimestampStr,
                             "data":               interpDataMap,
-                            "generated_at":       stepTimestampStr,
+                            "generated_at":       generatedAtTimestampStr,
                         }
                         
                         item, err := dynamodbattribute.MarshalMap(interpolatedForecast)
@@ -1051,4 +1097,24 @@ func findNextSample(samples []map[string]interface{}, current map[string]interfa
     }
     
     return nextSample
+}
+
+// Helper function to encode an image file to a base64 string
+func encodeImageToBase64(imagePath string) (string, error) {
+    // Open the image file
+    file, err := os.Open(imagePath)
+    if err != nil {
+        return "", fmt.Errorf("failed to open image file: %w", err)
+    }
+    defer file.Close()
+
+    // Read the file content
+    fileContent, err := io.ReadAll(file)
+    if err != nil {
+        return "", fmt.Errorf("failed to read image file content: %w", err)
+    }
+
+    // Encode the file content to base64
+    base64Image := base64.StdEncoding.EncodeToString(fileContent)
+    return base64Image, nil
 }

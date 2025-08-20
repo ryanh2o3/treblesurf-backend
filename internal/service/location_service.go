@@ -54,7 +54,7 @@ func (s *LocationService) GetRegions(countryName string) ([]string, error) {
 	return regions, nil
 }
 
-func (s *LocationService) GetSpots(countryName, regionName string) ([]map[string]interface{}, error) {
+func (s *LocationService) GetSpots(countryName, regionName string) ([]model.LocationInfo, error) {
 	input := &dynamodb.ScanInput{
 		TableName: aws.String("LocationData"),
 		FilterExpression: aws.String("begins_with(country_region_spot, :location)"),
@@ -70,7 +70,7 @@ func (s *LocationService) GetSpots(countryName, regionName string) ([]map[string
 		return nil, fmt.Errorf("failed to scan spots: %v", err)
 	}
 
-	var locations []map[string]interface{}
+	var locations []model.LocationInfo
 	err = storage.UnmarshalListOfMaps(result.Items, &locations)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal spots: %v", err)
@@ -125,7 +125,7 @@ func (s *LocationService) GetCoordinates(countryName, regionName, spotName strin
 		KeyConditionExpression: aws.String("country_region_spot = :location"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":location": {
-				S: aws.String(fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)),
+				S: aws.String(fmt.Sprintf("%s/%s/%s", countryName, regionName, spotName)),
 			},
 		},
 	}

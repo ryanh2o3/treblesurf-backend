@@ -3,6 +3,7 @@ package api
 import (
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/model"
@@ -10,14 +11,34 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CorsMiddleware handles CORS for the API
+// CorsMiddleware handles CORS for the API with iOS app support
 func CorsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		// For iOS app, you might want to restrict origins in production
+		origin := c.GetHeader("Origin")
+		env := os.Getenv("GO_ENV")
+		
+		// Allow all origins in development or when GO_ENV is not set (local development)
+		if env == "development" || env == "" {
+			c.Header("Access-Control-Allow-Origin", "*")
+		} else {
+			// In production, restrict to your domains
+			allowedOrigins := []string{
+				"https://treblesurf.com",
+				"https://www.treblesurf.com",
+				// Add your iOS app's custom URL scheme if you have one
+			}
+			
+			if contains(allowedOrigins, origin) {
+				c.Header("Access-Control-Allow-Origin", origin)
+			}
+		}
+		
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-		c.Header("Access-Control-Expose-Headers", "Content-Length")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cookie")
+		c.Header("Access-Control-Expose-Headers", "Content-Length, X-CSRF-Token, Set-Cookie")
 		c.Header("Access-Control-Allow-Credentials", "true")
+		c.Header("Access-Control-Max-Age", "86400") // 24 hours
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusNoContent)
@@ -26,6 +47,34 @@ func CorsMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// iOSHeadersMiddleware adds headers that help with iOS app integration
+func iOSHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Add headers that help with iOS app integration
+		c.Header("X-App-Version", "1.0.0")
+		c.Header("X-Platform", "iOS")
+		
+		// Ensure proper cache control for iOS
+		if strings.Contains(c.Request.URL.Path, "/auth/") {
+			c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+			c.Header("Pragma", "no-cache")
+			c.Header("Expires", "0")
+		}
+		
+		c.Next()
+	}
+}
+
+// contains checks if a slice contains a specific string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
 
 func AdminMiddleware() gin.HandlerFunc {
