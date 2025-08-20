@@ -2,6 +2,7 @@ package api
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -51,6 +52,9 @@ func SetupRouter(container *Container) *gin.Engine {
 func setupRoutes(r gin.IRouter, container *Container) {
 	log.Print(os.Getenv("GO_ENV"))
 	
+	// Apply iOS headers to all API routes
+	r.Use(iOSHeadersMiddleware())
+	
 	r.Use(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/api") {
@@ -64,6 +68,26 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	r.POST("/auth/google", auth.GoogleAuthHandler)
 	r.GET("/auth/validate", auth.ValidateTokenHandler)
 	r.POST("/auth/logout", auth.LogoutHandler)
+	
+	// Development-only endpoint for iOS simulator
+	if os.Getenv("GO_ENV") == "development" {
+		r.POST("/auth/dev-session", func(c *gin.Context) {
+			var req struct {
+				Email string `json:"email"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+				return
+			}
+			
+			if err := auth.CreateDevSession(req.Email, c); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+				return
+			}
+			
+			c.JSON(http.StatusOK, gin.H{"message": "Development session created"})
+		})
+	}
 
 	// Location and forecast routes
 	r.GET("/regions", controller.GetRegions)
@@ -79,6 +103,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	r.GET("/getLast24BuoyData", controller.GetLast24HoursBuoyData)
 	r.GET("/getMultipleBuoyData", controller.GetMultipleBuoyData)
 	r.GET("/buoyLocationInfo", controller.BuoyLocationInfo)
+	r.GET("regionBuoys", controller.GetRegionBuoys)
 	r.GET("/individualBuoyLocation", controller.IndividualBuoyLocationInfo)
 	r.GET("/locationInfo", controller.GetLocationInfo)
 	r.GET("/forecast", container.ForecastController.GetSpotForecast)

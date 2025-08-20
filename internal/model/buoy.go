@@ -4,15 +4,10 @@ import "time"
 
 // Buoy represents a buoy in the system
 type Buoy struct {
-	Name        string    `json:"name" dynamodbav:"name"`
-	Location    string    `json:"location" dynamodbav:"location"`
-	Country     string    `json:"country" dynamodbav:"country"`
-	Region      string    `json:"region" dynamodbav:"region"`
-	Spot        string    `json:"spot" dynamodbav:"spot"`
+	RegionBuoy string `json:"region_buoy"`
 	Latitude    float64   `json:"latitude" dynamodbav:"latitude"`
 	Longitude   float64   `json:"longitude" dynamodbav:"longitude"`
-	CreatedAt   time.Time `json:"created_at" dynamodbav:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" dynamodbav:"updated_at"`
+	Name string `json:"name"`
 }
 
 // BuoyData represents buoy measurement data
