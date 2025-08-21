@@ -110,9 +110,9 @@ func NewContainer() (*Container, error) {
 	forecastService := service.NewForecastService(dynamoDBClient)
 	tideService := service.NewTideService()
 	locationService := service.NewLocationService(dbStorage, s3Storage, bucketName)
-	reportService := service.NewReportService(dbStorage, s3Storage, rekognitionClient, bucketName)
-	apiKeyService := service.NewAPIKeyService(dbStorage)
 	userService := service.NewUserService(dynamoDBClient)
+	reportService := service.NewReportService(dbStorage, s3Storage, rekognitionClient, bucketName, userService)
+	apiKeyService := service.NewAPIKeyService(dbStorage)
 	
 	// Initialize WebSocket service
 	jwtSecret := os.Getenv("JWT_SECRET")

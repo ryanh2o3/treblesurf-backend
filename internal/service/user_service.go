@@ -45,6 +45,38 @@ func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
 	return &user, nil
 }
 
+// GetUserByUUID retrieves a user by UUID
+func (s *UserService) GetUserByUUID(uuid string) (*model.User, error) {
+	// Since UUID is not the primary key, we need to scan the table
+	// In production, you might want to create a GSI on UUID
+	input := &dynamodb.ScanInput{
+		TableName:        aws.String("Users"),
+		FilterExpression: aws.String("uuid = :uuid"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":uuid": {
+				S: aws.String(uuid),
+			},
+		},
+	}
+
+	result, err := s.db.Scan(input)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(result.Items) == 0 {
+		return nil, nil
+	}
+
+	var user model.User
+	err = dynamodbattribute.UnmarshalMap(result.Items[0], &user)
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
 // UpdateUserTheme updates a user's theme preference
 func (s *UserService) UpdateUserTheme(email, theme string) error {
 	input := &dynamodb.UpdateItemInput{

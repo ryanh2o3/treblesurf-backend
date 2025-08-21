@@ -4,6 +4,7 @@ import "time"
 
 // User represents a user in the system
 type User struct {
+	UUID       string `json:"uuid" dynamodbav:"uuid"`
 	Email      string `json:"email" dynamodbav:"email"`
 	Name       string `json:"name" dynamodbav:"name"`
 	Picture    string `json:"picture" dynamodbav:"picture"`

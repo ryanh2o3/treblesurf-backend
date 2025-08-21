@@ -25,14 +25,16 @@ type ReportService struct {
 	s3Storage          storage.S3Storage
 	rekognitionClient  *rekognition.Rekognition
 	bucketName         string
+	userService        *UserService
 }
 
-func NewReportService(dbStorage storage.DynamoDBStorage, s3Storage storage.S3Storage, rekognitionClient *rekognition.Rekognition, bucketName string) *ReportService {
+func NewReportService(dbStorage storage.DynamoDBStorage, s3Storage storage.S3Storage, rekognitionClient *rekognition.Rekognition, bucketName string, userService *UserService) *ReportService {
 	return &ReportService{
 		dbStorage:         dbStorage,
 		s3Storage:         s3Storage,
 		rekognitionClient: rekognitionClient,
 		bucketName:        bucketName,
+		userService:       userService,
 	}
 }
 
@@ -40,6 +42,18 @@ func NewReportService(dbStorage storage.DynamoDBStorage, s3Storage storage.S3Sto
 func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmail string, userName string) error {
 	currentTime := time.Now()
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
+
+	// Get the user's UUID
+	user, err := s.userService.GetUserByEmail(userEmail)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %v", err)
+	}
+	if user == nil {
+		return fmt.Errorf("user not found")
+	}
+	if user.UUID == "" {
+		return fmt.Errorf("user does not have a UUID")
+	}
 
 	if report.Date != "" {
 		parsedDate, err := time.Parse("2006-01-02 15:04:05", report.Date)
@@ -78,7 +92,8 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		}
 	}
 
-	dateReported := fmt.Sprintf("%s_%s", currentTime, userEmail)
+	// Use UUID instead of email in dateReported field
+	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
 
 	// Create the DynamoDB item
 	item := map[string]*dynamodb.AttributeValue{
@@ -93,6 +108,7 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		"UserEmail":           {S: aws.String(userEmail)},
 		"Reporter":            {S: aws.String(userName)},
 		"Time":                {S: aws.String(currentTime.String())},
+		"reportedBy":          {S: aws.String(user.UUID)},
 	}
 
 	var s3KeyReport = ""
@@ -131,7 +147,7 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 			"surf-reports/%s/%s_%s.jpg",
 			countryRegionSpot,
 			currentTime.UTC().Format("2006-01-02T15:04:05Z"),
-			userEmail,
+			user.UUID,
 		)
 		s3Key, err := s.uploadImageToS3(imageData, imageKey)
 		if err != nil {
@@ -149,7 +165,7 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		Item:      item,
 	}
 
-	_, err := s.dbStorage.PutItem(input)
+	_, err = s.dbStorage.PutItem(input)
 	if err != nil {
 		return fmt.Errorf("failed to store report: %v", err)
 	}
@@ -170,21 +186,23 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 			"messiness":     report.Messiness,
 			"consistency":   report.Consistency,
 			"reporter":      userName,
+			"reportedBy":    user.UUID,
 			"imageKey":      s3KeyReport,
 			"reportTime":    currentTime.Format(time.RFC3339),
 		},
 	}
 
 	// Get spot subscribers and broadcast (this is what was missing!)
-	subscribers, err := s.getSpotSubscribers(report.Country, report.Region, report.Spot)
-	if err != nil {
-		log.Printf("Failed to get subscribers: %v", err)
+	var subscribers []string
+	subscribers, subErr := s.getSpotSubscribers(report.Country, report.Region, report.Spot)
+	if subErr != nil {
+		log.Printf("Failed to get subscribers: %v", subErr)
 	} else {
 		// Broadcast to subscribers asynchronously
 		go func() {
-			err := s.broadcastToUsers(subscribers, message)
-			if err != nil {
-				log.Printf("Failed to broadcast message: %v", err)
+			broadcastErr := s.broadcastToUsers(subscribers, message)
+			if broadcastErr != nil {
+				log.Printf("Failed to broadcast message: %v", broadcastErr)
 			}
 		}()
 	}
@@ -195,8 +213,19 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 // SubmitSurfReportWithS3Image submits a new surf report with a pre-uploaded S3 image
 func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Image, userEmail string, userName string) error {
 	currentTime := time.Now()
-	dateReported := fmt.Sprintf("%s_%s", currentTime, userEmail)
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
+
+	// Get the user's UUID
+	user, err := s.userService.GetUserByEmail(userEmail)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %v", err)
+	}
+	if user == nil {
+		return fmt.Errorf("user not found")
+	}
+	if user.UUID == "" {
+		return fmt.Errorf("user does not have a UUID")
+	}
 
 	if report.Date != "" {
 		parsedDate, err := time.Parse("2006-01-02 15:04:05", report.Date)
@@ -207,6 +236,8 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 		}
 	}
 
+	// Use UUID instead of email in dateReported field
+	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
 
 	// Create the DynamoDB item
 	item := map[string]*dynamodb.AttributeValue{
@@ -221,6 +252,7 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 		"UserEmail":           {S: aws.String(userEmail)},
 		"Reporter":            {S: aws.String(userName)},
 		"Time":                {S: aws.String(currentTime.String())},
+		"reportedBy":          {S: aws.String(user.UUID)},
 	}
 
 	var s3KeyReport = ""
@@ -264,7 +296,7 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 		Item:      item,
 	}
 
-	_, err := s.dbStorage.PutItem(input)
+	_, err = s.dbStorage.PutItem(input)
 	if err != nil {
 		// If database insertion fails, clean up the image
 		if s3KeyReport != "" {
@@ -290,6 +322,7 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 			"messiness":     report.Messiness,
 			"consistency":   report.Consistency,
 			"reporter":      userName,
+			"reportedBy":    user.UUID,
 			"imageKey":      s3KeyReport,
 			"reportTime":    currentTime.Format(time.RFC3339),
 		},
@@ -314,7 +347,19 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 
 // GenerateImageUploadURL generates a presigned URL for uploading an image to S3
 func (s *ReportService) GenerateImageUploadURL(country, region, spot, userEmail string) (*model.PresignedUploadResponse, error) {
-	// Generate a predictable S3 key based on location and user
+	// Get the user's UUID
+	user, err := s.userService.GetUserByEmail(userEmail)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %v", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+	if user.UUID == "" {
+		return nil, fmt.Errorf("user does not have a UUID")
+	}
+
+	// Generate a predictable S3 key based on location and user UUID
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", country, region, spot)
 	currentTime := time.Now()
 	
@@ -322,7 +367,7 @@ func (s *ReportService) GenerateImageUploadURL(country, region, spot, userEmail 
 		"surf-reports/%s/%s_%s.jpg",
 		countryRegionSpot,
 		currentTime.UTC().Format("2006-01-02T15:04:05Z"),
-		userEmail,
+		user.UUID,
 	)
 
 	// Generate presigned URL valid for 15 minutes

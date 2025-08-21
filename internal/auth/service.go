@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"google.golang.org/api/idtoken"
 )
 
@@ -35,6 +36,7 @@ type TokenRequest struct {
 }
 
 type User struct {
+	UUID       string `json:"uuid"`
 	Email      string `json:"email"`
 	Name       string `json:"name"`
 	Picture    string `json:"picture"`
@@ -364,6 +366,12 @@ func createUser(user User) error {
 		return fmt.Errorf("DynamoDB client not initialized")
 	}
 
+	uuid, err := uuid.NewRandom()
+	if err != nil {
+		return fmt.Errorf("failed to generate UUID: %w", err)
+	}
+	user.UUID = uuid.String()
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	user.CreatedAt = now
 	user.LastLogin = now
@@ -407,6 +415,58 @@ func updateUserLastLogin(email string) error {
 
 	_, err := db.UpdateItem(input)
 	return err
+}
+
+// ensureUserHasUUID ensures a user has a UUID, generating one if it doesn't exist
+func ensureUserHasUUID(email string) error {
+	if db == nil {
+		return fmt.Errorf("DynamoDB client not initialized")
+	}
+
+	// Get the current user to check if they have a UUID
+	user, err := getUserByEmail(email)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	if user == nil {
+		return fmt.Errorf("user not found")
+	}
+
+	// If user already has a UUID, no need to update
+	if user.UUID != "" {
+		return nil
+	}
+
+	// Generate a new UUID for the user
+	newUUID, err := uuid.NewRandom()
+	if err != nil {
+		return fmt.Errorf("failed to generate UUID: %w", err)
+	}
+
+	// Update the user with the new UUID
+	input := &dynamodb.UpdateItemInput{
+		TableName: aws.String("Users"),
+		Key: map[string]*dynamodb.AttributeValue{
+			"email": {
+				S: aws.String(email),
+			},
+		},
+		UpdateExpression: aws.String("set uuid = :uuid"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":uuid": {
+				S: aws.String(newUUID.String()),
+			},
+		},
+	}
+
+	_, err = db.UpdateItem(input)
+	if err != nil {
+		return fmt.Errorf("failed to update user with UUID: %w", err)
+	}
+
+	log.Printf("Generated and assigned UUID %s to user %s", newUUID.String(), email)
+	return nil
 }
 
 // GenerateCSRFToken creates a secure random token for CSRF protection
@@ -501,6 +561,20 @@ func GoogleAuthHandler(c *gin.Context) {
 			log.Printf("Error updating last login: %v", err)
 			// Continue anyway, not a critical error
 		}
+		
+		// Ensure the user has a UUID
+		if err := ensureUserHasUUID(email); err != nil {
+			log.Printf("Error ensuring user has UUID: %v", err)
+			// Continue anyway, not a critical error
+		}
+		
+		// Get the updated user to get the UUID
+		existingUser, err = getUserByEmail(email)
+		if err != nil {
+			log.Printf("Error getting updated user: %v", err)
+			// Continue anyway, not a critical error
+		}
+		
 		theme = existingUser.Theme
 
 		log.Printf("User logged in: %s", email)
@@ -553,8 +627,21 @@ func GoogleAuthHandler(c *gin.Context) {
 		true, // HTTP-only
 	)
 
+	// Get the user data to include UUID in response
+	var userUUID string
+	if existingUser != nil {
+		userUUID = existingUser.UUID
+	} else {
+		// For new users, we need to get the user data to get the generated UUID
+		newUserData, err := getUserByEmail(email)
+		if err == nil && newUserData != nil {
+			userUUID = newUserData.UUID
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
+			"uuid":         userUUID,
 			"email":        email,
 			"name":         name,
 			"picture":      picture,
@@ -578,6 +665,7 @@ func ValidateTokenHandler(c *gin.Context) {
 			"valid":     true,
 			"auth_type": "development",
 			"user": gin.H{
+				"uuid":         "dev-uuid-12345",
 				"email":        "testuser@example.com",
 				"name":         "Test User",
 				"picture":      "https://via.placeholder.com/150",
@@ -613,6 +701,21 @@ func ValidateTokenHandler(c *gin.Context) {
 		return
 	}
 
+	// Ensure the user has a UUID
+	if err := ensureUserHasUUID(email); err != nil {
+		log.Printf("Error ensuring user has UUID: %v", err)
+		// Continue anyway, not a critical error
+	}
+	
+	// Get the updated user data to ensure we have the UUID
+	if user.UUID == "" {
+		user, err = getUserByEmail(email)
+		if err != nil {
+			log.Printf("Error getting updated user data: %v", err)
+			// Continue anyway, not a critical error
+		}
+	}
+
 	// Get CSRF token from session and update last active time
 	var sessionData SessionJSON
 	if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
@@ -639,6 +742,7 @@ func ValidateTokenHandler(c *gin.Context) {
 			"family_name": user.FamilyName,
 			"given_name":  user.GivenName,
 			"theme":       user.Theme,
+			"uuid":        user.UUID, // Include UUID in the response
 		},
 	})
 }
