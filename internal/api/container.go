@@ -269,3 +269,17 @@ func (l *localS3Wrapper) DeleteObject(bucket, key string) error {
 	}
 	return nil
 }
+
+func (l *localS3Wrapper) GeneratePresignedUploadURL(bucket, key string, expires time.Duration) (string, error) {
+	req, _ := l.client.PutObjectRequest(&s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+
+	presignedURL, err := req.Presign(expires)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned URL: %v", err)
+	}
+
+	return presignedURL, nil
+}
