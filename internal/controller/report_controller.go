@@ -61,6 +61,89 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
+// SubmitSurfReportWithS3Image handles surf report submission with pre-uploaded S3 image
+func SubmitSurfReportWithS3Image(c *gin.Context) {
+	log.Printf("=== S3 Image Report Submission Request ===")
+	log.Printf("User-Agent: %s", c.Request.UserAgent())
+	log.Printf("Method: %s", c.Request.Method)
+	log.Printf("Content-Type: %s", c.GetHeader("Content-Type"))
+
+	log.Print("start of submit S3 image report")
+	var report model.ReportWithS3Image
+	if err := c.BindJSON(&report); err != nil {
+		log.Printf("Failed to bind JSON: %v", err)
+		log.Printf("Request body: %+v", c.Request.Body)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("S3 Image Report data received: Country=%s, Region=%s, Spot=%s, ImageKey=%s",
+		report.Country, report.Region, report.Spot, report.ImageKey)
+
+	email, exists := c.Get("email")
+	if !exists {
+		log.Printf("No email found in context - authentication issue")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	log.Printf("User email from context: %s", email.(string))
+
+	user, err2 := getUserByEmail(email.(string))
+	if err2 != nil {
+		log.Printf("Failed to fetch user information: %v", err2)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
+		return
+	}
+
+	// Use the report service to submit the report with S3 image
+	err := ReportService.SubmitSurfReportWithS3Image(&report, email.(string), user.GivenName)
+	if err != nil {
+		log.Printf("Failed to submit S3 image report: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit report"})
+		return
+	}
+
+	log.Printf("S3 Image Report submitted successfully for user: %s", email.(string))
+	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
+}
+
+// GenerateImageUploadURL generates a presigned URL for uploading an image to S3
+func GenerateImageUploadURL(c *gin.Context) {
+	log.Printf("=== Generate Image Upload URL Request ===")
+
+	// Get query parameters
+	country := c.Query("country")
+	region := c.Query("region")
+	spot := c.Query("spot")
+
+	if country == "" || region == "" || spot == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "country, region, and spot parameters are required"})
+		return
+	}
+
+	email, exists := c.Get("email")
+	if !exists {
+		log.Printf("No email found in context - authentication issue")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	log.Printf("Generating upload URL for: Country=%s, Region=%s, Spot=%s, User=%s",
+		country, region, spot, email.(string))
+
+	// Generate the presigned URL
+	response, err := ReportService.GenerateImageUploadURL(country, region, spot, email.(string))
+	if err != nil {
+		log.Printf("Failed to generate upload URL: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate upload URL"})
+		return
+	}
+
+	log.Printf("Upload URL generated successfully for user: %s", email.(string))
+	c.JSON(http.StatusOK, response)
+}
+
 // RetrieveTodaysSurfReports retrieves surf reports for a specific spot
 func RetrieveTodaysSurfReports(c *gin.Context) {
 	countryName := c.Query("country")

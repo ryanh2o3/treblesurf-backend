@@ -44,3 +44,25 @@ type ReportWithImage struct {
 	ImageData     string `json:"imageData"` // Base64 encoded image
 	Date 		string `json:"date"`
 }
+
+// ReportWithS3Image represents a surf report with a pre-uploaded S3 image key
+type ReportWithS3Image struct {
+	Country       string `json:"country"`
+	Region        string `json:"region"`
+	Spot          string `json:"spot"`
+	SurfSize      string `json:"surfSize"`
+	WindAmount    string `json:"windAmount"`
+	WindDirection string `json:"windDirection"`
+	Consistency   string `json:"consistency"`
+	Quality       string `json:"quality"`
+	Messiness     string `json:"messiness"`
+	ImageKey      string `json:"imageKey"` // S3 key for pre-uploaded image
+	Date          string `json:"date"`
+}
+
+// PresignedUploadResponse represents the response for generating a presigned upload URL
+type PresignedUploadResponse struct {
+	UploadURL string `json:"uploadUrl"`
+	ImageKey  string `json:"imageKey"`
+	ExpiresAt string `json:"expiresAt"`
+}

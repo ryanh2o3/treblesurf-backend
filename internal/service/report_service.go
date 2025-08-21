@@ -192,6 +192,154 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 	return nil
 }
 
+// SubmitSurfReportWithS3Image submits a new surf report with a pre-uploaded S3 image
+func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Image, userEmail string, userName string) error {
+	currentTime := time.Now()
+	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
+
+	if report.Date != "" {
+		parsedDate, err := time.Parse("2006-01-02 15:04:05", report.Date)
+		if err != nil {
+			log.Printf("Failed to parse date '%s': %v, using current time", report.Date, err)
+		} else {
+			currentTime = parsedDate
+		}
+	}
+
+	dateReported := fmt.Sprintf("%s_%s", currentTime, userEmail)
+
+	// Create the DynamoDB item
+	item := map[string]*dynamodb.AttributeValue{
+		"country_region_spot": {S: aws.String(countryRegionSpot)},
+		"dateReported":        {S: aws.String(dateReported)},
+		"SurfSize":            {S: aws.String(report.SurfSize)},
+		"WindAmount":          {S: aws.String(report.WindAmount)},
+		"WindDirection":       {S: aws.String(report.WindDirection)},
+		"Consistency":         {S: aws.String(report.Consistency)},
+		"Quality":             {S: aws.String(report.Quality)},
+		"Messiness":           {S: aws.String(report.Messiness)},
+		"UserEmail":           {S: aws.String(userEmail)},
+		"Reporter":            {S: aws.String(userName)},
+		"Time":                {S: aws.String(currentTime.String())},
+	}
+
+	var s3KeyReport = ""
+
+	// Process pre-uploaded image if provided
+	if report.ImageKey != "" {
+		// Retrieve the image from S3 for validation
+		imageData, err := s.s3Storage.GetObject(s.bucketName, report.ImageKey)
+		if err != nil {
+			// If image doesn't exist, clean up and return error
+			log.Printf("Failed to retrieve pre-uploaded image %s: %v", report.ImageKey, err)
+			// Try to delete the image key if it exists
+			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
+			return fmt.Errorf("failed to retrieve pre-uploaded image: %v", err)
+		}
+
+		// Validate image using Rekognition
+		valid, err := s.validateImageWithRekognition(imageData)
+		if err != nil {
+			// Clean up invalid image
+			log.Printf("Failed to validate pre-uploaded image %s: %v", report.ImageKey, err)
+			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
+			return fmt.Errorf("failed to validate pre-uploaded image: %v", err)
+		}
+
+		if valid {
+			// Store the S3 key in DynamoDB
+			item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(report.ImageKey)}
+			s3KeyReport = report.ImageKey
+		} else {
+			// Clean up invalid image
+			log.Printf("Pre-uploaded image %s failed validation, deleting", report.ImageKey)
+			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
+			return fmt.Errorf("pre-uploaded image validation failed")
+		}
+	}
+
+	// Insert into DynamoDB
+	input := &dynamodb.PutItemInput{
+		TableName: aws.String("SurfReports"),
+		Item:      item,
+	}
+
+	_, err := s.dbStorage.PutItem(input)
+	if err != nil {
+		// If database insertion fails, clean up the image
+		if s3KeyReport != "" {
+			log.Printf("Database insertion failed, cleaning up image %s", s3KeyReport)
+			_ = s.s3Storage.DeleteObject(s.bucketName, s3KeyReport)
+		}
+		return fmt.Errorf("failed to store report: %v", err)
+	}
+
+	log.Print("done putting")
+
+	// Build message for WebSocket broadcasting
+	message := map[string]interface{}{
+		"action": "new_report",
+		"data": map[string]interface{}{
+			"country":       report.Country,
+			"region":        report.Region,
+			"spot":          report.Spot,
+			"quality":       report.Quality,
+			"surfSize":      report.SurfSize,
+			"windAmount":    report.WindAmount,
+			"windDirection": report.WindDirection,
+			"messiness":     report.Messiness,
+			"consistency":   report.Consistency,
+			"reporter":      userName,
+			"imageKey":      s3KeyReport,
+			"reportTime":    currentTime.Format(time.RFC3339),
+		},
+	}
+
+	// Get spot subscribers and broadcast
+	subscribers, err := s.getSpotSubscribers(report.Country, report.Region, report.Spot)
+	if err != nil {
+		log.Printf("Failed to get subscribers: %v", err)
+	} else {
+		// Broadcast to subscribers asynchronously
+		go func() {
+			err := s.broadcastToUsers(subscribers, message)
+			if err != nil {
+				log.Printf("Failed to broadcast message: %v", err)
+			}
+		}()
+	}
+
+	return nil
+}
+
+// GenerateImageUploadURL generates a presigned URL for uploading an image to S3
+func (s *ReportService) GenerateImageUploadURL(country, region, spot, userEmail string) (*model.PresignedUploadResponse, error) {
+	// Generate a predictable S3 key based on location and user
+	countryRegionSpot := fmt.Sprintf("%s_%s_%s", country, region, spot)
+	currentTime := time.Now()
+	
+	imageKey := fmt.Sprintf(
+		"surf-reports/%s/%s_%s.jpg",
+		countryRegionSpot,
+		currentTime.UTC().Format("2006-01-02T15:04:05Z"),
+		userEmail,
+	)
+
+	// Generate presigned URL valid for 15 minutes
+	presignedURL, err := s.s3Storage.GeneratePresignedUploadURL(s.bucketName, imageKey, 15*time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate presigned URL: %v", err)
+	}
+
+	expiresAt := currentTime.Add(15 * time.Minute)
+
+	return &model.PresignedUploadResponse{
+		UploadURL: presignedURL,
+		ImageKey:  imageKey,
+		ExpiresAt: expiresAt.Format(time.RFC3339),
+	}, nil
+}
+
 // GetTodaysSurfReports retrieves surf reports for a specific spot
 func (s *ReportService) GetTodaysSurfReports(countryName, regionName, spotName string) ([]map[string]interface{}, error) {
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
@@ -276,6 +424,21 @@ func (s *ReportService) uploadImageToS3(imageData []byte, key string) (string, e
 	return key, nil
 }
 
+// ValidateImageKeyExists checks if an image key exists in S3 and is accessible
+func (s *ReportService) ValidateImageKeyExists(imageKey string) (bool, error) {
+	if imageKey == "" {
+		return false, fmt.Errorf("image key is empty")
+	}
+
+	// Try to get the object metadata to check if it exists
+	_, err := s.s3Storage.GetObject(s.bucketName, imageKey)
+	if err != nil {
+		return false, fmt.Errorf("image key %s does not exist or is not accessible: %v", imageKey, err)
+	}
+
+	return true, nil
+}
+
 // Validation methods now use the validation package
 func (s *ReportService) IsValidSwellSize(swellSize string) bool {
 	return validation.IsValidSwellSize(swellSize)
@@ -309,5 +472,22 @@ func (s *ReportService) broadcastToUsers(subscribers []string, message interface
 	// TODO: Implement user broadcasting
 	// For now, just log the message
 	log.Printf("Broadcasting message to %d subscribers: %v", len(subscribers), message)
+	return nil
+}
+
+// CleanupOrphanedImage removes an image from S3 if it's not associated with any report
+func (s *ReportService) CleanupOrphanedImage(imageKey string) error {
+	if imageKey == "" {
+		return nil
+	}
+
+	log.Printf("Cleaning up orphaned image: %s", imageKey)
+	err := s.s3Storage.DeleteObject(s.bucketName, imageKey)
+	if err != nil {
+		log.Printf("Failed to cleanup orphaned image %s: %v", imageKey, err)
+		return fmt.Errorf("failed to cleanup orphaned image: %v", err)
+	}
+
+	log.Printf("Successfully cleaned up orphaned image: %s", imageKey)
 	return nil
 }
