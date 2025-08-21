@@ -50,7 +50,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 	}
 
 	// Validate surf size if provided
-	if report.SurfSize != "" && !ReportService.IsValidSwellSize(report.SurfSize) {
+	if report.SurfSize != "" && !ReportService.IsValidSurfSize(report.SurfSize) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid surf size",
 			"message": fmt.Sprintf("Surf size '%s' is not valid", report.SurfSize),
@@ -200,7 +200,7 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 	}
 
 	// Validate surf size if provided
-	if report.SurfSize != "" && !ReportService.IsValidSwellSize(report.SurfSize) {
+	if report.SurfSize != "" && !ReportService.IsValidSurfSize(report.SurfSize) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid surf size",
 			"message": fmt.Sprintf("Surf size '%s' is not valid", report.SurfSize),

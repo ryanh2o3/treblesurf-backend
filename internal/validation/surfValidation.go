@@ -6,6 +6,11 @@ func IsValidSwellSize(swellSize string) bool {
 	return contains(validSizes, swellSize)
 }
 
+func IsValidSurfSize(swellSize string) bool {
+	validSizes := []string{"flat", "knee-waist", "chest-shoulder", "head-high", "overhead", "double-overhead"}
+	return contains(validSizes, swellSize)
+}
+
 // IsValidWindAmount validates if a wind amount is valid
 func IsValidWindAmount(windAmount string) bool {
 	validAmounts := []string{"calm", "light", "moderate", "strong"}
