@@ -289,7 +289,7 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 		log.Printf("Failed to submit S3 image report: %v", err)
 		
 		// Provide more helpful error messages for image validation failures
-		if strings.Contains(err.Error(), "Image validation failed") {
+		if strings.Contains(err.Error(), "image validation failed") {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "Image validation failed",
 				"message": err.Error(),

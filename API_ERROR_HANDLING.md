@@ -198,12 +198,12 @@ All API endpoints now return structured error responses with three key fields:
 
 ### 2. Submit Surf Report with S3 Image (`POST /api/reports/submit-s3`)
 
-#### S3 Image Validation Failure
+#### Image Validation Failure (S3 and Non-S3)
 
 ```json
 {
-  "error": "S3 Image validation failed",
-  "message": "S3 image validation failed: image does not appear to be surf-related. Detected: Car, Road, Building. Please upload a photo showing the ocean, waves, beach, or coastline",
+  "error": "Image validation failed",
+  "message": "image does not appear to be surf-related. Detected: Car, Road, Building. Please upload a photo showing the ocean, waves, beach, or coastline",
   "help": "Please ensure your image clearly shows the ocean, waves, beach, or coastline. The image should be clear and focused on surf conditions."
 }
 ```
@@ -212,7 +212,7 @@ All API endpoints now return structured error responses with three key fields:
 
 - Show the error message prominently
 - Display the help text as guidance
-- The S3 image will be automatically cleaned up
+- For S3 images: the image will be automatically cleaned up
 - Provide option to upload a new image
 
 #### Image Not Found
@@ -438,6 +438,7 @@ async function handleImageUpload(file: File) {
 - **Automatic cleanup**: S3 images are automatically deleted when validation fails
 - **User guidance**: Clear instructions on what types of images are acceptable
 - **Retry option**: Allow users to upload a different image immediately
+- **Consistent handling**: Both S3 and embedded images use the same validation logic and error messages
 
 ### 2. Authentication Issues
 
