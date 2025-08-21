@@ -42,4 +42,5 @@ type ReportWithImage struct {
 	Quality       string `json:"quality"`
 	Messiness     string `json:"messiness"`
 	ImageData     string `json:"imageData"` // Base64 encoded image
+	Date 		string `json:"date"`
 }
