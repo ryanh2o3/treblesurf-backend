@@ -120,13 +120,13 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		valid, err := s.validateImageWithRekognition(imageData)
 		if err != nil {
 			if strings.Contains(err.Error(), "image does not appear to be surf-related") {
-				return fmt.Errorf("image validation failed: %v. Please upload a photo that clearly shows the ocean, waves, beach, or coastline", err.Error())
+				return fmt.Errorf("please upload a photo that clearly shows the ocean, waves, beach, or coastline: %v", err.Error())
 			}
 			return fmt.Errorf("image validation failed: %v", err)
 		}
 
 		if !valid {
-			return fmt.Errorf("image validation failed: image does not appear to be surf-related. Please upload a photo showing the ocean, waves, beach, or coastline")
+			return fmt.Errorf("image does not appear to be surf-related. Please upload a photo showing the ocean, waves, beach, or coastline")
 		}
 
 		if valid {
@@ -427,7 +427,7 @@ func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, er
 
 	// Return a helpful error message with detected labels
 	if len(detectedLabels) > 0 {
-		return false, fmt.Errorf("image does not appear to be surf-related. Detected: %s. Please upload a photo showing the ocean, waves, beach, or coastline", strings.Join(detectedLabels[:min(5, len(detectedLabels))], ", "))
+		return false, fmt.Errorf("image does not appear to be surf-related. Please upload a photo showing the ocean, waves, beach, or coastline")
 	}
 	
 	return false, fmt.Errorf("image could not be analyzed. Please ensure the image is clear and shows the surf conditions")
