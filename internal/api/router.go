@@ -130,6 +130,8 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	}
 	
 	webModifyGroup.POST("/submitSurfReport", controller.SubmitCurrentSurfReport)
+	webModifyGroup.POST("/submitSurfReportWithS3Image", controller.SubmitSurfReportWithS3Image)
+	webModifyGroup.GET("/generateImageUploadURL", controller.GenerateImageUploadURL)
 	webModifyGroup.DELETE("/deleteMyAccount", controller.DeleteMyAccount)
 	webModifyGroup.PUT("/setTheme", controller.SetUserTheme)
 	webModifyGroup.DELETE("/sessions/:sessionId", auth.TerminateSessionHandler)

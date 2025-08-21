@@ -339,3 +339,59 @@ The current API version is v1. All endpoints are prefixed with `/api` in product
 ---
 
 Built with ❤️ for the surfing community
+
+## Image Upload Workflow
+
+The backend now supports two methods for submitting surf reports with images:
+
+### 1. Legacy Method (Base64)
+Submit reports with base64-encoded image data using the existing `/submitSurfReport` endpoint.
+
+### 2. New Presigned URL Method (Recommended for iOS)
+Use presigned URLs to pre-upload images to S3, then submit reports with the image key.
+
+#### Workflow:
+1. **Generate Upload URL**: Call `GET /generateImageUploadURL?country={country}&region={region}&spot={spot}`
+   - Returns: `{ "uploadUrl": "...", "imageKey": "...", "expiresAt": "..." }`
+
+2. **Upload Image**: Use the `uploadUrl` to upload the image directly to S3
+   - The `imageKey` is predictable and calculable
+   - URL expires in 15 minutes
+
+3. **Submit Report**: Call `POST /submitSurfReportWithS3Image` with the report data including the `imageKey`
+   - Backend retrieves image from S3
+   - Validates image using Rekognition
+   - If validation fails, image is automatically deleted from S3
+   - If validation passes, report is stored with image reference
+
+#### Benefits:
+- Better performance (no base64 encoding/decoding)
+- Reduced memory usage
+- Better error handling and cleanup
+- iOS app can upload images in background
+- Predictable image keys for caching
+
+#### Error Handling:
+- Invalid images are automatically cleaned up from S3
+- Orphaned images can be cleaned up using the cleanup methods
+- Database failures trigger image cleanup to prevent orphaned files
+
+## API Endpoints
+
+### Surf Reports
+- `POST /submitSurfReport` - Submit report with base64 image (legacy)
+- `POST /submitSurfReportWithS3Image` - Submit report with S3 image key (new)
+- `GET /generateImageUploadURL` - Generate presigned upload URL
+- `GET /getTodaySpotReports` - Get today's reports for a spot
+- `GET /getReportImage` - Get report image by key
+
+## Development
+
+To run locally:
+```bash
+cd local
+./scripts/setup.sh
+go run cmd/server.go
+```
+
+The backend will start with mock services for local development.
