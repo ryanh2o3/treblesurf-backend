@@ -261,7 +261,7 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 			// Clean up invalid image
 			log.Printf("Pre-uploaded image %s failed validation, deleting", report.ImageKey)
 			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
-			return fmt.Errorf("image validation failed: image does not appear to be surf-related. Please upload a photo showing the ocean, waves, beach, or coastline")
+			return fmt.Errorf("image does not appear to be surf-related. Please upload a photo showing the ocean, waves, beach, or coastline")
 		}
 		
 		// Store the S3 key in DynamoDB when validation succeeds
