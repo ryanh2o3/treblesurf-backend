@@ -444,7 +444,7 @@ func ensureUserHasUUID(email string) error {
 		return fmt.Errorf("failed to generate UUID: %w", err)
 	}
 
-	// Update the user with the new UUID
+	// Update the user with the new UUID using expression attribute names for reserved keywords
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String("Users"),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -452,7 +452,10 @@ func ensureUserHasUUID(email string) error {
 				S: aws.String(email),
 			},
 		},
-		UpdateExpression: aws.String("set uuid = :uuid"),
+		UpdateExpression: aws.String("set #uuid = :uuid"),
+		ExpressionAttributeNames: map[string]*string{
+			"#uuid": aws.String("uuid"),
+		},
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":uuid": {
 				S: aws.String(newUUID.String()),

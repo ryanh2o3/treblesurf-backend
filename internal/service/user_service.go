@@ -51,7 +51,10 @@ func (s *UserService) GetUserByUUID(uuid string) (*model.User, error) {
 	// In production, you might want to create a GSI on UUID
 	input := &dynamodb.ScanInput{
 		TableName:        aws.String("Users"),
-		FilterExpression: aws.String("uuid = :uuid"),
+		FilterExpression: aws.String("#uuid = :uuid"),
+		ExpressionAttributeNames: map[string]*string{
+			"#uuid": aws.String("uuid"),
+		},
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":uuid": {
 				S: aws.String(uuid),
