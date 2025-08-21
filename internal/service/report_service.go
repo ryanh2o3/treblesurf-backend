@@ -195,6 +195,7 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 // SubmitSurfReportWithS3Image submits a new surf report with a pre-uploaded S3 image
 func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Image, userEmail string, userName string) error {
 	currentTime := time.Now()
+	dateReported := fmt.Sprintf("%s_%s", currentTime, userEmail)
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
 
 	if report.Date != "" {
@@ -206,7 +207,6 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 		}
 	}
 
-	dateReported := fmt.Sprintf("%s_%s", currentTime, userEmail)
 
 	// Create the DynamoDB item
 	item := map[string]*dynamodb.AttributeValue{

@@ -1,136 +1,59 @@
 # API Error Handling Documentation
 
-This document outlines the enhanced error handling system for the Treble Surf Backend API, specifically for surf report submissions and image validation.
-
 ## Overview
 
-All API endpoints now return structured error responses with three key fields:
+The backend has been updated with a new, simplified error handling system for image validation and surf report submission. This eliminates duplicate error messages and provides consistent, type-safe error responses.
 
-- `error`: A short, machine-readable error identifier
-- `message`: A human-readable description of what went wrong
-- `help`: Actionable guidance for the user to resolve the issue
+## Key Changes
 
-## Error Response Format
+### 1. Custom Error Types
 
-```json
-{
-  "error": "Error Type",
-  "message": "Detailed description of the error",
-  "help": "Specific guidance on how to fix the issue"
-}
-```
+All image-related errors now use specific error types instead of generic error messages:
 
-## HTTP Status Codes
+- `ErrImageNotSurfRelated` - Image doesn't show surf conditions
+- `ErrImageAnalysisFailed` - AWS Rekognition analysis failed
+- `ErrImageUploadFailed` - S3 upload failed
+- `ErrInvalidImageData` - Malformed image data
+- `ErrImageValidationFailed` - General validation failure
+- `ErrImageRetrievalFailed` - S3 retrieval failed
 
-- `400 Bad Request`: Client-side errors (validation failures, missing data)
-- `401 Unauthorized`: Authentication required
-- `404 Not Found`: Resource not found
-- `500 Internal Server Error`: Server-side errors
+### 2. Consistent Error Response Format
 
-## Surf Report Submission Errors
-
-### 1. Submit Current Surf Report (`POST /api/reports/submit`)
-
-#### Missing Required Fields
+All error responses now follow this structure:
 
 ```json
 {
-  "error": "Missing required fields",
-  "message": "Country, region, and spot are required",
-  "help": "Please provide all required location information."
+  "error": "Short error title",
+  "message": "Detailed error description",
+  "help": "User-friendly guidance on how to resolve the issue"
 }
 ```
 
-**Frontend Action**: Highlight missing fields and show the help message.
+## API Endpoints & Error Handling
 
-#### Invalid Surf Size
+### Submit Surf Report (`POST /submitSurfReport`)
+
+**Success Response:**
 
 ```json
 {
-  "error": "Invalid surf size",
-  "message": "Surf size 'huge' is not valid",
-  "help": "Valid surf sizes are: flat, 0-0.5, 0.5-1, 1-1.5, 1.5-2.5, 2.5+"
+  "message": "Report submitted successfully"
 }
 ```
 
-**Frontend Action**: Show validation error next to the surf size field with the help message.
+**Error Responses:**
 
-#### Invalid Wind Amount
+#### Image Not Surf-Related
 
 ```json
 {
-  "error": "Invalid wind amount",
-  "message": "Wind amount 'hurricane' is not valid",
-  "help": "Valid wind amounts are: calm, light, moderate, strong"
+  "error": "Image not surf-related",
+  "message": "The image does not appear to show surf conditions",
+  "help": "Please upload a photo that clearly shows the ocean, waves, beach, or coastline."
 }
 ```
 
-**Frontend Action**: Show validation error next to the wind amount field with the help message.
-
-#### Invalid Wind Direction
-
-```json
-{
-  "error": "Invalid wind direction",
-  "message": "Wind direction 'north' is not valid",
-  "help": "Valid wind directions are: glassy, offshore, cross, onshore"
-}
-```
-
-**Frontend Action**: Show validation error next to the wind direction field with the help message.
-
-#### Invalid Consistency
-
-```json
-{
-  "error": "Invalid consistency",
-  "message": "Consistency 'random' is not valid",
-  "help": "Valid consistency values are: lulls, consistent, relentless"
-}
-```
-
-**Frontend Action**: Show validation error next to the consistency field with the help message.
-
-#### Invalid Quality
-
-```json
-{
-  "error": "Invalid quality",
-  "message": "Quality 'amazing' is not valid",
-  "help": "Valid quality values are: glassy, clean, messy, okay"
-}
-```
-
-**Frontend Action**: Show validation error next to the quality field with the help message.
-
-#### Invalid Messiness
-
-```json
-{
-  "error": "Invalid messiness",
-  "message": "Messiness 'perfect' is not valid",
-  "help": "Valid messiness values are: glassy, clean, messy, okay"
-}
-```
-
-**Frontend Action**: Show validation error next to the messiness field with the help message.
-
-#### Image Validation Failure
-
-```json
-{
-  "error": "Image validation failed",
-  "message": "image does not appear to be surf-related. Detected: Car, Road, Building. Please upload a photo showing the ocean, waves, beach, or coastline",
-  "help": "Please ensure your image clearly shows the ocean, waves, beach, or coastline. The image should be clear and focused on surf conditions."
-}
-```
-
-**Frontend Action**:
-
-- Show the error message prominently
-- Display the help text as guidance
-- Optionally show the detected labels from the message
-- Provide a retry option or image selection guidance
+**HTTP Status:** `400 Bad Request`
 
 #### Invalid Image Data
 
@@ -142,78 +65,43 @@ All API endpoints now return structured error responses with three key fields:
 }
 ```
 
-**Frontend Action**:
+**HTTP Status:** `400 Bad Request`
 
-- Show file format requirements
-- Provide guidance on supported image types
-- Offer to let user select a different image
-
-#### Authentication Required
+#### Image Upload Failed
 
 ```json
 {
-  "error": "Authentication required",
-  "message": "You must be logged in to submit a surf report",
-  "help": "Please log in and try again."
-}
-```
-
-**Frontend Action**:
-
-- Redirect to login page
-- Show the help message
-- Store the form data for after login
-
-#### User Information Error
-
-```json
-{
-  "error": "User information error",
-  "message": "Unable to retrieve your user profile",
+  "error": "Image upload failed",
+  "message": "Failed to upload the image to storage",
   "help": "Please try again in a moment. If the problem persists, contact support."
 }
 ```
 
-**Frontend Action**:
+**HTTP Status:** `500 Internal Server Error`
 
-- Show retry button
-- Display the help message
-- Optionally show contact support link
-
-#### Invalid Request Format
-
-```json
-{
-  "error": "Invalid request format",
-  "message": "The request data is not in the correct format",
-  "help": "Please ensure you're sending valid JSON data with all required fields."
-}
-```
-
-**Frontend Action**:
-
-- This is typically a frontend bug - log the error
-- Show generic error message to user
-- Check form validation
-
-### 2. Submit Surf Report with S3 Image (`POST /api/reports/submit-s3`)
-
-#### Image Validation Failure (S3 and Non-S3)
+#### Image Validation Failed (Generic)
 
 ```json
 {
   "error": "Image validation failed",
-  "message": "image does not appear to be surf-related. Detected: Car, Road, Building. Please upload a photo showing the ocean, waves, beach, or coastline",
+  "message": "[Specific error message from backend]",
   "help": "Please ensure your image clearly shows the ocean, waves, beach, or coastline. The image should be clear and focused on surf conditions."
 }
 ```
 
-**Frontend Action**:
+**HTTP Status:** `400 Bad Request`
 
-- Show the error message prominently
-- Display the help text as guidance
-- For S3 images: the image will be automatically cleaned up
-- Provide option to upload a new image
+### Submit Surf Report with S3 Image (`POST /submitSurfReportWithS3Image`)
+
+**Success Response:**
+
+```json
+{
+  "message": "Report submitted successfully"
+}
+```
+
+**Error Responses:**
 
 #### Image Not Found
 
@@ -225,290 +113,198 @@ All API endpoints now return structured error responses with three key fields:
 }
 ```
 
-**Frontend Action**:
+**HTTP Status:** `400 Bad Request`
 
-- Show the error message
-- Provide option to re-upload the image
-- Show contact support option if problem persists
+#### All other image-related errors follow the same pattern as above
 
-### 3. Generate Image Upload URL (`GET /api/reports/upload-url`)
+## Frontend Implementation Guide
 
-#### Missing Required Parameters
-
-```json
-{
-  "error": "Missing required parameters",
-  "message": "Country, region, and spot parameters are required",
-  "help": "Please provide all required location parameters in your request."
-}
-```
-
-**Frontend Action**:
-
-- Ensure all location fields are filled before requesting upload URL
-- Show validation errors for missing fields
-
-#### Failed to Generate Upload URL
-
-```json
-{
-  "error": "Failed to generate upload URL",
-  "message": "Unable to create a secure upload link for your image",
-  "help": "Please try again in a moment. If the problem persists, contact support."
-}
-```
-
-**Frontend Action**:
-
-- Show retry button
-- Display the help message
-- Show contact support option if problem persists
-
-### 4. Get Report Image (`GET /api/reports/image`)
-
-#### Missing Image Key
-
-```json
-{
-  "error": "Missing image key",
-  "message": "Image key parameter is required",
-  "help": "Please provide the image key in your request."
-}
-```
-
-**Frontend Action**:
-
-- This is typically a frontend bug - log the error
-- Show generic error message to user
-
-#### Image Not Found
-
-```json
-{
-  "error": "Image not found",
-  "message": "The requested image could not be found or accessed",
-  "help": "The image may have been deleted or the image key may be incorrect."
-}
-```
-
-**Frontend Action**:
-
-- Show placeholder image or error icon
-- Display the help message
-- Optionally show "Image not available" message
-
-### 5. Retrieve Today's Surf Reports (`GET /api/reports/today`)
-
-#### Missing Required Parameters
-
-```json
-{
-  "error": "Missing required parameters",
-  "message": "Country, region, and spot parameters are required",
-  "help": "Please provide all required location parameters in your request."
-}
-```
-
-**Frontend Action**:
-
-- Ensure all location fields are filled before making the request
-- Show validation errors for missing fields
-
-#### Failed to Retrieve Reports
-
-```json
-{
-  "error": "Failed to retrieve reports",
-  "message": "Unable to fetch surf reports from the database",
-  "help": "Please try again in a moment. If the problem persists, contact support."
-}
-```
-
-**Frontend Action**:
-
-- Show retry button
-- Display the help message
-- Show contact support option if problem persists
-
-## Frontend Implementation Guidelines
-
-### 1. Error Display
+### 1. Error Handling Pattern
 
 ```typescript
-interface ApiError {
-  error: string;
-  message: string;
-  help: string;
-}
-
-function displayError(error: ApiError) {
-  // Show error banner/notification
-  showErrorBanner({
-    title: error.error,
-    message: error.message,
-    help: error.help,
-  });
-
-  // Log error for debugging
-  console.error("API Error:", error);
-}
-```
-
-### 2. Field-Specific Validation
-
-```typescript
-function handleFieldValidationError(error: ApiError, fieldName: string) {
-  // Extract field name from error message if possible
-  const field = extractFieldFromError(error.message);
-
-  // Show validation error next to the specific field
-  showFieldError(field || fieldName, error.help);
-
-  // Optionally highlight the field
-  highlightField(field || fieldName);
-}
-```
-
-### 3. Retry Logic
-
-```typescript
-async function submitWithRetry(data: any, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await submitReport(data);
-    } catch (error) {
-      if (i === maxRetries - 1) throw error;
-
-      // Wait before retrying
-      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
-    }
-  }
-}
-```
-
-### 4. User Guidance
-
-```typescript
-function showUserGuidance(error: ApiError) {
-  // Show help text prominently
-  showHelpText(error.help);
-
-  // Provide actionable buttons based on error type
-  if (error.error.includes("validation")) {
-    showValidationHelp();
-  } else if (error.error.includes("authentication")) {
-    showLoginPrompt();
-  } else if (error.error.includes("image")) {
-    showImageGuidance();
-  }
-}
-```
-
-### 5. Image Upload Handling
-
-```typescript
-async function handleImageUpload(file: File) {
+// Example error handling for surf report submission
+const submitReport = async (reportData: ReportData) => {
   try {
-    // Validate file type and size
-    if (!isValidImageFile(file)) {
-      throw new Error("Invalid image file");
+    const response = await fetch("/api/submitSurfReport", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(reportData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+
+      // Handle specific error types
+      switch (errorData.error) {
+        case "Image not surf-related":
+          // Show user-friendly message about surf-related content
+          showError(errorData.message, errorData.help);
+          break;
+
+        case "Invalid image data":
+          // Show message about image format/encoding
+          showError(errorData.message, errorData.help);
+          break;
+
+        case "Image upload failed":
+          // Show retry message with support contact
+          showError(errorData.message, errorData.help);
+          break;
+
+        case "Image validation failed":
+          // Show general validation guidance
+          showError(errorData.message, errorData.help);
+          break;
+
+        default:
+          // Handle unexpected errors
+          showError(
+            "An unexpected error occurred",
+            "Please try again or contact support."
+          );
+      }
+      return;
     }
 
-    // Upload to S3
-    const uploadUrl = await getUploadUrl();
-    await uploadToS3(uploadUrl, file);
-
-    // Submit report with image key
-    await submitReportWithS3Image(reportData);
+    const result = await response.json();
+    showSuccess(result.message);
   } catch (error) {
-    // Handle specific image errors
-    if (error.error?.includes("validation")) {
-      showImageValidationError(error);
-    } else if (error.error?.includes("upload")) {
-      showUploadError(error);
-    }
+    // Handle network/other errors
+    showError("Network error", "Please check your connection and try again.");
   }
-}
+};
 ```
 
-## Error Recovery Strategies
+### 2. User Experience Improvements
 
-### 1. Image Validation Failures
+#### Before (Old System)
 
-- **Automatic cleanup**: S3 images are automatically deleted when validation fails
-- **User guidance**: Clear instructions on what types of images are acceptable
-- **Retry option**: Allow users to upload a different image immediately
-- **Consistent handling**: Both S3 and embedded images use the same validation logic and error messages
+- Generic error messages
+- Duplicate error text
+- Inconsistent error handling
+- String-based error matching
 
-### 2. Authentication Issues
+#### After (New System)
 
-- **Redirect to login**: Automatically redirect unauthenticated users
-- **Form preservation**: Store form data for after login
-- **Clear messaging**: Explain why authentication is required
+- Specific, actionable error messages
+- Consistent error format
+- Type-safe error handling
+- Clear user guidance
 
-### 3. Network/Server Issues
+### 3. Error Message Display
 
-- **Retry mechanism**: Implement exponential backoff for retries
-- **User feedback**: Show progress indicators and retry buttons
-- **Fallback options**: Provide alternative submission methods if possible
+```typescript
+interface ErrorDisplay {
+  showError: (message: string, help?: string) => void;
+  showSuccess: (message: string) => void;
+}
 
-### 4. Validation Errors
+const showError = (message: string, help?: string) => {
+  // Display error message prominently
+  // Show help text below if provided
+  // Provide clear next steps for user
+};
 
-- **Field highlighting**: Clearly indicate which fields have errors
-- **Inline help**: Show validation rules and examples
-- **Progressive validation**: Validate fields as user types
+const showSuccess = (message: string) => {
+  // Display success message
+  // Clear form if applicable
+  // Redirect or show next steps
+};
+```
+
+## Image Validation Requirements
+
+### What Constitutes a Valid Surf Image
+
+The backend uses AWS Rekognition to validate that images contain surf-related content. Valid images should show:
+
+- Ocean/Sea
+- Water
+- Sea Waves
+- Beach
+- Coast
+
+### Image Format Requirements
+
+- **Supported formats:** JPEG, PNG
+- **Encoding:** Base64 (with or without data URI prefix)
+- **Size:** Reasonable file sizes (backend handles compression)
+
+### Development vs Production
+
+- **Development:** All images are automatically accepted (bypasses Rekognition)
+- **Production:** Full image validation using AWS Rekognition
 
 ## Testing Error Scenarios
 
-### 1. Image Validation Testing
+### 1. Test Invalid Image Data
 
-- Upload non-surf images (cars, buildings, etc.)
-- Upload corrupted image files
-- Test with various image formats (JPEG, PNG, GIF)
-- Verify cleanup of invalid S3 images
+```typescript
+// Send malformed base64 data
+const invalidImageData = "invalid-base64-string";
+const reportData = {
+  ...validReportData,
+  imageData: invalidImageData,
+};
+// Should return "Invalid image data" error
+```
 
-### 2. Input Validation Testing
+### 2. Test Non-Surf Image
 
-- Submit forms with missing required fields
-- Test invalid values for each field type
-- Verify error messages are field-specific
-- Test boundary conditions
+```typescript
+// Send image of something other than surf
+const nonSurfImage = "base64-encoded-image-of-cat";
+const reportData = {
+  ...validReportData,
+  imageData: nonSurfImage,
+};
+// Should return "Image not surf-related" error
+```
 
-### 3. Authentication Testing
+### 3. Test Valid Surf Image
 
-- Submit requests without authentication
-- Test with expired/invalid tokens
-- Verify proper redirect behavior
-- Test form data preservation
+```typescript
+// Send image of ocean/waves
+const surfImage = "base64-encoded-image-of-ocean";
+const reportData = {
+  ...validReportData,
+  imageData: surfImage,
+};
+// Should succeed
+```
 
-### 4. Network Error Testing
+## Migration Notes
 
-- Simulate network timeouts
-- Test with slow connections
-- Verify retry mechanisms work
-- Test error recovery flows
+### Breaking Changes
 
-## Support and Debugging
+- Error response format is now consistent across all endpoints
+- Error messages are more specific and actionable
+- HTTP status codes may differ for some error conditions
 
-### 1. Error Logging
+### Backward Compatibility
 
-- Log all API errors with full context
-- Include user information (when available)
-- Log request/response data for debugging
-- Monitor error patterns and frequencies
+- All existing API endpoints remain the same
+- Request format is unchanged
+- Only error response format has been improved
 
-### 2. User Support
+## Support & Troubleshooting
 
-- Provide clear contact information
-- Include error codes in support requests
-- Offer alternative submission methods
-- Maintain user-friendly error messages
+### Common Issues
 
-### 3. Monitoring
+1. **Image validation failures** - Ensure images clearly show surf conditions
+2. **Upload failures** - Check image format and size
+3. **Network errors** - Verify API endpoint accessibility
 
-- Track error rates by endpoint
-- Monitor image validation success rates
-- Alert on unusual error patterns
-- Track user experience metrics
+### Debugging
 
-This enhanced error handling system provides a much better user experience by giving clear, actionable feedback when things go wrong, while maintaining detailed logging for debugging and support purposes.
+- Check browser network tab for exact error responses
+- Verify image data format and encoding
+- Ensure proper authentication headers are sent
+
+### Getting Help
+
+- Check this documentation first
+- Review error response details
+- Contact backend team with specific error details
