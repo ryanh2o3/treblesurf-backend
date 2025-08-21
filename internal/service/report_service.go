@@ -41,7 +41,14 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 	currentTime := time.Now()
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
 
-	// Process image if provided and extract EXIF time if available
+	if report.Date != "" {
+		parsedDate, err := time.Parse("2006-01-02 15:04:05", report.Date)
+		if err != nil {
+			log.Printf("Failed to parse date '%s': %v, using current time", report.Date, err)
+		} else {
+			currentTime = parsedDate
+		}
+	}
 	if report.ImageData != "" {
 		// Extract base64 data
 		base64String := report.ImageData
@@ -60,12 +67,13 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 			return fmt.Errorf("invalid image data: %v", err)
 		}
 
-		// Extract time from EXIF data if available
-		exifData, err := exif.Decode(bytes.NewReader(imageData))
-		if err == nil {
-			if dateTime, err := exifData.DateTime(); err == nil {
-				currentTime = dateTime
-				log.Printf("Extracted EXIF time from image: %v", currentTime)
+		if report.Date == ""  {
+			exifData, err := exif.Decode(bytes.NewReader(imageData))
+			if err == nil {
+				if dateTime, err := exifData.DateTime(); err == nil {
+					currentTime = dateTime
+					log.Printf("Extracted EXIF time from image: %v", currentTime)
+				}
 			}
 		}
 	}
