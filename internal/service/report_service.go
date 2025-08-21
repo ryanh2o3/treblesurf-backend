@@ -410,6 +410,15 @@ func (s *ReportService) GetTodaysSurfReports(countryName, regionName, spotName s
 		return nil, fmt.Errorf("failed to unmarshal reports: %v", err)
 	}
 
+	// Filter out sensitive fields before returning to users
+	for _, report := range reports {
+		// Remove UserEmail field for privacy
+		delete(report, "UserEmail")
+		
+		// Keep other fields like reportedBy (UUID), Reporter (name), etc.
+		// The reportedBy field contains the UUID which is safe to expose
+	}
+
 	return reports, nil
 }
 
