@@ -64,7 +64,7 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		
 		imageData, err := base64.StdEncoding.DecodeString(base64String)
 		if err != nil {
-			return fmt.Errorf("invalid image data: %v", err)
+			return model.ErrInvalidImageData
 		}
 
 		if report.Date == ""  {
@@ -113,41 +113,34 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		
 		imageData, err := base64.StdEncoding.DecodeString(base64String)
 		if err != nil {
-			return fmt.Errorf("invalid image data: %v", err)
+			return model.ErrInvalidImageData
 		}
 
 		// Validate image using Rekognition
 		valid, err := s.validateImageWithRekognition(imageData)
 		if err != nil {
-			if strings.Contains(err.Error(), "image does not appear to be surf-related") {
-				return fmt.Errorf("please upload a photo that clearly shows the ocean, waves, beach, or coastline: %v", err.Error())
-			}
-			return fmt.Errorf("image validation failed: %v", err)
+			return err
 		}
 
 		if !valid {
-			return fmt.Errorf("image does not appear to be surf-related. Please upload a photo showing the ocean, waves, beach, or coastline")
+			return model.ErrImageNotSurfRelated
 		}
 
-		if valid {
-			// Upload to S3
-			imageKey := fmt.Sprintf(
-				"surf-reports/%s/%s_%s.jpg",
-				countryRegionSpot,
-				currentTime.UTC().Format("2006-01-02T15:04:05Z"),
-				userEmail,
-			)
-			s3Key, err := s.uploadImageToS3(imageData, imageKey)
-			if err != nil {
-				return fmt.Errorf("failed to upload image: %v", err)
-			}
-
-			// Store just the S3 key in DynamoDB
-			item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(s3Key)}
-			s3KeyReport = s3Key
-		} else {
-			return fmt.Errorf("image validation failed")
+		// Upload to S3
+		imageKey := fmt.Sprintf(
+			"surf-reports/%s/%s_%s.jpg",
+			countryRegionSpot,
+			currentTime.UTC().Format("2006-01-02T15:04:05Z"),
+			userEmail,
+		)
+		s3Key, err := s.uploadImageToS3(imageData, imageKey)
+		if err != nil {
+			return model.NewImageValidationError(err, "failed to upload image")
 		}
+
+		// Store just the S3 key in DynamoDB
+		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(s3Key)}
+		s3KeyReport = s3Key
 	}
 
 	// Insert into DynamoDB
@@ -241,7 +234,7 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 			log.Printf("Failed to retrieve pre-uploaded image %s: %v", report.ImageKey, err)
 			// Try to delete the image key if it exists
 			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
-			return fmt.Errorf("failed to retrieve pre-uploaded image: %v", err)
+			return model.ErrImageRetrievalFailed
 		}
 
 		// Validate image using Rekognition
@@ -250,18 +243,14 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 			// Clean up invalid image
 			log.Printf("Failed to validate pre-uploaded image %s: %v", report.ImageKey, err)
 			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
-			
-			if strings.Contains(err.Error(), "image does not appear to be surf-related") {
-				return fmt.Errorf("image validation failed: %v. Please upload a photo that clearly shows the ocean, waves, beach, or coastline", err.Error())
-			}
-			return fmt.Errorf("image validation failed: %v", err)
+			return err
 		}
 
 		if !valid {
 			// Clean up invalid image
 			log.Printf("Pre-uploaded image %s failed validation, deleting", report.ImageKey)
 			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
-			return fmt.Errorf("image does not appear to be surf-related. Please upload a photo showing the ocean, waves, beach, or coastline")
+			return model.ErrImageNotSurfRelated
 		}
 		
 		// Store the S3 key in DynamoDB when validation succeeds
@@ -410,7 +399,7 @@ func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, er
 
 	result, err := s.rekognitionClient.DetectLabels(input)
 	if err != nil {
-		return false, fmt.Errorf("image analysis failed: %v", err)
+		return false, model.NewImageValidationError(err, "image analysis failed")
 	}
 
 	validLabels := []string{"Sea", "Water", "Sea Waves", "Beach", "Coast"}
@@ -427,10 +416,10 @@ func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, er
 
 	// Return a helpful error message with detected labels
 	if len(detectedLabels) > 0 {
-		return false, fmt.Errorf("image does not appear to be surf-related. Please upload a photo showing the ocean, waves, beach, or coastline")
+		return false, model.ErrImageNotSurfRelated
 	}
 	
-	return false, fmt.Errorf("image could not be analyzed. Please ensure the image is clear and shows the surf conditions")
+	return false, model.ErrImageAnalysisFailed
 }
 
 // min helper function
@@ -445,7 +434,7 @@ func min(a, b int) int {
 func (s *ReportService) uploadImageToS3(imageData []byte, key string) (string, error) {
 	err := s.s3Storage.PutObject(s.bucketName, key, imageData, "image/jpeg")
 	if err != nil {
-		return "", fmt.Errorf("failed to upload image to S3: %v", err)
+		return "", model.NewImageValidationError(err, "failed to upload image to S3")
 	}
 
 	return key, nil

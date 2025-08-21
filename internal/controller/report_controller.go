@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -138,27 +139,46 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 	if err != nil {
 		log.Printf("Failed to submit report: %v", err)
 		
-		// Provide more helpful error messages for image validation failures
-		if strings.Contains(err.Error(), "image validation failed") {
+		// Handle specific error types
+		var imageValidationErr *model.ImageValidationError
+		if errors.As(err, &imageValidationErr) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "Image validation failed",
-				"message": err.Error(),
+				"message": imageValidationErr.Error(),
 				"help": "Please ensure your image clearly shows the ocean, waves, beach, or coastline. The image should be clear and focused on surf conditions.",
 			})
 			return
 		}
 		
-		// Handle invalid image data errors
-		if strings.Contains(err.Error(), "invalid image data") {
+		// Handle specific error types
+		switch {
+		case errors.Is(err, model.ErrImageNotSurfRelated):
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Image not surf-related",
+				"message": "The image does not appear to show surf conditions",
+				"help": "Please upload a photo that clearly shows the ocean, waves, beach, or coastline.",
+			})
+		case errors.Is(err, model.ErrInvalidImageData):
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "Invalid image data",
 				"message": "The image data provided is not in a valid format",
 				"help": "Please ensure you're uploading a valid image file (JPEG, PNG, etc.) and that the image data is properly encoded.",
 			})
-			return
+		case errors.Is(err, model.ErrImageUploadFailed):
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Image upload failed",
+				"message": "Failed to upload the image to storage",
+				"help": "Please try again in a moment. If the problem persists, contact support.",
+			})
+		case errors.Is(err, model.ErrImageRetrievalFailed):
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Image not found",
+				"message": "The uploaded image could not be found or accessed",
+				"help": "Please try uploading your image again. If the problem persists, contact support.",
+			})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit report"})
 		}
-		
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit report"})
 		return
 	}
 
@@ -288,27 +308,46 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 	if err != nil {
 		log.Printf("Failed to submit S3 image report: %v", err)
 		
-		// Provide more helpful error messages for image validation failures
-		if strings.Contains(err.Error(), "image validation failed") {
+		// Handle specific error types
+		var imageValidationErr *model.ImageValidationError
+		if errors.As(err, &imageValidationErr) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "Image validation failed",
-				"message": err.Error(),
+				"message": imageValidationErr.Error(),
 				"help": "Please ensure your image clearly shows the ocean, waves, beach, or coastline. The image should be clear and focused on surf conditions.",
 			})
 			return
 		}
 		
-		// Handle S3 image retrieval errors
-		if strings.Contains(err.Error(), "failed to retrieve pre-uploaded image") {
+		// Handle specific error types
+		switch {
+		case errors.Is(err, model.ErrImageNotSurfRelated):
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Image not surf-related",
+				"message": "The image does not appear to show surf conditions",
+				"help": "Please upload a photo that clearly shows the ocean, waves, beach, or coastline.",
+			})
+		case errors.Is(err, model.ErrInvalidImageData):
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid image data",
+				"message": "The image data provided is not in a valid format",
+				"help": "Please ensure you're uploading a valid image file (JPEG, PNG, etc.) and that the image data is properly encoded.",
+			})
+		case errors.Is(err, model.ErrImageUploadFailed):
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Image upload failed",
+				"message": "Failed to upload the image to storage",
+				"help": "Please try again in a moment. If the problem persists, contact support.",
+			})
+		case errors.Is(err, model.ErrImageRetrievalFailed):
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "Image not found",
 				"message": "The uploaded image could not be found or accessed",
 				"help": "Please try uploading your image again. If the problem persists, contact support.",
 			})
-			return
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit report"})
 		}
-		
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit report"})
 		return
 	}
 
