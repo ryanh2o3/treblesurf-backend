@@ -227,6 +227,9 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 		return fmt.Errorf("user does not have a UUID")
 	}
 
+	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
+
+
 	if report.Date != "" {
 		parsedDate, err := time.Parse("2006-01-02 15:04:05", report.Date)
 		if err != nil {
@@ -236,8 +239,6 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 		}
 	}
 
-	// Use UUID instead of email in dateReported field
-	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
 
 	// Create the DynamoDB item
 	item := map[string]*dynamodb.AttributeValue{
