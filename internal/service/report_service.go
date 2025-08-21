@@ -466,9 +466,8 @@ func (s *ReportService) ValidateImageKeyExists(imageKey string) (bool, error) {
 	return true, nil
 }
 
-// Validation methods now use the validation package
-func (s *ReportService) IsValidSwellSize(swellSize string) bool {
-	return validation.IsValidSwellSize(swellSize)
+func (s *ReportService) IsValidSurfSize(swellSize string) bool {
+	return validation.IsValidSurfSize(swellSize)
 }
 
 func (s *ReportService) IsValidWindAmount(windAmount string) bool {
