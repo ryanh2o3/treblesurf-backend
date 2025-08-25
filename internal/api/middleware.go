@@ -85,7 +85,13 @@ func AdminMiddleware() gin.HandlerFunc {
             return
         }
         
-        if !isAdminUser(email.(string)) {
+        emailStr, ok := email.(string)
+        if !ok {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
+        
+        if !isAdminUser(emailStr) {
             c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
             return
         }
