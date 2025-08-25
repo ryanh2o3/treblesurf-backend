@@ -525,11 +525,36 @@ func GoogleAuthHandler(c *gin.Context) {
 		return
 	}
 
-	email := payload.Claims["email"].(string)
-	name := payload.Claims["name"].(string)
-	picture := payload.Claims["picture"].(string)
-	familyName := payload.Claims["family_name"].(string)
-	givenName := payload.Claims["given_name"].(string)
+	// Log available claims for debugging
+	log.Printf("JWT claims available: %v", payload.Claims)
+
+	// Safely extract claims with validation
+	email, ok := payload.Claims["email"].(string)
+	if !ok || email == "" {
+		log.Printf("Missing or invalid email claim in JWT")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token: missing email"})
+		return
+	}
+
+	name, ok := payload.Claims["name"].(string)
+	if !ok {
+		name = "" // Default to empty string if not present
+	}
+
+	picture, ok := payload.Claims["picture"].(string)
+	if !ok {
+		picture = "" // Default to empty string if not present
+	}
+
+	familyName, ok := payload.Claims["family_name"].(string)
+	if !ok {
+		familyName = "" // Default to empty string if not present
+	}
+
+	givenName, ok := payload.Claims["given_name"].(string)
+	if !ok {
+		givenName = "" // Default to empty string if not present
+	}
 	log.Printf("User email: %s", email)
 	theme := "dark"
 
@@ -805,7 +830,13 @@ func GetUserSessionsHandler(c *gin.Context) {
 		return
 	}
 
-	userSessions, err := sessionStoreDB.GetSessionsByUserID(email.(string))
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+	
+	userSessions, err := sessionStoreDB.GetSessionsByUserID(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve sessions"})
 		return
@@ -870,7 +901,13 @@ func TerminateSessionHandler(c *gin.Context) {
 	}
 
 	// Verify the session belongs to the current user
-	if session.UserID != email.(string) {
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+	
+	if session.UserID != emailStr {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot terminate another user's session"})
 		return
 	}
@@ -895,7 +932,13 @@ func GetWebSocketTokenHandler(c *gin.Context) {
 
 	// Generate a simple token for WebSocket authentication
 	// In production, you might want to use JWT or a more secure method
-	token := fmt.Sprintf("ws_%s_%d", email.(string), time.Now().Unix())
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+	
+	token := fmt.Sprintf("ws_%s_%d", emailStr, time.Now().Unix())
 
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,

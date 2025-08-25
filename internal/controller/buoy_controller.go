@@ -161,8 +161,8 @@ func GetMultipleBuoyData(c *gin.Context) {
         for i := 0; i < 12; i++ {
             searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
             dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-            buoyName := strings.ReplaceAll(buoy, " ", "")
-            data = getBuoyData(buoyName, dateStr)
+            // buoyName := strings.ReplaceAll(buoy, " ", "")
+            data = getBuoyData(buoy, dateStr)
             if data != nil {
                 break
             }
