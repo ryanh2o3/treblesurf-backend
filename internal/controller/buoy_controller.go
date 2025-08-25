@@ -108,7 +108,7 @@ func GetBuoyDataRange(c *gin.Context) {
 }
 
 func GetSingleBuoyData(c *gin.Context) {
-    buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")    
+    // buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")    
     var data map[string]interface{}
     // Start from current time rounded down to the nearest hour
     now := time.Now()
@@ -117,7 +117,7 @@ func GetSingleBuoyData(c *gin.Context) {
     for i := 0; i < 12; i++ {
         searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
         dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-        data = getBuoyData(buoyName, dateStr)
+        data = getBuoyData(c.Query("buoyName"), dateStr)
         if data != nil {
             break
         }
@@ -127,13 +127,13 @@ func GetSingleBuoyData(c *gin.Context) {
 }
 
 func GetLast24HoursBuoyData(c *gin.Context) {
-    buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")    
+    // buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")    
     // Calculate time range
     endTime := time.Now().UTC()
     startTime := endTime.AddDate(0, 0, -1) // 7 days ago
     
     // Get the data range
-    data, err := getBuoyDataRange(buoyName, startTime, endTime)
+    data, err := getBuoyDataRange(c.Query("buoyName"), startTime, endTime)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
