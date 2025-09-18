@@ -60,9 +60,39 @@ type ReportWithS3Image struct {
 	Date          string `json:"date"`
 }
 
+// ReportWithIOSValidation represents a surf report validated using iOS Vision framework
+type ReportWithIOSValidation struct {
+	Country       string `json:"country"`
+	Region        string `json:"region"`
+	Spot          string `json:"spot"`
+	SurfSize      string `json:"surfSize"`
+	WindAmount    string `json:"windAmount"`
+	WindDirection string `json:"windDirection"`
+	Consistency   string `json:"consistency"`
+	Quality       string `json:"quality"`
+	Messiness     string `json:"messiness"`
+	ImageKey      string `json:"imageKey,omitempty"` // S3 key for image (optional)
+	VideoKey      string `json:"videoKey,omitempty"` // S3 key for video (optional)
+	IOSValidated  bool   `json:"iosValidated"`       // Flag indicating iOS validation
+	Date          string `json:"date"`
+}
+
 // PresignedUploadResponse represents the response for generating a presigned upload URL
 type PresignedUploadResponse struct {
 	UploadURL string `json:"uploadUrl"`
 	ImageKey  string `json:"imageKey"`
 	ExpiresAt string `json:"expiresAt"`
+}
+
+// VideoUploadResponse represents the response for generating a video upload URL
+type VideoUploadResponse struct {
+	UploadURL string `json:"uploadUrl"`
+	VideoKey  string `json:"videoKey"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// VideoResponse represents the response for retrieving a video
+type VideoResponse struct {
+	VideoData   string `json:"videoData"`
+	ContentType string `json:"contentType"`
 }
