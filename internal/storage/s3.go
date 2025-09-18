@@ -16,6 +16,7 @@ type S3Storage interface {
 	PutObject(bucket, key string, data []byte, contentType string) error
 	DeleteObject(bucket, key string) error
 	GeneratePresignedUploadURL(bucket, key string, expires time.Duration) (string, error)
+	GeneratePresignedViewURL(bucket, key string, expires time.Duration) (string, error)
 }
 
 type S3Client struct {
@@ -78,6 +79,21 @@ func (s *S3Client) GeneratePresignedUploadURL(bucket, key string, expires time.D
 	presignedURL, err := req.Presign(expires)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned URL: %v", err)
+	}
+
+	return presignedURL, nil
+}
+
+// GeneratePresignedViewURL generates a presigned URL for viewing/downloading from S3
+func (s *S3Client) GeneratePresignedViewURL(bucket, key string, expires time.Duration) (string, error) {
+	req, _ := s.client.GetObjectRequest(&s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+
+	presignedURL, err := req.Presign(expires)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned view URL: %v", err)
 	}
 
 	return presignedURL, nil
