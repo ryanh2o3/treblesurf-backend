@@ -842,6 +842,114 @@ func SubmitSurfReportWithIOSValidation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
+// DeleteUploadedMedia handles deletion of uploaded media from S3
+func DeleteUploadedMedia(c *gin.Context) {
+	log.Printf("=== Delete Uploaded Media Request ===")
+	log.Printf("User-Agent: %s", c.Request.UserAgent())
+	log.Printf("Method: %s", c.Request.Method)
+	log.Printf("Content-Type: %s", c.GetHeader("Content-Type"))
+
+	// Get query parameters
+	mediaKey := c.Query("key")
+	mediaType := c.Query("type")
+
+	// Validate required parameters
+	if mediaKey == "" || mediaType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Missing required parameters",
+			"message": "Both 'key' and 'type' parameters are required",
+			"help": "Please provide the media key and type (image or video) in your request.",
+		})
+		return
+	}
+
+	// Validate media type
+	if mediaType != "image" && mediaType != "video" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid media type",
+			"message": "Media type must be either 'image' or 'video'",
+			"help": "Please specify 'image' for images or 'video' for videos.",
+		})
+		return
+	}
+
+	// Validate media key format to prevent path traversal
+	if !isValidMediaKey(mediaKey) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid media key format",
+			"message": "The media key format is not valid",
+			"help": "Please provide a valid media key.",
+		})
+		return
+	}
+
+	email, exists := c.Get("email")
+	if !exists {
+		log.Printf("No email found in context - authentication issue")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Authentication required",
+			"message": "You must be logged in to delete media",
+			"help": "Please log in and try again.",
+		})
+		return
+	}
+
+	log.Printf("Deleting %s media: %s for user: %s", mediaType, mediaKey, email.(string))
+
+	// Verify user has permission to delete this media
+	user, err := getUserByEmail(email.(string))
+	if err != nil {
+		log.Printf("Failed to fetch user information: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "User information error",
+			"message": "Unable to retrieve your user profile",
+			"help": "Please try again in a moment. If the problem persists, contact support.",
+		})
+		return
+	}
+
+	// Verify user has access to this media
+	if !canUserAccessMedia(mediaKey, user.UUID, mediaType) {
+		log.Printf("User %s attempted to delete media they don't own: %s", email.(string), mediaKey)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "Access denied",
+			"message": "You don't have permission to delete this media",
+			"help": "You can only delete media that you uploaded.",
+		})
+		return
+	}
+
+	// Delete the media from S3
+	err = ReportService.DeleteMediaFromS3(mediaKey)
+	if err != nil {
+		log.Printf("Failed to delete media %s: %v", mediaKey, err)
+		
+		// Provide more helpful error messages for common failures
+		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "NoSuchKey") {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "Media not found",
+				"message": "The requested media could not be found",
+				"help": "The media may have already been deleted or the key may be incorrect.",
+			})
+			return
+		}
+		
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to delete media",
+			"message": "Unable to delete the media from storage",
+			"help": "Please try again in a moment. If the problem persists, contact support.",
+		})
+		return
+	}
+
+	log.Printf("Successfully deleted %s media: %s for user: %s", mediaType, mediaKey, email.(string))
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Media deleted successfully",
+		"mediaKey": mediaKey,
+		"mediaType": mediaType,
+	})
+}
+
 // This controller uses the shared service registry
 
 // Helper functions
@@ -855,5 +963,95 @@ func isIOSClient(userAgent string) bool {
 	return strings.Contains(userAgentLower, "ios") ||
 		strings.Contains(userAgentLower, "iphone") ||
 		strings.Contains(userAgentLower, "ipad")
+}
+
+// isValidMediaKey validates that the media key is in the expected format
+func isValidMediaKey(mediaKey string) bool {
+	// Media keys should follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.ext
+	// This prevents path traversal attacks
+	if mediaKey == "" {
+		return false
+	}
+	
+	// Check if it starts with the expected prefix
+	if !strings.HasPrefix(mediaKey, "surf-reports/") {
+		return false
+	}
+	
+	// Check for path traversal attempts
+	if strings.Contains(mediaKey, "..") || strings.Contains(mediaKey, "//") {
+		return false
+	}
+	
+	// Check for valid file extensions
+	validExtensions := []string{".jpg", ".jpeg", ".png", ".mp4", ".mov", ".avi"}
+	hasValidExtension := false
+	for _, ext := range validExtensions {
+		if strings.HasSuffix(strings.ToLower(mediaKey), ext) {
+			hasValidExtension = true
+			break
+		}
+	}
+	
+	return hasValidExtension
+}
+
+// canUserAccessMedia checks if a user has permission to access/delete a specific media file
+func canUserAccessMedia(mediaKey, userUUID, mediaType string) bool {
+	// Media keys follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.ext
+	// We need to extract the UUID from the media key to verify ownership
+	
+	// Split the media key by "/" to get the parts
+	parts := strings.Split(mediaKey, "/")
+	if len(parts) < 3 {
+		log.Printf("Invalid media key format: %s", mediaKey)
+		return false
+	}
+	
+	// Get the filename part (last part)
+	filename := parts[len(parts)-1]
+	
+	// Remove the file extension
+	var filenameWithoutExt string
+	if mediaType == "video" {
+		// Remove video extensions
+		for _, ext := range []string{".mp4", ".mov", ".avi"} {
+			if strings.HasSuffix(filename, ext) {
+				filenameWithoutExt = strings.TrimSuffix(filename, ext)
+				break
+			}
+		}
+	} else {
+		// Remove image extensions
+		for _, ext := range []string{".jpg", ".jpeg", ".png"} {
+			if strings.HasSuffix(filename, ext) {
+				filenameWithoutExt = strings.TrimSuffix(filename, ext)
+				break
+			}
+		}
+	}
+	
+	if filenameWithoutExt == "" {
+		log.Printf("Media key does not have a valid extension: %s", mediaKey)
+		return false
+	}
+	
+	// Split by "_" to get timestamp and UUID
+	fileParts := strings.Split(filenameWithoutExt, "_")
+	if len(fileParts) < 2 {
+		log.Printf("Invalid media key filename format: %s", filename)
+		return false
+	}
+	
+	// The UUID should be the last part after splitting by "_"
+	mediaUUID := fileParts[len(fileParts)-1]
+	
+	// Check if the UUID matches the user's UUID
+	if mediaUUID != userUUID {
+		log.Printf("Media UUID %s does not match user UUID %s", mediaUUID, userUUID)
+		return false
+	}
+	
+	return true
 }
 
