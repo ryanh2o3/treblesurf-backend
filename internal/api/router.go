@@ -131,7 +131,9 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	
 	webModifyGroup.POST("/submitSurfReport", controller.SubmitCurrentSurfReport)
 	webModifyGroup.POST("/submitSurfReportWithS3Image", controller.SubmitSurfReportWithS3Image)
+	webModifyGroup.POST("/submitSurfReportWithIOSValidation", controller.SubmitSurfReportWithIOSValidation)
 	webModifyGroup.GET("/generateImageUploadURL", controller.GenerateImageUploadURL)
+	webModifyGroup.GET("/generateVideoUploadURL", controller.GenerateVideoUploadURL)
 	webModifyGroup.DELETE("/deleteMyAccount", controller.DeleteMyAccount)
 	webModifyGroup.PUT("/setTheme", controller.SetUserTheme)
 	webModifyGroup.DELETE("/sessions/:sessionId", auth.TerminateSessionHandler)
@@ -140,6 +142,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	authorized.GET("/getTheme", controller.GetUserTheme)
 	authorized.GET("/getTodaySpotReports", controller.RetrieveTodaysSurfReports)
 	authorized.GET("getReportImage", controller.GetReportImage)
+	authorized.GET("/getReportVideo", controller.GetReportVideo)
 	authorized.GET("/ws-token", auth.GetWebSocketTokenHandler)
 	authorized.GET("/streamUrl", controller.GetStreamPlaybackURL)
 	authorized.GET("/latestSnapshot", controller.GetLatestSnapshotHandler)

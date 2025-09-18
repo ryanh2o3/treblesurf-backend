@@ -10,6 +10,13 @@ var (
 	ErrInvalidImageData    = errors.New("invalid image data")
 	ErrImageValidationFailed = errors.New("image validation failed")
 	ErrImageRetrievalFailed = errors.New("failed to retrieve pre-uploaded image")
+	
+	// Video-related errors
+	ErrVideoUploadFailed     = errors.New("video upload failed")
+	ErrVideoRetrievalFailed  = errors.New("failed to retrieve video")
+	ErrInvalidVideoFormat    = errors.New("invalid video format")
+	ErrVideoTooLarge         = errors.New("video file too large")
+	ErrIOSValidationRequired = errors.New("iOS validation required for this endpoint")
 )
 
 // ImageValidationError wraps image validation errors with additional context

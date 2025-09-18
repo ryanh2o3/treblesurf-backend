@@ -109,6 +109,8 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		"Reporter":            {S: aws.String(userName)},
 		"Time":                {S: aws.String(currentTime.String())},
 		"reportedBy":          {S: aws.String(user.UUID)},
+		"MediaType":           {S: aws.String("image")}, // Default to image for legacy reports
+		"IOSValidated":        {BOOL: aws.Bool(false)},  // Default to false for legacy reports
 	}
 
 	var s3KeyReport = ""
@@ -188,6 +190,9 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 			"reporter":      userName,
 			"reportedBy":    user.UUID,
 			"imageKey":      s3KeyReport,
+			"videoKey":      "", // No video for legacy reports
+			"mediaType":     "image", // Default to image for legacy reports
+			"iosValidated":  false,   // Default to false for legacy reports
 			"reportTime":    currentTime.Format(time.RFC3339),
 		},
 	}
@@ -254,6 +259,8 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 		"Reporter":            {S: aws.String(userName)},
 		"Time":                {S: aws.String(currentTime.String())},
 		"reportedBy":          {S: aws.String(user.UUID)},
+		"MediaType":           {S: aws.String("image")}, // Default to image for legacy reports
+		"IOSValidated":        {BOOL: aws.Bool(false)},  // Default to false for legacy reports
 	}
 
 	var s3KeyReport = ""
@@ -325,6 +332,9 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 			"reporter":      userName,
 			"reportedBy":    user.UUID,
 			"imageKey":      s3KeyReport,
+			"videoKey":      "", // No video for legacy reports
+			"mediaType":     "image", // Default to image for legacy reports
+			"iosValidated":  false,   // Default to false for legacy reports
 			"reportTime":    currentTime.Format(time.RFC3339),
 		},
 	}
@@ -386,6 +396,46 @@ func (s *ReportService) GenerateImageUploadURL(country, region, spot, userEmail 
 	}, nil
 }
 
+// GenerateVideoUploadURL generates a presigned URL for uploading a video to S3
+func (s *ReportService) GenerateVideoUploadURL(country, region, spot, userEmail string) (*model.VideoUploadResponse, error) {
+	// Get the user's UUID
+	user, err := s.userService.GetUserByEmail(userEmail)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %v", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+	if user.UUID == "" {
+		return nil, fmt.Errorf("user does not have a UUID")
+	}
+
+	// Generate a predictable S3 key based on location and user UUID
+	countryRegionSpot := fmt.Sprintf("%s_%s_%s", country, region, spot)
+	currentTime := time.Now()
+	
+	videoKey := fmt.Sprintf(
+		"surf-reports/%s/%s_%s.mp4",
+		countryRegionSpot,
+		currentTime.UTC().Format("2006-01-02T15:04:05Z"),
+		user.UUID,
+	)
+
+	// Generate presigned URL valid for 15 minutes
+	presignedURL, err := s.s3Storage.GeneratePresignedUploadURL(s.bucketName, videoKey, 15*time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate presigned URL: %v", err)
+	}
+
+	expiresAt := currentTime.Add(15 * time.Minute)
+
+	return &model.VideoUploadResponse{
+		UploadURL: presignedURL,
+		VideoKey:  videoKey,
+		ExpiresAt: expiresAt.Format(time.RFC3339),
+	}, nil
+}
+
 // GetTodaysSurfReports retrieves surf reports for a specific spot
 func (s *ReportService) GetTodaysSurfReports(countryName, regionName, spotName string) ([]map[string]interface{}, error) {
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
@@ -416,6 +466,17 @@ func (s *ReportService) GetTodaysSurfReports(countryName, regionName, spotName s
 		// Remove UserEmail field for privacy
 		delete(report, "UserEmail")
 		
+		// Ensure new fields are included with defaults if missing
+		if _, exists := report["VideoKey"]; !exists {
+			report["VideoKey"] = ""
+		}
+		if _, exists := report["MediaType"]; !exists {
+			report["MediaType"] = "image" // Default for legacy reports
+		}
+		if _, exists := report["IOSValidated"]; !exists {
+			report["IOSValidated"] = false // Default for legacy reports
+		}
+		
 		// Keep other fields like reportedBy (UUID), Reporter (name), etc.
 		// The reportedBy field contains the UUID which is safe to expose
 	}
@@ -436,6 +497,161 @@ func (s *ReportService) GetReportImage(imageKey string) ([]byte, string, error) 
 	contentType := "image/jpeg"
 
 	return imageData, contentType, nil
+}
+
+// GetReportVideo retrieves a report video from S3
+func (s *ReportService) GetReportVideo(videoKey string) ([]byte, string, error) {
+	// Read the video data using the interface method
+	videoData, err := s.s3Storage.GetObject(s.bucketName, videoKey)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read video data: %v", err)
+	}
+
+	// For now, assume MP4 content type
+	// TODO: Implement proper content type detection
+	contentType := "video/mp4"
+
+	return videoData, contentType, nil
+}
+
+// SubmitSurfReportWithIOSValidation submits a surf report that has been validated using iOS Vision framework
+func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWithIOSValidation, userEmail string, userName string) error {
+	currentTime := time.Now()
+	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
+
+	// Get the user's UUID
+	user, err := s.userService.GetUserByEmail(userEmail)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %v", err)
+	}
+	if user == nil {
+		return fmt.Errorf("user not found")
+	}
+	if user.UUID == "" {
+		return fmt.Errorf("user does not have a UUID")
+	}
+
+	if report.Date != "" {
+		parsedDate, err := time.Parse("2006-01-02 15:04:05", report.Date)
+		if err != nil {
+			log.Printf("Failed to parse date '%s': %v, using current time", report.Date, err)
+		} else {
+			currentTime = parsedDate
+		}
+	}
+
+	// Use UUID instead of email in dateReported field
+	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
+
+	// Determine media type
+	mediaType := "none"
+	if report.ImageKey != "" && report.VideoKey != "" {
+		mediaType = "both"
+	} else if report.ImageKey != "" {
+		mediaType = "image"
+	} else if report.VideoKey != "" {
+		mediaType = "video"
+	}
+
+	// Create the DynamoDB item
+	item := map[string]*dynamodb.AttributeValue{
+		"country_region_spot": {S: aws.String(countryRegionSpot)},
+		"dateReported":        {S: aws.String(dateReported)},
+		"SurfSize":            {S: aws.String(report.SurfSize)},
+		"WindAmount":          {S: aws.String(report.WindAmount)},
+		"WindDirection":       {S: aws.String(report.WindDirection)},
+		"Consistency":         {S: aws.String(report.Consistency)},
+		"Quality":             {S: aws.String(report.Quality)},
+		"Messiness":           {S: aws.String(report.Messiness)},
+		"UserEmail":           {S: aws.String(userEmail)},
+		"Reporter":            {S: aws.String(userName)},
+		"Time":                {S: aws.String(currentTime.String())},
+		"reportedBy":          {S: aws.String(user.UUID)},
+		"MediaType":           {S: aws.String(mediaType)},
+		"IOSValidated":        {BOOL: aws.Bool(report.IOSValidated)},
+	}
+
+	var s3KeyReport = ""
+	var videoKeyReport = ""
+
+	// Process image if provided
+	if report.ImageKey != "" {
+		// For iOS validated reports, we trust the client-side validation
+		// Just verify the image exists in S3
+		_, err := s.s3Storage.GetObject(s.bucketName, report.ImageKey)
+		if err != nil {
+			log.Printf("Failed to verify iOS-validated image %s: %v", report.ImageKey, err)
+			return model.ErrImageRetrievalFailed
+		}
+		
+		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(report.ImageKey)}
+		s3KeyReport = report.ImageKey
+	}
+
+	// Process video if provided
+	if report.VideoKey != "" {
+		// Verify the video exists in S3
+		_, err := s.s3Storage.GetObject(s.bucketName, report.VideoKey)
+		if err != nil {
+			log.Printf("Failed to verify iOS-validated video %s: %v", report.VideoKey, err)
+			return model.ErrVideoRetrievalFailed
+		}
+		
+		item["VideoKey"] = &dynamodb.AttributeValue{S: aws.String(report.VideoKey)}
+		videoKeyReport = report.VideoKey
+	}
+
+	// Insert into DynamoDB
+	input := &dynamodb.PutItemInput{
+		TableName: aws.String("SurfReports"),
+		Item:      item,
+	}
+
+	_, err = s.dbStorage.PutItem(input)
+	if err != nil {
+		return fmt.Errorf("failed to store report: %v", err)
+	}
+
+	log.Print("done putting iOS validated report")
+
+	// Build message for WebSocket broadcasting
+	message := map[string]interface{}{
+		"action": "new_report",
+		"data": map[string]interface{}{
+			"country":       report.Country,
+			"region":        report.Region,
+			"spot":          report.Spot,
+			"quality":       report.Quality,
+			"surfSize":      report.SurfSize,
+			"windAmount":    report.WindAmount,
+			"windDirection": report.WindDirection,
+			"messiness":     report.Messiness,
+			"consistency":   report.Consistency,
+			"reporter":      userName,
+			"reportedBy":    user.UUID,
+			"imageKey":      s3KeyReport,
+			"videoKey":      videoKeyReport,
+			"mediaType":     mediaType,
+			"iosValidated":  report.IOSValidated,
+			"reportTime":    currentTime.Format(time.RFC3339),
+		},
+	}
+
+	// Get spot subscribers and broadcast
+	subscribers, err := s.getSpotSubscribers(report.Country, report.Region, report.Spot)
+	if err != nil {
+		log.Printf("Failed to get subscribers: %v", err)
+	} else {
+		// Broadcast to subscribers asynchronously
+		go func() {
+			err := s.broadcastToUsers(subscribers, message)
+			if err != nil {
+				log.Printf("Failed to broadcast message: %v", err)
+			}
+		}()
+	}
+
+	return nil
 }
 
 // validateImageWithRekognition validates an image using AWS Rekognition
@@ -475,6 +691,17 @@ func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, er
 	}
 	
 	return false, model.ErrImageAnalysisFailed
+}
+
+// validateImage validates an image with optional iOS validation bypass
+func (s *ReportService) validateImage(imageData []byte, iosValidated bool) (bool, error) {
+	// Skip validation if iOS validated
+	if iosValidated {
+		return true, nil
+	}
+
+	// Use existing AWS Rekognition validation for non-iOS clients
+	return s.validateImageWithRekognition(imageData)
 }
 
 // min helper function
