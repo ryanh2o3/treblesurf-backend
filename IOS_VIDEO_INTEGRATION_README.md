@@ -159,30 +159,42 @@ All surf report endpoints now include additional fields for video and iOS valida
 
 ## iOS App Integration Workflow
 
-### Complete Video Upload Flow
+### Complete Video Upload Flow with Thumbnail Generation
 
-1. **Generate Video Upload URL**
-
-   ```swift
-   // GET /api/generateVideoUploadURL?country=Ireland&region=Donegal&spot=Bundoran
-   let response = await generateVideoUploadURL(country: "Ireland", region: "Donegal", spot: "Bundoran")
-   ```
-
-2. **Upload Video to S3**
+1. **Generate Upload URLs**
 
    ```swift
-   // Upload video file using the presigned URL
-   let success = await uploadVideoToS3(url: response.uploadUrl, videoData: videoData)
+   // Generate both video and image upload URLs
+   let videoResponse = await generateVideoUploadURL(country: "Ireland", region: "Donegal", spot: "Bundoran")
+   let imageResponse = await generateImageUploadURL(country: "Ireland", region: "Donegal", spot: "Bundoran")
    ```
 
-3. **Validate with Vision Framework**
+2. **Generate Thumbnail from Video**
 
    ```swift
-   // Use iOS Vision framework to validate the video/image
-   let isValid = await validateWithVision(videoData: videoData)
+   // Extract thumbnail from video using AVAssetImageGenerator
+   let thumbnailImage = await generateThumbnailFromVideo(videoURL: videoURL, timeInSeconds: 1.0)
+   let thumbnailData = thumbnailImage.jpegData(compressionQuality: 0.8)
    ```
 
-4. **Submit Validated Report**
+3. **Upload Both Files to S3**
+
+   ```swift
+   // Upload video file using presigned URL
+   let videoSuccess = await uploadVideoToS3(url: videoResponse.uploadUrl, videoData: videoData)
+
+   // Upload thumbnail image using presigned URL
+   let imageSuccess = await uploadImageToS3(url: imageResponse.uploadUrl, imageData: thumbnailData)
+   ```
+
+4. **Validate with Vision Framework**
+
+   ```swift
+   // Use iOS Vision framework to validate the thumbnail (faster than video)
+   let isValid = await validateWithVision(imageData: thumbnailData)
+   ```
+
+5. **Submit Validated Report with Both Media**
    ```swift
    // POST /api/submitSurfReportWithIOSValidation
    let report = SurfReportWithIOSValidation(
@@ -195,8 +207,8 @@ All surf report endpoints now include additional fields for video and iOS valida
        consistency: "consistent",
        quality: "good",
        messiness: "clean",
-       imageKey: imageKey, // Optional
-       videoKey: response.videoKey,
+       imageKey: imageResponse.imageKey, // Thumbnail for display
+       videoKey: videoResponse.videoKey, // Full video for playback
        iosValidated: true,
        date: "2024-01-15 14:30:00"
    )
@@ -226,6 +238,47 @@ You can submit reports with both image and video:
 ```
 
 This will result in `MediaType: "both"` in the database and responses.
+
+## iOS Thumbnail Generation Implementation
+
+### AVAssetImageGenerator Example
+
+```swift
+import AVFoundation
+import UIKit
+
+func generateThumbnailFromVideo(videoURL: URL, timeInSeconds: Double) async throws -> UIImage {
+    let asset = AVAsset(url: videoURL)
+    let imageGenerator = AVAssetImageGenerator(asset: asset)
+    imageGenerator.appliesPreferredTrackTransform = true
+    imageGenerator.requestedTimeToleranceAfter = .zero
+    imageGenerator.requestedTimeToleranceBefore = .zero
+
+    let time = CMTime(seconds: timeInSeconds, preferredTimescale: 600)
+
+    do {
+        let cgImage = try await imageGenerator.image(at: time).image
+        return UIImage(cgImage: cgImage)
+    } catch {
+        throw error
+    }
+}
+```
+
+### Display Logic
+
+When displaying surf reports with video:
+
+1. **Show thumbnail image** for quick preview (using `imageKey`)
+2. **Add play button overlay** to indicate video is available
+3. **On tap**: Load and play the full video (using `videoKey`)
+4. **Fallback**: If video fails to load, show thumbnail only
+
+### Media Type Handling
+
+- **`MediaType: "image"`**: Display image only
+- **`MediaType: "video"`**: Display video thumbnail with play button
+- **`MediaType: "both"`**: Display thumbnail with play button (recommended for video reports)
 
 ## Video Specifications
 
@@ -310,13 +363,15 @@ All existing endpoints continue to work unchanged:
 
 ### iOS App Validation
 
-**Video Upload Flow:**
+**Video Upload Flow with Thumbnail:**
 
-- [ ] Generate video upload URL successfully
-- [ ] Upload video to S3 using presigned URL
-- [ ] Verify video exists in S3 after upload
-- [ ] Submit report with video key
+- [ ] Generate both video and image upload URLs successfully
+- [ ] Generate thumbnail from video using AVAssetImageGenerator
+- [ ] Upload both video and thumbnail to S3 using presigned URLs
+- [ ] Verify both files exist in S3 after upload
+- [ ] Submit report with both imageKey (thumbnail) and videoKey
 - [ ] Retrieve video using getReportVideo endpoint
+- [ ] Retrieve thumbnail using getReportImage endpoint
 
 **Image + Video Flow:**
 

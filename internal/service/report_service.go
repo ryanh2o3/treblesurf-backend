@@ -582,6 +582,9 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWi
 		log.Printf("iOS validated report with image: %s", report.ImageKey)
 		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(report.ImageKey)}
 		s3KeyReport = report.ImageKey
+		log.Printf("Set s3KeyReport to: %s", s3KeyReport)
+	} else {
+		log.Printf("No image key provided in iOS validated report")
 	}
 
 	// Process video if provided
@@ -592,6 +595,9 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWi
 		log.Printf("iOS validated report with video: %s", report.VideoKey)
 		item["VideoKey"] = &dynamodb.AttributeValue{S: aws.String(report.VideoKey)}
 		videoKeyReport = report.VideoKey
+		log.Printf("Set videoKeyReport to: %s", videoKeyReport)
+	} else {
+		log.Printf("No video key provided in iOS validated report")
 	}
 
 	// Insert into DynamoDB
@@ -629,6 +635,8 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWi
 			"reportTime":    currentTime.Format(time.RFC3339),
 		},
 	}
+
+	log.Printf("WebSocket message - ImageKey: %s, VideoKey: %s, MediaType: %s", s3KeyReport, videoKeyReport, mediaType)
 
 	// Get spot subscribers and broadcast
 	subscribers, err := s.getSpotSubscribers(report.Country, report.Region, report.Spot)
