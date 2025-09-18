@@ -283,3 +283,17 @@ func (l *localS3Wrapper) GeneratePresignedUploadURL(bucket, key string, expires 
 
 	return presignedURL, nil
 }
+
+func (l *localS3Wrapper) GeneratePresignedViewURL(bucket, key string, expires time.Duration) (string, error) {
+	req, _ := l.client.GetObjectRequest(&s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+
+	presignedURL, err := req.Presign(expires)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned view URL: %v", err)
+	}
+
+	return presignedURL, nil
+}
