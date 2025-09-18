@@ -143,6 +143,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	authorized.GET("/getTodaySpotReports", controller.RetrieveTodaysSurfReports)
 	authorized.GET("getReportImage", controller.GetReportImage)
 	authorized.GET("/getReportVideo", controller.GetReportVideo)
+	authorized.GET("/generateVideoViewURL", controller.GenerateVideoViewURL)
 	authorized.GET("/ws-token", auth.GetWebSocketTokenHandler)
 	authorized.GET("/streamUrl", controller.GetStreamPlaybackURL)
 	authorized.GET("/latestSnapshot", controller.GetLatestSnapshotHandler)

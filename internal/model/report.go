@@ -96,3 +96,9 @@ type VideoResponse struct {
 	VideoData   string `json:"videoData"`
 	ContentType string `json:"contentType"`
 }
+
+// VideoViewURLResponse represents the response for generating a video view URL
+type VideoViewURLResponse struct {
+	ViewURL   string `json:"viewURL"`
+	ExpiresAt string `json:"expiresAt"`
+}

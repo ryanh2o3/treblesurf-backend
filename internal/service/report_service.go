@@ -514,6 +514,53 @@ func (s *ReportService) GetReportVideo(videoKey string) ([]byte, string, error) 
 	return videoData, contentType, nil
 }
 
+// GenerateVideoViewURL generates a presigned URL for viewing a video
+func (s *ReportService) GenerateVideoViewURL(videoKey string, userEmail string) (*model.VideoViewURLResponse, error) {
+	// Validate that the video key is not empty
+	if videoKey == "" {
+		return nil, fmt.Errorf("video key is required")
+	}
+
+	// Get the user's UUID for access control
+	user, err := s.userService.GetUserByEmail(userEmail)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %v", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+	if user.UUID == "" {
+		return nil, fmt.Errorf("user does not have a UUID")
+	}
+
+	// Verify that the video exists and is accessible
+	_, err = s.s3Storage.GetObject(s.bucketName, videoKey)
+	if err != nil {
+		return nil, fmt.Errorf("video not found or not accessible: %v", err)
+	}
+
+	// Verify that the video belongs to a report the user can access
+	// Extract the user UUID from the video key to verify ownership
+	// Video keys follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.mp4
+	if !s.canUserAccessVideo(videoKey, user.UUID) {
+		return nil, fmt.Errorf("access denied: you don't have permission to view this video")
+	}
+
+	// Generate presigned URL valid for 1 hour
+	expires := 1 * time.Hour
+	viewURL, err := s.s3Storage.GeneratePresignedViewURL(s.bucketName, videoKey, expires)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate presigned view URL: %v", err)
+	}
+
+	expiresAt := time.Now().Add(expires)
+
+	return &model.VideoViewURLResponse{
+		ViewURL:   viewURL,
+		ExpiresAt: expiresAt.Format(time.RFC3339),
+	}, nil
+}
+
 // SubmitSurfReportWithIOSValidation submits a surf report that has been validated using iOS Vision framework
 func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWithIOSValidation, userEmail string, userName string) error {
 	currentTime := time.Now()
@@ -792,4 +839,46 @@ func (s *ReportService) CleanupOrphanedImage(imageKey string) error {
 
 	log.Printf("Successfully cleaned up orphaned image: %s", imageKey)
 	return nil
+}
+
+// canUserAccessVideo checks if a user has permission to access a specific video
+func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
+	// Video keys follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.mp4
+	// We need to extract the UUID from the video key to verify ownership
+	
+	// Split the video key by "/" to get the parts
+	parts := strings.Split(videoKey, "/")
+	if len(parts) < 3 {
+		log.Printf("Invalid video key format: %s", videoKey)
+		return false
+	}
+	
+	// Get the filename part (last part)
+	filename := parts[len(parts)-1]
+	
+	// Remove the .mp4 extension
+	if !strings.HasSuffix(filename, ".mp4") {
+		log.Printf("Video key does not end with .mp4: %s", videoKey)
+		return false
+	}
+	
+	filenameWithoutExt := strings.TrimSuffix(filename, ".mp4")
+	
+	// Split by "_" to get timestamp and UUID
+	fileParts := strings.Split(filenameWithoutExt, "_")
+	if len(fileParts) < 2 {
+		log.Printf("Invalid video key filename format: %s", filename)
+		return false
+	}
+	
+	// The UUID should be the last part after splitting by "_"
+	videoUUID := fileParts[len(fileParts)-1]
+	
+	// Check if the UUID matches the user's UUID
+	if videoUUID != userUUID {
+		log.Printf("Video UUID %s does not match user UUID %s", videoUUID, userUUID)
+		return false
+	}
+	
+	return true
 }

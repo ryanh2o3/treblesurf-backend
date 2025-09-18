@@ -586,6 +586,84 @@ func GetReportVideo(c *gin.Context) {
 	})
 }
 
+// GenerateVideoViewURL generates a presigned URL for viewing a video
+func GenerateVideoViewURL(c *gin.Context) {
+	log.Printf("=== Generate Video View URL Request ===")
+
+	// Get the video key from the query parameter
+	videoKey := c.Query("key")
+	if videoKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Missing video key",
+			"message": "Video key parameter is required",
+			"help": "Please provide the video key in your request.",
+		})
+		return
+	}
+
+	email, exists := c.Get("email")
+	if !exists {
+		log.Printf("No email found in context - authentication issue")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Authentication required",
+			"message": "You must be logged in to generate a video view URL",
+			"help": "Please log in and try again.",
+		})
+		return
+	}
+
+	log.Printf("Generating video view URL for key: %s, user: %s", videoKey, email.(string))
+
+	// Generate the presigned URL
+	response, err := ReportService.GenerateVideoViewURL(videoKey, email.(string))
+	if err != nil {
+		log.Printf("Failed to generate video view URL: %v", err)
+		
+		// Provide more helpful error messages for common failures
+		if strings.Contains(err.Error(), "video not found or not accessible") {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "Video not found",
+				"message": "The requested video could not be found or accessed",
+				"help": "The video may have been deleted or the video key may be incorrect.",
+			})
+			return
+		}
+		
+		if strings.Contains(err.Error(), "user not found") {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "User not found",
+				"message": "Unable to verify your user account",
+				"help": "Please log in again and try again.",
+			})
+			return
+		}
+		
+		if strings.Contains(err.Error(), "access denied") {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "Access denied",
+				"message": "You don't have permission to view this video",
+				"help": "You can only view videos from your own surf reports.",
+			})
+			return
+		}
+		
+		if strings.Contains(err.Error(), "failed to generate presigned view URL") {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to generate view URL",
+				"message": "Unable to create a secure view link for the video",
+				"help": "Please try again in a moment. If the problem persists, contact support.",
+			})
+			return
+		}
+		
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate video view URL"})
+		return
+	}
+
+	log.Printf("Video view URL generated successfully for user: %s", email.(string))
+	c.JSON(http.StatusOK, response)
+}
+
 // SubmitSurfReportWithIOSValidation handles surf report submission with iOS validation
 func SubmitSurfReportWithIOSValidation(c *gin.Context) {
 	log.Printf("=== iOS Validated Report Submission Request ===")
