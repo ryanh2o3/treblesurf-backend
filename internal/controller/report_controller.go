@@ -55,7 +55,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid surf size",
 			"message": fmt.Sprintf("Surf size '%s' is not valid", report.SurfSize),
-			"help": "Valid surf sizes are: flat, 0-0.5, 0.5-1, 1-1.5, 1.5-2.5, 2.5+",
+			"help": "Valid surf sizes are: flat, knee-waist, chest-shoulder, head-high, overhead, double-overhead",
 		})
 		return
 	}
@@ -65,7 +65,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid wind amount",
 			"message": fmt.Sprintf("Wind amount '%s' is not valid", report.WindAmount),
-			"help": "Valid wind amounts are: calm, light, moderate, strong",
+			"help": "Valid wind amounts are: light, moderate, strong, very-strong",
 		})
 		return
 	}
@@ -75,7 +75,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid wind direction",
 			"message": fmt.Sprintf("Wind direction '%s' is not valid", report.WindDirection),
-			"help": "Valid wind directions are: glassy, offshore, cross, onshore",
+			"help": "Valid wind directions are: onshore, offshore, cross-shore, no-wind",
 		})
 		return
 	}
@@ -85,7 +85,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid consistency",
 			"message": fmt.Sprintf("Consistency '%s' is not valid", report.Consistency),
-			"help": "Valid consistency values are: lulls, consistent, relentless",
+			"help": "Valid consistency values are: setty, consistent, inconsistent, sporadic",
 		})
 		return
 	}
@@ -95,17 +95,17 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid quality",
 			"message": fmt.Sprintf("Quality '%s' is not valid", report.Quality),
-			"help": "Valid quality values are: glassy, clean, messy, okay",
+			"help": "Valid quality values are: mushy, average, okay, good, excellent",
 		})
 		return
 	}
 
 	// Validate messiness if provided
-	if report.Messiness != "" && !ReportService.IsValidSurfConditions(report.Messiness) {
+	if report.Messiness != "" && !ReportService.IsValidMessiness(report.Messiness) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid messiness",
 			"message": fmt.Sprintf("Messiness '%s' is not valid", report.Messiness),
-			"help": "Valid messiness values are: glassy, clean, messy, okay",
+			"help": "Valid messiness values are: clean, slight-chop, choppy, messy",
 		})
 		return
 	}
@@ -224,7 +224,7 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid surf size",
 			"message": fmt.Sprintf("Surf size '%s' is not valid", report.SurfSize),
-			"help": "Valid surf sizes are: flat, 0-0.5, 0.5-1, 1-1.5, 1.5-2.5, 2.5+",
+			"help": "Valid surf sizes are: flat, knee-waist, chest-shoulder, head-high, overhead, double-overhead",
 		})
 		return
 	}
@@ -234,7 +234,7 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid wind amount",
 			"message": fmt.Sprintf("Wind amount '%s' is not valid", report.WindAmount),
-			"help": "Valid wind amounts are: calm, light, moderate, strong",
+			"help": "Valid wind amounts are: light, moderate, strong, very-strong",
 		})
 		return
 	}
@@ -244,7 +244,7 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid wind direction",
 			"message": fmt.Sprintf("Wind direction '%s' is not valid", report.WindDirection),
-			"help": "Valid wind directions are: glassy, offshore, cross, onshore",
+			"help": "Valid wind directions are: onshore, offshore, cross-shore, no-wind",
 		})
 		return
 	}
@@ -254,7 +254,7 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid consistency",
 			"message": fmt.Sprintf("Consistency '%s' is not valid", report.Consistency),
-			"help": "Valid consistency values are: lulls, consistent, relentless",
+			"help": "Valid consistency values are: setty, consistent, inconsistent, sporadic",
 		})
 		return
 	}
@@ -264,17 +264,17 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid quality",
 			"message": fmt.Sprintf("Quality '%s' is not valid", report.Quality),
-			"help": "Valid quality values are: glassy, clean, messy, okay",
+			"help": "Valid quality values are: mushy, average, okay, good, excellent",
 		})
 		return
 	}
 
 	// Validate messiness if provided
-	if report.Messiness != "" && !ReportService.IsValidSurfConditions(report.Messiness) {
+	if report.Messiness != "" && !ReportService.IsValidMessiness(report.Messiness) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid messiness",
 			"message": fmt.Sprintf("Messiness '%s' is not valid", report.Messiness),
-			"help": "Valid messiness values are: glassy, clean, messy, okay",
+			"help": "Valid messiness values are: clean, slight-chop, choppy, messy",
 		})
 		return
 	}
