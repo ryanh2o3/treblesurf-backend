@@ -178,7 +178,6 @@ func GetMultipleBuoyData(c *gin.Context) {
 func getBuoyDataRange(buoyName string, startTime, endTime time.Time) ([]map[string]interface{}, error) {
     startStr := startTime.UTC().Format("2006-01-02T15:00:00Z")
     endStr := endTime.UTC().Format("2006-01-02T15:00:00Z")
-    log.Print("buoy name", buoyName)
     input := &dynamodb.QueryInput{
         TableName: aws.String("BuoyData"),
         KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime BETWEEN :start AND :end"),
@@ -222,7 +221,6 @@ func getBuoyDataRange(buoyName string, startTime, endTime time.Time) ([]map[stri
 
 func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
     var buoyData map[string]interface{}
-    log.Print("buoy name", buoyName)
 
     input := &dynamodb.QueryInput{
         TableName: aws.String("BuoyData"),
@@ -246,7 +244,6 @@ func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
     }
 
     if len(result.Items) == 0 {
-        log.Printf("No buoy data found for %s", buoyName)
         return nil
     }
 
