@@ -134,6 +134,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	webModifyGroup.POST("/submitSurfReportWithIOSValidation", controller.SubmitSurfReportWithIOSValidation)
 	webModifyGroup.GET("/generateImageUploadURL", controller.GenerateImageUploadURL)
 	webModifyGroup.GET("/generateVideoUploadURL", controller.GenerateVideoUploadURL)
+	webModifyGroup.DELETE("/deleteUploadedMedia", controller.DeleteUploadedMedia)
 	webModifyGroup.DELETE("/deleteMyAccount", controller.DeleteMyAccount)
 	webModifyGroup.PUT("/setTheme", controller.SetUserTheme)
 	webModifyGroup.DELETE("/sessions/:sessionId", auth.TerminateSessionHandler)

@@ -841,6 +841,23 @@ func (s *ReportService) CleanupOrphanedImage(imageKey string) error {
 	return nil
 }
 
+// DeleteMediaFromS3 deletes media from S3 storage
+func (s *ReportService) DeleteMediaFromS3(mediaKey string) error {
+	if mediaKey == "" {
+		return fmt.Errorf("media key is required")
+	}
+
+	log.Printf("🗑️ [CLEANUP] Deleting media: %s", mediaKey)
+	err := s.s3Storage.DeleteObject(s.bucketName, mediaKey)
+	if err != nil {
+		log.Printf("❌ [CLEANUP] Failed to delete media %s: %v", mediaKey, err)
+		return fmt.Errorf("failed to delete media from S3: %v", err)
+	}
+
+	log.Printf("✅ [CLEANUP] Successfully deleted media: %s", mediaKey)
+	return nil
+}
+
 // canUserAccessVideo checks if a user has permission to access a specific video
 func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 	// Video keys follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.mp4
