@@ -381,10 +381,12 @@ All existing endpoints continue to work unchanged:
 ## Security Considerations
 
 - Presigned URLs expire after 15 minutes
-- Video files are validated for existence before report submission
+- iOS validation trusts the presigned URL upload process (no additional S3 verification)
 - iOS validation flag is required for the new endpoint
 - All uploads require authentication
 - S3 bucket policies remain unchanged
+
+**Note:** For iOS-validated reports, the server trusts that files uploaded via presigned URLs exist and are accessible, avoiding additional S3 permission requirements.
 
 ## Performance Notes
 
