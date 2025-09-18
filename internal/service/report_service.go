@@ -530,6 +530,10 @@ func (s *ReportService) IsValidSurfDifficulty(surfDifficulty string) bool {
 	return validation.IsValidSurfDifficulty(surfDifficulty)
 }
 
+func (s *ReportService) IsValidMessiness(messiness string) bool {
+	return validation.IsValidMessiness(messiness)
+}
+
 // getSpotSubscribers retrieves subscribers for a specific spot
 func (s *ReportService) getSpotSubscribers(country, region, spot string) ([]string, error) {
 	// TODO: Implement spot subscribers retrieval
