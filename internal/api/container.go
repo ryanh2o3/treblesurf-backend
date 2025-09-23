@@ -33,9 +33,11 @@ type Container struct {
 	ReportService   *service.ReportService
 	APIKeyService   *service.APIKeyService
 	WebSocketService *service.WebSocketService
+	SwellPredictionService *service.SwellPredictionService
 	
 	// Controllers
 	ForecastController *controller.ForecastController
+	SwellPredictionController *controller.SwellPredictionController
 }
 
 func NewContainer() (*Container, error) {
@@ -113,6 +115,7 @@ func NewContainer() (*Container, error) {
 	userService := service.NewUserService(dynamoDBClient)
 	reportService := service.NewReportService(dbStorage, s3Storage, rekognitionClient, bucketName, userService)
 	apiKeyService := service.NewAPIKeyService(dbStorage)
+	swellPredictionService := service.NewSwellPredictionService(dynamoDBClient)
 	
 	// Initialize WebSocket service
 	jwtSecret := os.Getenv("JWT_SECRET")
@@ -133,6 +136,7 @@ func NewContainer() (*Container, error) {
 
 	// Initialize controllers
 	forecastController := controller.NewForecastController(forecastService, tideService)
+	swellPredictionController := controller.NewSwellPredictionController(swellPredictionService)
 
 	// Set global dependencies for all controllers
 	// For local development, use the local S3 client directly
@@ -168,9 +172,11 @@ func NewContainer() (*Container, error) {
 		ReportService:   reportService,
 		APIKeyService:   apiKeyService,
 		WebSocketService: websocketService,
+		SwellPredictionService: swellPredictionService,
 		
 		// Controllers
 		ForecastController: forecastController,
+		SwellPredictionController: swellPredictionController,
 	}, nil
 }
 

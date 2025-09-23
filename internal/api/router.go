@@ -107,6 +107,14 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	r.GET("/individualBuoyLocation", controller.IndividualBuoyLocationInfo)
 	r.GET("/locationInfo", controller.GetLocationInfo)
 	r.GET("/forecast", container.ForecastController.GetSpotForecast)
+	
+	// Swell prediction routes
+	r.GET("/swellPrediction", container.SwellPredictionController.GetSpotSwellPrediction)
+	r.GET("/listSpotsSwellPrediction", container.SwellPredictionController.GetListSpotsSwellPrediction)
+	r.GET("/regionSwellPrediction", container.SwellPredictionController.GetRegionSwellPrediction)
+	r.GET("/swellPredictionRange", container.SwellPredictionController.GetSpotSwellPredictionRange)
+	r.GET("/recentSwellPredictions", container.SwellPredictionController.GetRecentSwellPredictions)
+	r.GET("/swellPredictionStatus", container.SwellPredictionController.GetSwellPredictionStatus)
 
 	isLocal := os.Getenv("GO_ENV") == "development"
 
