@@ -219,3 +219,24 @@ func (c *SwellPredictionController) GetSwellPredictionStatus(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, status)
 }
+
+// GetClosestAIPredictionForSpot retrieves the closest AI prediction for a specific spot
+func (c *SwellPredictionController) GetClosestAIPredictionForSpot(ctx *gin.Context) {
+	spotName := ctx.Query("spot")
+	regionName := ctx.Query("region")
+	countryName := ctx.Query("country")
+
+	if spotName == "" || regionName == "" || countryName == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "spot, region, and country parameters are required"})
+		return
+	}
+
+	prediction, err := c.swellPredictionService.GetClosestAIPredictionForSpot(spotName, regionName, countryName)
+	if err != nil {
+		log.Printf("Error getting closest AI prediction: %v", err)
+		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	
+	ctx.JSON(http.StatusOK, prediction)
+}

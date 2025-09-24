@@ -115,6 +115,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	r.GET("/swellPredictionRange", container.SwellPredictionController.GetSpotSwellPredictionRange)
 	r.GET("/recentSwellPredictions", container.SwellPredictionController.GetRecentSwellPredictions)
 	r.GET("/swellPredictionStatus", container.SwellPredictionController.GetSwellPredictionStatus)
+	r.GET("/closestAIPrediction", container.SwellPredictionController.GetClosestAIPredictionForSpot)
 
 	isLocal := os.Getenv("GO_ENV") == "development"
 
