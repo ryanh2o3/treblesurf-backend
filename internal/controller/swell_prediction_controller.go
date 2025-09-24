@@ -46,7 +46,14 @@ func (c *SwellPredictionController) GetSpotSwellPrediction(ctx *gin.Context) {
 		return
 	}
 	
-	ctx.JSON(http.StatusOK, predictions[0]) // Return the latest prediction
+	// Sort predictions by forecast_timestamp (earliest first for better UX)
+	sort.Slice(predictions, func(i, j int) bool {
+		timeI, _ := strconv.ParseInt(predictions[i]["forecast_timestamp"].(string), 10, 64)
+		timeJ, _ := strconv.ParseInt(predictions[j]["forecast_timestamp"].(string), 10, 64)
+		return timeI < timeJ
+	})
+	
+	ctx.JSON(http.StatusOK, predictions) // Return all predictions
 }
 
 // GetListSpotsSwellPrediction retrieves swell predictions for multiple spots

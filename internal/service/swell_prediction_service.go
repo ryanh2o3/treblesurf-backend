@@ -29,7 +29,7 @@ func (s *SwellPredictionService) GetSpotSwellPrediction(spotName, regionName, co
 			},
 		},
 		ScanIndexForward: aws.Bool(false), // Most recent first
-		Limit:            aws.Int64(1),    // Get latest prediction
+		Limit:            aws.Int64(10),   // Get multiple predictions (up to 10)
 	}
 
 	result, err := s.db.Query(input)
@@ -84,7 +84,7 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryNam
 				S: aws.String(fmt.Sprintf("%s#%s#", countryName, regionName)),
 			},
 		},
-		Limit: aws.Int64(100), // Limit to prevent large scans
+		Limit: aws.Int64(200), // Increased limit to get more predictions
 	}
 
 	result, err := s.db.Scan(input)
@@ -93,7 +93,7 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryNam
 	}
 
 	var predictions []map[string]interface{}
-	spotLatestMap := make(map[string]map[string]interface{}) // Track latest prediction per spot
+	spotPredictionsMap := make(map[string][]map[string]interface{}) // Track multiple predictions per spot
 	
 	for _, item := range result.Items {
 		var prediction map[string]interface{}
@@ -103,24 +103,24 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryNam
 		}
 		
 		spotId := prediction["spot_id"].(string)
-		forecastTimestamp := prediction["forecast_timestamp"].(string)
 		
-		// Keep only the latest prediction per spot
-		if existing, exists := spotLatestMap[spotId]; !exists || forecastTimestamp > existing["forecast_timestamp"].(string) {
-			if data, exists := prediction["data"]; exists {
-				if dataMap, ok := data.(map[string]interface{}); ok {
-					dataMap["spot_id"] = prediction["spot_id"]
-					dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
-					dataMap["generated_at"] = prediction["generated_at"]
-					spotLatestMap[spotId] = dataMap
+		if data, exists := prediction["data"]; exists {
+			if dataMap, ok := data.(map[string]interface{}); ok {
+				dataMap["spot_id"] = prediction["spot_id"]
+				dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
+				dataMap["generated_at"] = prediction["generated_at"]
+				
+				// Add to spot's predictions (limit to 3 per spot to avoid too much data)
+				if len(spotPredictionsMap[spotId]) < 3 {
+					spotPredictionsMap[spotId] = append(spotPredictionsMap[spotId], dataMap)
 				}
 			}
 		}
 	}
 	
-	// Convert map to slice
-	for _, prediction := range spotLatestMap {
-		predictions = append(predictions, prediction)
+	// Convert map to slice and flatten
+	for _, spotPredictions := range spotPredictionsMap {
+		predictions = append(predictions, spotPredictions...)
 	}
 	
 	return predictions, nil
@@ -195,7 +195,7 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 	}
 
 	var predictions []map[string]interface{}
-	spotLatestMap := make(map[string]map[string]interface{}) // Track latest prediction per spot
+	spotPredictionsMap := make(map[string][]map[string]interface{}) // Track multiple predictions per spot
 	
 	for _, item := range result.Items {
 		var prediction map[string]interface{}
@@ -205,24 +205,24 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 		}
 		
 		spotId := prediction["spot_id"].(string)
-		forecastTimestamp := prediction["forecast_timestamp"].(string)
 		
-		// Keep only the latest prediction per spot
-		if existing, exists := spotLatestMap[spotId]; !exists || forecastTimestamp > existing["forecast_timestamp"].(string) {
-			if data, exists := prediction["data"]; exists {
-				if dataMap, ok := data.(map[string]interface{}); ok {
-					dataMap["spot_id"] = prediction["spot_id"]
-					dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
-					dataMap["generated_at"] = prediction["generated_at"]
-					spotLatestMap[spotId] = dataMap
+		if data, exists := prediction["data"]; exists {
+			if dataMap, ok := data.(map[string]interface{}); ok {
+				dataMap["spot_id"] = prediction["spot_id"]
+				dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
+				dataMap["generated_at"] = prediction["generated_at"]
+				
+				// Add to spot's predictions (limit to 3 per spot to avoid too much data)
+				if len(spotPredictionsMap[spotId]) < 3 {
+					spotPredictionsMap[spotId] = append(spotPredictionsMap[spotId], dataMap)
 				}
 			}
 		}
 	}
 	
-	// Convert map to slice
-	for _, prediction := range spotLatestMap {
-		predictions = append(predictions, prediction)
+	// Convert map to slice and flatten
+	for _, spotPredictions := range spotPredictionsMap {
+		predictions = append(predictions, spotPredictions...)
 	}
 	
 	return predictions, nil
