@@ -262,3 +262,85 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 	
 	return predictions, nil
 }
+
+// GetClosestAIPredictionForSpot retrieves the closest AI prediction for a spot around the current time
+func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionName, countryName string) (map[string]interface{}, error) {
+	spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
+	
+	// Get current time
+	now := time.Now().UTC()
+	
+	// Look for predictions within the last 2 hours and next 2 hours (4 hour window)
+	startTime := now.Add(-2 * time.Hour)
+	endTime := now.Add(2 * time.Hour)
+	startTimestamp := fmt.Sprintf("%d", startTime.Unix())
+	endTimestamp := fmt.Sprintf("%d", endTime.Unix())
+	
+	input := &dynamodb.QueryInput{
+		TableName: aws.String("SwellPredictions"),
+		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp BETWEEN :start AND :end"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":spot_id": {
+				S: aws.String(spotId),
+			},
+			":start": {
+				S: aws.String(startTimestamp),
+			},
+			":end": {
+				S: aws.String(endTimestamp),
+			},
+		},
+		ScanIndexForward: aws.Bool(true), // Ascending order by time
+		Limit:            aws.Int64(10),  // Limit to prevent too many results
+	}
+
+	result, err := s.db.Query(input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query closest AI prediction: %v", err)
+	}
+
+	if len(result.Items) == 0 {
+		return nil, fmt.Errorf("no AI predictions found for spot %s within the time window", spotId)
+	}
+
+	// Find the closest prediction to current time
+	var closestPrediction map[string]interface{}
+	var closestTimeDiff int64 = 999999999999 // Large number for comparison
+	
+	for _, item := range result.Items {
+		var prediction map[string]interface{}
+		err := dynamodbattribute.UnmarshalMap(item, &prediction)
+		if err != nil {
+			continue
+		}
+		
+		// Extract the data field and properly unmarshal it
+		if dataAttr, exists := item["data"]; exists {
+			var dataMap map[string]interface{}
+			err := dynamodbattribute.Unmarshal(dataAttr, &dataMap)
+			if err != nil {
+				continue
+			}
+			
+			// Calculate time difference from current time
+			if forecastTimestamp, ok := prediction["forecast_timestamp"].(string); ok {
+				if forecastTime, err := time.Parse("2006-01-02 15:04:05", forecastTimestamp); err == nil {
+					timeDiff := now.Sub(forecastTime).Abs().Nanoseconds()
+					if timeDiff < closestTimeDiff {
+						closestTimeDiff = timeDiff
+						closestPrediction = dataMap
+						closestPrediction["spot_id"] = prediction["spot_id"]
+						closestPrediction["forecast_timestamp"] = prediction["forecast_timestamp"]
+						closestPrediction["generated_at"] = prediction["generated_at"]
+					}
+				}
+			}
+		}
+	}
+	
+	if closestPrediction == nil {
+		return nil, fmt.Errorf("no valid AI predictions found for spot %s", spotId)
+	}
+	
+	return closestPrediction, nil
+}
