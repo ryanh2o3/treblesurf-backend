@@ -5,6 +5,7 @@ This document describes the API endpoints for retrieving swell prediction data g
 ## Overview
 
 The swell prediction system uses a three-phase approach:
+
 1. **Phase 1**: Multi-buoy data collection
 2. **Phase 2**: Plane wave fitting for wave propagation
 3. **Phase 3**: Surf reports calibration for improved accuracy
@@ -22,23 +23,26 @@ All endpoints are available at the base API URL with the prefix `/api/` in devel
 **Description**: Retrieves the latest swell prediction for a specific surf spot.
 
 **Query Parameters**:
+
 - `spot` (required): Spot name (e.g., "Lahinch")
 - `region` (required): Region name (e.g., "Clare")
 - `country` (required): Country name (e.g., "Ireland")
 
 **Example Request**:
+
 ```
 GET /swellPrediction?spot=Lahinch&region=Clare&country=Ireland
 ```
 
 **Example Response**:
+
 ```json
 {
   "spot_id": "Ireland#Clare#Lahinch",
   "forecast_timestamp": "1740679200",
   "generated_at": "1740672000",
   "predicted_height": 2.5,
-  "predicted_period": 12.0,
+  "predicted_period": 12.0, // MaxPeriod (significant swell period)
   "predicted_direction": 280,
   "surf_size": 3.2,
   "travel_time_hours": 4.2,
@@ -66,16 +70,19 @@ GET /swellPrediction?spot=Lahinch&region=Clare&country=Ireland
 **Description**: Retrieves swell predictions for multiple spots in the same region.
 
 **Query Parameters**:
+
 - `spots` (required): Comma-separated list of spot names (e.g., "Lahinch,Mullaghmore,Doolin")
 - `region` (required): Region name (e.g., "Clare")
 - `country` (required): Country name (e.g., "Ireland")
 
 **Example Request**:
+
 ```
 GET /listSpotsSwellPrediction?spots=Lahinch,Mullaghmore,Doolin&region=Clare&country=Ireland
 ```
 
 **Example Response**:
+
 ```json
 [
   [
@@ -83,7 +90,7 @@ GET /listSpotsSwellPrediction?spots=Lahinch,Mullaghmore,Doolin&region=Clare&coun
       "spot_id": "Ireland#Clare#Lahinch",
       "predicted_height": 2.5,
       "surf_size": 3.2,
-      "confidence": 0.91,
+      "confidence": 0.91
       // ... other fields
     }
   ],
@@ -92,7 +99,7 @@ GET /listSpotsSwellPrediction?spots=Lahinch,Mullaghmore,Doolin&region=Clare&coun
       "spot_id": "Ireland#Clare#Mullaghmore",
       "predicted_height": 2.3,
       "surf_size": 2.9,
-      "confidence": 0.88,
+      "confidence": 0.88
       // ... other fields
     }
   ],
@@ -101,7 +108,7 @@ GET /listSpotsSwellPrediction?spots=Lahinch,Mullaghmore,Doolin&region=Clare&coun
       "spot_id": "Ireland#Clare#Doolin",
       "predicted_height": 2.7,
       "surf_size": 3.4,
-      "confidence": 0.85,
+      "confidence": 0.85
       // ... other fields
     }
   ]
@@ -115,29 +122,32 @@ GET /listSpotsSwellPrediction?spots=Lahinch,Mullaghmore,Doolin&region=Clare&coun
 **Description**: Retrieves the latest swell predictions for all spots in a region.
 
 **Query Parameters**:
+
 - `region` (required): Region name (e.g., "Clare")
 - `country` (required): Country name (e.g., "Ireland")
 
 **Example Request**:
+
 ```
 GET /regionSwellPrediction?region=Clare&country=Ireland
 ```
 
 **Example Response**:
+
 ```json
 [
   {
     "spot_id": "Ireland#Clare#Lahinch",
     "predicted_height": 2.5,
     "surf_size": 3.2,
-    "confidence": 0.91,
+    "confidence": 0.91
     // ... other fields
   },
   {
     "spot_id": "Ireland#Clare#Mullaghmore",
     "predicted_height": 2.3,
     "surf_size": 2.9,
-    "confidence": 0.88,
+    "confidence": 0.88
     // ... other fields
   }
   // ... more spots
@@ -151,6 +161,7 @@ GET /regionSwellPrediction?region=Clare&country=Ireland
 **Description**: Retrieves swell predictions for a spot within a specific time range.
 
 **Query Parameters**:
+
 - `spot` (required): Spot name (e.g., "Lahinch")
 - `region` (required): Region name (e.g., "Clare")
 - `country` (required): Country name (e.g., "Ireland")
@@ -158,11 +169,13 @@ GET /regionSwellPrediction?region=Clare&country=Ireland
 - `endTime` (required): End time in format `2006-01-02T15:00:00Z`
 
 **Example Request**:
+
 ```
 GET /swellPredictionRange?spot=Lahinch&region=Clare&country=Ireland&startTime=2025-01-01T00:00:00Z&endTime=2025-01-02T00:00:00Z
 ```
 
 **Example Response**:
+
 ```json
 [
   {
@@ -170,7 +183,7 @@ GET /swellPredictionRange?spot=Lahinch&region=Clare&country=Ireland&startTime=20
     "forecast_timestamp": "1735689600",
     "predicted_height": 2.5,
     "surf_size": 3.2,
-    "arrival_time": "2025-01-01T12:00:00Z",
+    "arrival_time": "2025-01-01T12:00:00Z"
     // ... other fields
   },
   {
@@ -178,7 +191,7 @@ GET /swellPredictionRange?spot=Lahinch&region=Clare&country=Ireland&startTime=20
     "forecast_timestamp": "1735776000",
     "predicted_height": 2.8,
     "surf_size": 3.5,
-    "arrival_time": "2025-01-02T12:00:00Z",
+    "arrival_time": "2025-01-02T12:00:00Z"
     // ... other fields
   }
 ]
@@ -191,28 +204,31 @@ GET /swellPredictionRange?spot=Lahinch&region=Clare&country=Ireland&startTime=20
 **Description**: Retrieves all recent swell predictions (last N hours).
 
 **Query Parameters**:
+
 - `hours` (optional): Number of hours back to look (default: 24)
 
 **Example Request**:
+
 ```
 GET /recentSwellPredictions?hours=12
 ```
 
 **Example Response**:
+
 ```json
 [
   {
     "spot_id": "Ireland#Clare#Lahinch",
     "predicted_height": 2.5,
     "surf_size": 3.2,
-    "confidence": 0.91,
+    "confidence": 0.91
     // ... other fields
   },
   {
     "spot_id": "Ireland#Donegal#Ballyhiernan",
     "predicted_height": 1.8,
     "surf_size": 2.1,
-    "confidence": 0.75,
+    "confidence": 0.75
     // ... other fields
   }
   // ... more spots
@@ -226,11 +242,13 @@ GET /recentSwellPredictions?hours=12
 **Description**: Returns metadata about the swell prediction system status.
 
 **Example Request**:
+
 ```
 GET /swellPredictionStatus
 ```
 
 **Example Response**:
+
 ```json
 {
   "total_predictions": 25,
@@ -243,11 +261,12 @@ GET /swellPredictionStatus
 ## Response Fields
 
 ### Core Prediction Data
+
 - `spot_id`: Unique identifier for the spot (format: `country#region#spot`)
 - `forecast_timestamp`: Unix timestamp of when the swell is predicted to arrive
 - `generated_at`: Unix timestamp of when the prediction was generated
 - `predicted_height`: Predicted wave height in meters
-- `predicted_period`: Predicted wave period in seconds
+- `predicted_period`: Predicted MaxPeriod (significant swell period) in seconds
 - `predicted_direction`: Predicted swell direction in degrees
 - `surf_size`: Predicted surf size in meters
 - `travel_time_hours`: Estimated travel time from buoy to spot in hours
@@ -257,6 +276,7 @@ GET /swellPredictionStatus
 - `distance_km`: Distance from buoy to spot in kilometers
 
 ### Calibration Data (Phase 3)
+
 - `calibration_applied`: Boolean indicating if surf reports calibration was applied
 - `calibration_factor`: Object containing calibration adjustments
   - `height_factor`: Multiplier applied to predicted height
@@ -270,6 +290,7 @@ GET /swellPredictionStatus
 ## Error Responses
 
 ### 400 Bad Request
+
 ```json
 {
   "error": "spot, region, and country parameters are required"
@@ -277,6 +298,7 @@ GET /swellPredictionStatus
 ```
 
 ### 404 Not Found
+
 ```json
 {
   "error": "No swell prediction found for this spot"
@@ -284,6 +306,7 @@ GET /swellPredictionStatus
 ```
 
 ### 500 Internal Server Error
+
 ```json
 {
   "error": "Failed to query swell predictions: connection timeout"
@@ -293,9 +316,12 @@ GET /swellPredictionStatus
 ## Usage Examples
 
 ### Frontend Integration
+
 ```javascript
 // Get latest prediction for a spot
-const response = await fetch('/api/swellPrediction?spot=Lahinch&region=Clare&country=Ireland');
+const response = await fetch(
+  "/api/swellPrediction?spot=Lahinch&region=Clare&country=Ireland"
+);
 const prediction = await response.json();
 
 if (prediction.predicted_height > 2.0 && prediction.confidence > 0.8) {
@@ -304,6 +330,7 @@ if (prediction.predicted_height > 2.0 && prediction.confidence > 0.8) {
 ```
 
 ### Mobile App Integration
+
 ```swift
 // Get region predictions
 let url = URL(string: "https://api.treblesurf.com/api/regionSwellPrediction?region=Clare&country=Ireland")!

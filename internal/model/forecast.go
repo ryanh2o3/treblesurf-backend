@@ -16,6 +16,7 @@ type Forecast struct {
 	WindDirection float64   `json:"wind_direction" dynamodbav:"wind_direction"`
 	WaveHeight    float64   `json:"wave_height" dynamodbav:"wave_height"`
 	WavePeriod    float64   `json:"wave_period" dynamodbav:"wave_period"`
+	MaxPeriod     float64   `json:"max_period" dynamodbav:"max_period"`
 	WaveDirection float64   `json:"wave_direction" dynamodbav:"wave_direction"`
 	Conditions    string    `json:"conditions" dynamodbav:"conditions"`
 }
