@@ -20,16 +20,24 @@ func NewSwellPredictionService(db *dynamodb.DynamoDB) *SwellPredictionService {
 func (s *SwellPredictionService) GetSpotSwellPrediction(spotName, regionName, countryName string) ([]map[string]interface{}, error) {
 	spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	
+	// Get current time rounded to the hour (UTC)
+	now := time.Now().UTC()
+	currentHour := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.UTC)
+	currentHourTimestamp := fmt.Sprintf("%d", currentHour.Unix())
+	
 	input := &dynamodb.QueryInput{
 		TableName: aws.String("SwellPredictions"),
-		KeyConditionExpression: aws.String("spot_id = :spot_id"),
+		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp >= :current_hour"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":spot_id": {
 				S: aws.String(spotId),
 			},
+			":current_hour": {
+				S: aws.String(currentHourTimestamp),
+			},
 		},
-		ScanIndexForward: aws.Bool(false), // Most recent first
-		Limit:            aws.Int64(10),   // Get multiple predictions (up to 10)
+		ScanIndexForward: aws.Bool(true), // Ascending order (earliest first)
+		Limit:            aws.Int64(25),  // Get up to 25 hours of predictions
 	}
 
 	result, err := s.db.Query(input)
@@ -45,15 +53,19 @@ func (s *SwellPredictionService) GetSpotSwellPrediction(spotName, regionName, co
 			continue // Skip invalid items
 		}
 		
-		// Extract the data field and add metadata
-		if data, exists := prediction["data"]; exists {
-			if dataMap, ok := data.(map[string]interface{}); ok {
-				// Add metadata fields
-				dataMap["spot_id"] = prediction["spot_id"]
-				dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
-				dataMap["generated_at"] = prediction["generated_at"]
-				predictions = append(predictions, dataMap)
+		// Extract the data field and properly unmarshal it
+		if dataAttr, exists := item["data"]; exists {
+			var dataMap map[string]interface{}
+			err := dynamodbattribute.Unmarshal(dataAttr, &dataMap)
+			if err != nil {
+				continue // Skip invalid data
 			}
+			
+			// Add metadata fields
+			dataMap["spot_id"] = prediction["spot_id"]
+			dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
+			dataMap["generated_at"] = prediction["generated_at"]
+			predictions = append(predictions, dataMap)
 		}
 	}
 
@@ -75,16 +87,24 @@ func (s *SwellPredictionService) GetListSpotsSwellPrediction(spots []string, reg
 }
 
 func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryName string) ([]map[string]interface{}, error) {
+	// Get current time rounded to the hour (UTC)
+	now := time.Now().UTC()
+	currentHour := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.UTC)
+	currentHourTimestamp := fmt.Sprintf("%d", currentHour.Unix())
+	
 	// Query all spots in the region by scanning with filter
 	input := &dynamodb.ScanInput{
 		TableName: aws.String("SwellPredictions"),
-		FilterExpression: aws.String("begins_with(spot_id, :region_prefix)"),
+		FilterExpression: aws.String("begins_with(spot_id, :region_prefix) AND forecast_timestamp >= :current_hour"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":region_prefix": {
 				S: aws.String(fmt.Sprintf("%s#%s#", countryName, regionName)),
 			},
+			":current_hour": {
+				S: aws.String(currentHourTimestamp),
+			},
 		},
-		Limit: aws.Int64(200), // Increased limit to get more predictions
+		Limit: aws.Int64(500), // Increased limit to get more predictions
 	}
 
 	result, err := s.db.Scan(input)
@@ -104,16 +124,21 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryNam
 		
 		spotId := prediction["spot_id"].(string)
 		
-		if data, exists := prediction["data"]; exists {
-			if dataMap, ok := data.(map[string]interface{}); ok {
-				dataMap["spot_id"] = prediction["spot_id"]
-				dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
-				dataMap["generated_at"] = prediction["generated_at"]
-				
-				// Add to spot's predictions (limit to 3 per spot to avoid too much data)
-				if len(spotPredictionsMap[spotId]) < 3 {
-					spotPredictionsMap[spotId] = append(spotPredictionsMap[spotId], dataMap)
-				}
+		// Extract the data field and properly unmarshal it
+		if dataAttr, exists := item["data"]; exists {
+			var dataMap map[string]interface{}
+			err := dynamodbattribute.Unmarshal(dataAttr, &dataMap)
+			if err != nil {
+				continue // Skip invalid data
+			}
+			
+			dataMap["spot_id"] = prediction["spot_id"]
+			dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
+			dataMap["generated_at"] = prediction["generated_at"]
+			
+			// Add to spot's predictions (limit to 3 per spot to avoid too much data)
+			if len(spotPredictionsMap[spotId]) < 3 {
+				spotPredictionsMap[spotId] = append(spotPredictionsMap[spotId], dataMap)
 			}
 		}
 	}
@@ -161,13 +186,18 @@ func (s *SwellPredictionService) GetSpotSwellPredictionRange(spotName, regionNam
 			continue
 		}
 		
-		if data, exists := prediction["data"]; exists {
-			if dataMap, ok := data.(map[string]interface{}); ok {
-				dataMap["spot_id"] = prediction["spot_id"]
-				dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
-				dataMap["generated_at"] = prediction["generated_at"]
-				predictions = append(predictions, dataMap)
+		// Extract the data field and properly unmarshal it
+		if dataAttr, exists := item["data"]; exists {
+			var dataMap map[string]interface{}
+			err := dynamodbattribute.Unmarshal(dataAttr, &dataMap)
+			if err != nil {
+				continue // Skip invalid data
 			}
+			
+			dataMap["spot_id"] = prediction["spot_id"]
+			dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
+			dataMap["generated_at"] = prediction["generated_at"]
+			predictions = append(predictions, dataMap)
 		}
 	}
 
@@ -206,16 +236,21 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 		
 		spotId := prediction["spot_id"].(string)
 		
-		if data, exists := prediction["data"]; exists {
-			if dataMap, ok := data.(map[string]interface{}); ok {
-				dataMap["spot_id"] = prediction["spot_id"]
-				dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
-				dataMap["generated_at"] = prediction["generated_at"]
-				
-				// Add to spot's predictions (limit to 3 per spot to avoid too much data)
-				if len(spotPredictionsMap[spotId]) < 3 {
-					spotPredictionsMap[spotId] = append(spotPredictionsMap[spotId], dataMap)
-				}
+		// Extract the data field and properly unmarshal it
+		if dataAttr, exists := item["data"]; exists {
+			var dataMap map[string]interface{}
+			err := dynamodbattribute.Unmarshal(dataAttr, &dataMap)
+			if err != nil {
+				continue // Skip invalid data
+			}
+			
+			dataMap["spot_id"] = prediction["spot_id"]
+			dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
+			dataMap["generated_at"] = prediction["generated_at"]
+			
+			// Add to spot's predictions (limit to 3 per spot to avoid too much data)
+			if len(spotPredictionsMap[spotId]) < 3 {
+				spotPredictionsMap[spotId] = append(spotPredictionsMap[spotId], dataMap)
 			}
 		}
 	}
