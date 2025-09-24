@@ -16,6 +16,7 @@ type BuoyData struct {
 	Timestamp    time.Time `json:"timestamp" dynamodbav:"timestamp"`
 	WaveHeight   float64   `json:"wave_height" dynamodbav:"wave_height"`
 	WavePeriod   float64   `json:"wave_period" dynamodbav:"wave_period"`
+	MaxPeriod    float64   `json:"max_period" dynamodbav:"max_period"`
 	WaveDirection float64  `json:"wave_direction" dynamodbav:"wave_direction"`
 	WindSpeed    float64   `json:"wind_speed" dynamodbav:"wind_speed"`
 	WindDirection float64  `json:"wind_direction" dynamodbav:"wind_direction"`
