@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -324,7 +325,8 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 			
 			// Calculate time difference from current time
 			if forecastTimestamp, ok := prediction["forecast_timestamp"].(string); ok {
-				if forecastTime, err := time.Parse("2006-01-02 15:04:05", forecastTimestamp); err == nil {
+				if timestamp, err := strconv.ParseInt(forecastTimestamp, 10, 64); err == nil {
+					forecastTime := time.Unix(timestamp, 0)
 					timeDiff := now.Sub(forecastTime).Abs().Nanoseconds()
 					if timeDiff < closestTimeDiff {
 						closestTimeDiff = timeDiff
