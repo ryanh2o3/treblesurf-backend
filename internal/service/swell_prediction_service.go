@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -271,9 +270,10 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 	// Get current time
 	now := time.Now().UTC()
 	
-	// Look for predictions within the last 2 hours and next 2 hours (4 hour window)
-	startTime := now.Add(-2 * time.Hour)
-	endTime := now.Add(2 * time.Hour)
+	// Look for predictions within the last 6 hours and next 24 hours (30 hour window)
+	// This gives us a wide range to find the closest arrival_time to current time
+	startTime := now.Add(-6 * time.Hour)
+	endTime := now.Add(24 * time.Hour)
 	startTimestamp := fmt.Sprintf("%d", startTime.Unix())
 	endTimestamp := fmt.Sprintf("%d", endTime.Unix())
 	
@@ -292,7 +292,7 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 			},
 		},
 		ScanIndexForward: aws.Bool(true), // Ascending order by time
-		Limit:            aws.Int64(10),  // Limit to prevent too many results
+		Limit:            aws.Int64(50),  // Limit to prevent too many results (increased for larger time window)
 	}
 
 	result, err := s.db.Query(input)
@@ -304,14 +304,19 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 		return nil, fmt.Errorf("no AI predictions found for spot %s within the time window", spotId)
 	}
 
+	// Debug logging
+	fmt.Printf("Found %d raw items for spot %s\n", len(result.Items), spotId)
+
 	// Find the closest prediction to current time
 	var closestPrediction map[string]interface{}
 	var closestTimeDiff int64 = 999999999999 // Large number for comparison
+	validItems := 0
 	
-	for _, item := range result.Items {
+	for i, item := range result.Items {
 		var prediction map[string]interface{}
 		err := dynamodbattribute.UnmarshalMap(item, &prediction)
 		if err != nil {
+			fmt.Printf("Failed to unmarshal item %d: %v\n", i, err)
 			continue
 		}
 		
@@ -320,14 +325,17 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 			var dataMap map[string]interface{}
 			err := dynamodbattribute.Unmarshal(dataAttr, &dataMap)
 			if err != nil {
+				fmt.Printf("Failed to unmarshal data field for item %d: %v\n", i, err)
 				continue
 			}
 			
-			// Calculate time difference from current time
-			if forecastTimestamp, ok := prediction["forecast_timestamp"].(string); ok {
-				if timestamp, err := strconv.ParseInt(forecastTimestamp, 10, 64); err == nil {
-					forecastTime := time.Unix(timestamp, 0)
-					timeDiff := now.Sub(forecastTime).Abs().Nanoseconds()
+			// Calculate time difference from current time based on arrival_time
+			if arrivalTime, ok := dataMap["arrival_time"].(string); ok {
+				// Parse arrival_time (ISO format like "2024-01-15T14:30:00")
+				if parsedTime, err := time.Parse("2006-01-02T15:04:05", arrivalTime); err == nil {
+					timeDiff := now.Sub(parsedTime).Abs().Nanoseconds()
+					validItems++
+					fmt.Printf("Item %d: arrival_time=%s, time_diff=%.1fh\n", i, arrivalTime, float64(timeDiff)/3600000000000)
 					if timeDiff < closestTimeDiff {
 						closestTimeDiff = timeDiff
 						closestPrediction = dataMap
@@ -335,10 +343,18 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 						closestPrediction["forecast_timestamp"] = prediction["forecast_timestamp"]
 						closestPrediction["generated_at"] = prediction["generated_at"]
 					}
+				} else {
+					fmt.Printf("Failed to parse arrival_time for item %d: %v\n", i, err)
 				}
+			} else {
+				fmt.Printf("No arrival_time string for item %d\n", i)
 			}
+		} else {
+			fmt.Printf("No data field for item %d\n", i)
 		}
 	}
+	
+	fmt.Printf("Valid items processed: %d\n", validItems)
 	
 	if closestPrediction == nil {
 		return nil, fmt.Errorf("no valid AI predictions found for spot %s", spotId)
