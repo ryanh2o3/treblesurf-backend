@@ -90,26 +90,28 @@ func CSRFMiddleware() gin.HandlerFunc {
         // Get token from header
         clientToken := c.GetHeader("X-CSRF-Token")
         
-        // Get token from session/cookie
-        serverToken, err := c.Cookie("csrf_token")
-        if err != nil {
-            // If no cookie token, try to validate against session data
-            if clientToken != "" {
-                if sessionService != nil {
-                    userSession, err := sessionService.GetUserSession(c.Request)
-                    if err == nil && userSession != nil {
-                        // Parse session JSON to get CSRF token
-                        var sessionData SessionJSON
-                        if json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
-                            if sessionData.CSRF == clientToken {
-                                c.Next()
-                                return
-                            }
-                        }
-                    }
+        // Try to get token from session data first (preferred method)
+        var serverToken string
+        if sessionService != nil {
+            userSession, err := sessionService.GetUserSession(c.Request)
+            if err == nil && userSession != nil {
+                // Parse session JSON to get CSRF token
+                var sessionData SessionJSON
+                if json.Unmarshal([]byte(userSession.JSON), &sessionData) == nil {
+                    serverToken = sessionData.CSRF
                 }
             }
-            
+        }
+        
+        // If no session token, try to get from cookie as fallback
+        if serverToken == "" {
+            if cookieToken, err := c.Cookie("csrf_token"); err == nil {
+                serverToken = cookieToken
+            }
+        }
+        
+        // If still no server token, deny access
+        if serverToken == "" {
             c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
                 "error": "CSRF token missing",
             })
