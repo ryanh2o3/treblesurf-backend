@@ -69,6 +69,21 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	r.GET("/auth/validate", auth.ValidateTokenHandler)
 	r.POST("/auth/logout", auth.LogoutHandler)
 	
+	// CSRF token refresh endpoint (requires authentication)
+	csrfRoutes := r.Group("/auth")
+	if os.Getenv("GO_ENV") == "development" {
+		// In local dev, use mock auth
+		csrfRoutes.Use(DevAuthMiddleware())
+	} else {
+		// In production, use real auth
+		csrfRoutes.Use(auth.AuthMiddleware())
+	}
+	csrfRoutes.GET("/csrf", func(c *gin.Context) {
+		// The CSRF token is already set in the response headers by the AuthMiddleware
+		// This endpoint just needs to return a 200 status to confirm the token is available
+		c.JSON(http.StatusOK, gin.H{"message": "CSRF token available"})
+	})
+	
 	// Development-only endpoint for iOS simulator
 	if os.Getenv("GO_ENV") == "development" {
 		r.POST("/auth/dev-session", func(c *gin.Context) {
