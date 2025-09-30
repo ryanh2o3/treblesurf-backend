@@ -221,6 +221,17 @@ func (c *SwellPredictionController) GetSwellPredictionStatus(ctx *gin.Context) {
 }
 
 // GetClosestAIPredictionForSpot retrieves the closest AI prediction for a specific spot
+// 
+// This endpoint finds the AI prediction with an arrival_time closest to the current time.
+// It efficiently uses forecast_timestamp (Unix timestamp) for comparison instead of parsing arrival_time.
+// 
+// Timestamp Fields:
+// - forecast_timestamp: Unix timestamp (string) representing when the swell is predicted to arrive at the surf spot
+// - generated_at: Unix timestamp (string) representing when the AI prediction was generated/created
+// - arrival_time: ISO format datetime string (e.g., "2024-01-15T14:30:00") representing the predicted arrival time
+//
+// The endpoint searches within a 60-hour window (12 hours back, 48 hours forward) and falls back to
+// a 7-day search if no predictions are found in the primary window.
 func (c *SwellPredictionController) GetClosestAIPredictionForSpot(ctx *gin.Context) {
 	spotName := ctx.Query("spot")
 	regionName := ctx.Query("region")
