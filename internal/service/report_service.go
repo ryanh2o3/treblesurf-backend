@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -898,4 +900,537 @@ func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 	}
 	
 	return true
+}
+
+// GetSurfReportsWithSimilarBuoyData retrieves surf reports that had similar buoy conditions
+// It takes buoy data parameters (waveHeight, waveDirection, period), a specific buoy name, and optionally spot parameters
+// Returns a list of surf reports with similarity scores
+func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
+	waveHeight float64,
+	waveDirection float64,
+	period float64,
+	buoyName string,
+	countryName string,
+	regionName string,
+	spotName string,
+	daysBack int,
+	maxResults int,
+) ([]map[string]interface{}, error) {
+	// Default values
+	if daysBack == 0 {
+		daysBack = 365 // Default to 1 year
+	}
+	if maxResults == 0 {
+		maxResults = 20 // Default to 20 results
+	}
+
+	// Build spot filter
+	var countryRegionSpot string
+	if countryName != "" && regionName != "" && spotName != "" {
+		countryRegionSpot = fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
+	}
+
+	// Calculate cutoff time
+	cutoffTime := time.Now().Add(-time.Duration(daysBack) * 24 * time.Hour)
+	cutoffStr := cutoffTime.UTC().Format("2006-01-02T15:04:05Z")
+
+	// Query surf reports
+	var result *dynamodb.QueryOutput
+	var scanResult *dynamodb.ScanOutput
+	var err error
+	
+	if countryRegionSpot != "" {
+		// Query for specific spot
+		queryInput := &dynamodb.QueryInput{
+			TableName: aws.String("SurfReports"),
+			KeyConditionExpression: aws.String("country_region_spot = :crs"),
+			FilterExpression: aws.String("#Time > :cutoff"),
+			ExpressionAttributeNames: map[string]*string{
+				"#Time": aws.String("Time"), // Escape reserved keyword
+			},
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":crs": {
+					S: aws.String(countryRegionSpot),
+				},
+				":cutoff": {
+					S: aws.String(cutoffStr),
+				},
+			},
+			ScanIndexForward: aws.Bool(false), // Most recent first
+		}
+		
+		result, err = s.dbStorage.Query(queryInput)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query surf reports: %v", err)
+		}
+	} else {
+		// Scan all reports (filtered by time)
+		scanInput := &dynamodb.ScanInput{
+			TableName: aws.String("SurfReports"),
+			FilterExpression: aws.String("#Time > :cutoff"),
+			ExpressionAttributeNames: map[string]*string{
+				"#Time": aws.String("Time"),
+			},
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":cutoff": {
+					S: aws.String(cutoffStr),
+				},
+			},
+			Limit: aws.Int64(int64(maxResults * 10)), // Get more reports to filter
+		}
+		
+		scanResult, err = s.dbStorage.Scan(scanInput)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan surf reports: %v", err)
+		}
+	}
+
+	// Unmarshal reports
+	var reports []map[string]interface{}
+	var items []map[string]*dynamodb.AttributeValue
+	
+	if result != nil {
+		items = result.Items
+	} else if scanResult != nil {
+		items = scanResult.Items
+	} else {
+		return []map[string]interface{}{}, nil // No results
+	}
+	
+	err = dynamodbattribute.UnmarshalListOfMaps(items, &reports)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal reports: %v", err)
+	}
+
+	// For each report, get buoy data at that time and calculate similarity
+	type reportWithSimilarity struct {
+		report     map[string]interface{}
+		similarity float64
+	}
+
+	var reportsWithSimilarity []reportWithSimilarity
+	
+	// Validate buoy name
+	if buoyName == "" {
+		return nil, fmt.Errorf("buoyName is required")
+	}
+
+	// Get the specified buoy location
+	buoyLocations := s.getBuoyLocations()
+	buoyLocation, ok := buoyLocations[buoyName]
+	if !ok {
+		return nil, fmt.Errorf("buoy %s not found", buoyName)
+	}
+	
+	buoyLat, ok := buoyLocation["Latitude"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("invalid latitude for buoy %s", buoyName)
+	}
+	
+	buoyLon, ok := buoyLocation["Longitude"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("invalid longitude for buoy %s", buoyName)
+	}
+
+	// Use only the specified buoy for data lookup
+	buoyPriority := []string{buoyName}
+
+	for _, report := range reports {
+		// Parse report time
+		timeStr, ok := report["Time"].(string)
+		if !ok || timeStr == "" {
+			continue
+		}
+
+		reportTime, err := parseReportTime(timeStr)
+		if err != nil {
+			log.Printf("Failed to parse report time %s: %v", timeStr, err)
+			continue
+		}
+
+		// Calculate travel time if spot location is available
+		var travelTimeHours float64 = 0.0
+		var targetBuoyTime time.Time = reportTime
+		
+		// Try to get spot location from report
+		// First try from report fields, then from query parameters
+		var spotLat, spotLon float64
+		
+		// Extract spot location from report country_region_spot
+		if countryRegionSpot, ok := report["country_region_spot"].(string); ok {
+			// Format is "Country_Region_Spot"
+			parts := strings.Split(countryRegionSpot, "_")
+			if len(parts) == 3 {
+				spotLoc, err := s.getSpotLocation(parts[0], parts[1], parts[2])
+				if err == nil && spotLoc != nil {
+					spotLat = spotLoc["Latitude"].(float64)
+					spotLon = spotLoc["Longitude"].(float64)
+				}
+			}
+		}
+		
+		// Fallback to query parameters if not found in report
+		if spotLat == 0 && spotLon == 0 && countryName != "" && regionName != "" && spotName != "" {
+			spotLoc, err := s.getSpotLocation(countryName, regionName, spotName)
+			if err == nil && spotLoc != nil {
+				spotLat = spotLoc["Latitude"].(float64)
+				spotLon = spotLoc["Longitude"].(float64)
+			}
+		}
+
+		// Calculate travel time based on swell direction and spot location
+		if spotLat != 0 && spotLon != 0 {
+			// Calculate bearing from buoy to spot
+			bearingToSpot := s.calculateBearing(buoyLat, buoyLon, spotLat, spotLon)
+			
+			// Check if spot is downwave from buoy (within reasonable angle of swell direction)
+			// Swell direction is where waves are coming FROM, so we need to check if the spot
+			// is in the direction the swell is traveling TO
+			swellTravelDirection := math.Mod(waveDirection+180, 360) // Direction waves are traveling TO
+			
+			// Calculate angle difference between swell travel direction and bearing to spot
+			angleDiff := math.Abs(swellTravelDirection - bearingToSpot)
+			if angleDiff > 180 {
+				angleDiff = 360 - angleDiff // Handle wraparound
+			}
+			
+			// If angle difference is less than 45 degrees, spot is downwave - use travel time
+			// If angle difference is greater, spot is not in swell path - minimal/no travel time
+			if angleDiff < 45.0 {
+				// Spot is downwave - calculate normal travel time
+				distance := s.calculateDistance(buoyLat, buoyLon, spotLat, spotLon)
+				
+				// Calculate travel time using phase velocity
+				// Phase velocity = 1.56 * sqrt(period) in m/s for deep water waves
+				phaseVelocity := 1.56 * math.Sqrt(period) // m/s
+				
+				// Travel time in hours = distance (meters) / (phase_velocity * 3600)
+				travelTimeHours = distance / (phaseVelocity * 3600)
+				
+				// Cap travel time between 1-8 hours (matching prediction service)
+				if travelTimeHours > 8.0 {
+					travelTimeHours = 8.0
+				}
+				if travelTimeHours < 1.0 {
+					travelTimeHours = 1.0
+				}
+
+				// Look for buoy data at (report_time - travel_time)
+				targetBuoyTime = reportTime.Add(-time.Duration(travelTimeHours) * time.Hour)
+			} else {
+				// Spot is not directly downwave - use minimal travel time (or same time)
+				// For perpendicular/non-direct swells, look at buoy data closer to report time
+				targetBuoyTime = reportTime
+				travelTimeHours = 0.0
+			}
+		}
+
+		// Get buoy data at target time (accounting for travel time if calculated)
+		buoyData := s.getBuoyDataAtTime(targetBuoyTime, buoyPriority)
+		if buoyData == nil {
+			continue // Skip if no buoy data found
+		}
+
+		// Calculate similarity
+		similarity := s.calculateBuoyConditionSimilarity(
+			waveHeight, waveDirection, period,
+			buoyData,
+		)
+
+		// Only include reports with similarity > 0.7
+		if similarity > 0.7 {
+			// Remove sensitive fields
+			delete(report, "UserEmail")
+			
+			// Add similarity score and buoy data info
+			report["similarity"] = similarity
+			report["buoy_wave_height"] = buoyData["WaveHeight"]
+			report["buoy_wave_direction"] = buoyData["MeanWaveDirection"]
+			report["buoy_period"] = buoyData["MaxPeriod"]
+			if travelTimeHours > 0 {
+				report["travel_time_hours"] = travelTimeHours
+			}
+			
+			reportsWithSimilarity = append(reportsWithSimilarity, reportWithSimilarity{
+				report:     report,
+				similarity: similarity,
+			})
+		}
+	}
+
+	// Sort by similarity (highest first)
+	for i := 0; i < len(reportsWithSimilarity); i++ {
+		for j := i + 1; j < len(reportsWithSimilarity); j++ {
+			if reportsWithSimilarity[i].similarity < reportsWithSimilarity[j].similarity {
+				reportsWithSimilarity[i], reportsWithSimilarity[j] = reportsWithSimilarity[j], reportsWithSimilarity[i]
+			}
+		}
+	}
+
+	// Limit results
+	if len(reportsWithSimilarity) > maxResults {
+		reportsWithSimilarity = reportsWithSimilarity[:maxResults]
+	}
+
+	// Convert back to map slice
+	var finalReports []map[string]interface{}
+	for _, rws := range reportsWithSimilarity {
+		finalReports = append(finalReports, rws.report)
+	}
+
+	return finalReports, nil
+}
+
+// getBuoyDataAtTime retrieves buoy data closest to a specific time
+func (s *ReportService) getBuoyDataAtTime(targetTime time.Time, buoyPriority []string) map[string]interface{} {
+	// Look for data within 6 hours of target time
+	startTime := targetTime.Add(-6 * time.Hour)
+	endTime := targetTime.Add(6 * time.Hour)
+	startStr := startTime.UTC().Format("2006-01-02T15:04:05Z")
+	endStr := endTime.UTC().Format("2006-01-02T15:04:05Z")
+
+	// Try multiple buoys in order of priority
+	for _, buoyName := range buoyPriority {
+		regionBuoy := fmt.Sprintf("Ireland_%s", buoyName)
+		
+		input := &dynamodb.QueryInput{
+			TableName: aws.String("BuoyData"),
+			KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime BETWEEN :start AND :end"),
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":rb": {
+					S: aws.String(regionBuoy),
+				},
+				":start": {
+					S: aws.String(startStr),
+				},
+				":end": {
+					S: aws.String(endStr),
+				},
+			},
+			ScanIndexForward: aws.Bool(true),
+			Limit:            aws.Int64(1),
+		}
+
+		result, err := s.dbStorage.Query(input)
+		if err != nil {
+			log.Printf("Error querying buoy data for %s at %s: %v", buoyName, targetTime.Format(time.RFC3339), err)
+			continue
+		}
+
+		if len(result.Items) > 0 {
+			var buoyData map[string]interface{}
+			err := dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
+			if err == nil {
+				return buoyData
+			}
+		}
+	}
+
+	return nil
+}
+
+// calculateBuoyConditionSimilarity calculates similarity between two buoy conditions
+func (s *ReportService) calculateBuoyConditionSimilarity(
+	predHeight float64,
+	predDirection float64,
+	predPeriod float64,
+	buoyData map[string]interface{},
+) float64 {
+	// Extract buoy measurements
+	buoyHeight := 0.0
+	buoyDirection := 0.0
+	buoyPeriod := 0.0
+
+	if h, ok := buoyData["WaveHeight"].(float64); ok {
+		buoyHeight = h
+	} else if hStr, ok := buoyData["WaveHeight"].(string); ok {
+		if h, err := strconv.ParseFloat(hStr, 64); err == nil {
+			buoyHeight = h
+		}
+	}
+
+	if d, ok := buoyData["MeanWaveDirection"].(float64); ok {
+		buoyDirection = d
+	} else if dStr, ok := buoyData["MeanWaveDirection"].(string); ok {
+		if d, err := strconv.ParseFloat(dStr, 64); err == nil {
+			buoyDirection = d
+		}
+	}
+
+	if p, ok := buoyData["MaxPeriod"].(float64); ok {
+		buoyPeriod = p
+	} else if pStr, ok := buoyData["MaxPeriod"].(string); ok {
+		if p, err := strconv.ParseFloat(pStr, 64); err == nil {
+			buoyPeriod = p
+		}
+	}
+
+	// Calculate height similarity (within 50% is considered similar)
+	maxHeight := predHeight
+	if buoyHeight > maxHeight {
+		maxHeight = buoyHeight
+	}
+	if maxHeight < 0.1 {
+		maxHeight = 0.1 // Avoid division by zero
+	}
+	heightDiff := absFloat(predHeight - buoyHeight) / maxHeight
+	heightSimilarity := maxFloat(0.0, 1.0-heightDiff/0.5)
+
+	// Calculate direction similarity (within 30 degrees is considered similar)
+	directionDiff := absFloat(predDirection - buoyDirection)
+	if directionDiff > 180 {
+		directionDiff = 360 - directionDiff // Handle wraparound
+	}
+	directionSimilarity := maxFloat(0.0, 1.0-directionDiff/30.0)
+
+	// Calculate period similarity (within 2 seconds is considered similar)
+	periodDiff := absFloat(predPeriod - buoyPeriod)
+	periodSimilarity := maxFloat(0.0, 1.0-periodDiff/2.0)
+
+	// Combined similarity (weighted average)
+	// Height and direction are more important than period
+	return 0.5*heightSimilarity + 0.4*directionSimilarity + 0.1*periodSimilarity
+}
+
+// Helper functions
+func absFloat(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// parseReportTime parses various timestamp formats from surf reports
+func parseReportTime(timeStr string) (time.Time, error) {
+	// Try RFC3339 format first
+	if t, err := time.Parse(time.RFC3339, timeStr); err == nil {
+		return t, nil
+	}
+
+	// Try Go time format
+	if t, err := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", timeStr); err == nil {
+		return t, nil
+	}
+
+	// Try simplified format
+	if t, err := time.Parse("2006-01-02 15:04:05 -0700", timeStr); err == nil {
+		return t, nil
+	}
+
+	// Try ISO format
+	if t, err := time.Parse("2006-01-02T15:04:05Z", timeStr); err == nil {
+		return t, nil
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse time string: %s", timeStr)
+}
+
+// getSpotLocation retrieves spot location data
+func (s *ReportService) getSpotLocation(countryName, regionName, spotName string) (map[string]interface{}, error) {
+	locationKey := fmt.Sprintf("%s/%s/%s", countryName, regionName, spotName)
+	
+	input := &dynamodb.QueryInput{
+		TableName: aws.String("LocationData"),
+		KeyConditionExpression: aws.String("country_region_spot = :location"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":location": {
+				S: aws.String(locationKey),
+			},
+		},
+	}
+
+	result, err := s.dbStorage.Query(input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query location: %v", err)
+	}
+
+	if len(result.Items) == 0 {
+		return nil, fmt.Errorf("no location found")
+	}
+
+	var location map[string]interface{}
+	err = dynamodbattribute.UnmarshalMap(result.Items[0], &location)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal location: %v", err)
+	}
+
+	return location, nil
+}
+
+// getBuoyLocations retrieves all buoy locations
+func (s *ReportService) getBuoyLocations() map[string]map[string]interface{} {
+	input := &dynamodb.ScanInput{
+		TableName: aws.String("BuoyLocations"),
+	}
+
+	result, err := s.dbStorage.Scan(input)
+	if err != nil {
+		log.Printf("Error scanning buoy locations: %v", err)
+		return make(map[string]map[string]interface{})
+	}
+
+	buoyLocations := make(map[string]map[string]interface{})
+	for _, item := range result.Items {
+		var buoy map[string]interface{}
+		err := dynamodbattribute.UnmarshalMap(item, &buoy)
+		if err != nil {
+			continue
+		}
+
+		// Extract buoy name from region_buoy (format: "Ireland_M4")
+		if regionBuoy, ok := buoy["region_buoy"].(string); ok {
+			parts := strings.Split(regionBuoy, "_")
+			if len(parts) > 1 {
+				buoyName := parts[len(parts)-1] // Get "M4" from "Ireland_M4"
+				buoyLocations[buoyName] = buoy
+			}
+		} else if name, ok := buoy["Name"].(string); ok {
+			// Fallback to Name field if region_buoy not available
+			buoyLocations[name] = buoy
+		}
+	}
+
+	return buoyLocations
+}
+
+// calculateDistance calculates distance between two points using Haversine formula
+// Returns distance in meters
+func (s *ReportService) calculateDistance(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371000 // Earth's radius in meters
+
+	lat1Rad := lat1 * math.Pi / 180
+	lat2Rad := lat2 * math.Pi / 180
+	deltaLat := (lat2 - lat1) * math.Pi / 180
+	deltaLon := (lon2 - lon1) * math.Pi / 180
+
+	a := math.Sin(deltaLat/2)*math.Sin(deltaLat/2) +
+		math.Cos(lat1Rad)*math.Cos(lat2Rad)*
+			math.Sin(deltaLon/2)*math.Sin(deltaLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+
+	return R * c
+}
+
+// calculateBearing calculates bearing from point 1 to point 2 in degrees (0-360)
+func (s *ReportService) calculateBearing(lat1, lon1, lat2, lon2 float64) float64 {
+	lat1Rad := lat1 * math.Pi / 180
+	lat2Rad := lat2 * math.Pi / 180
+	deltaLon := (lon2 - lon1) * math.Pi / 180
+
+	y := math.Sin(deltaLon) * math.Cos(lat2Rad)
+	x := math.Cos(lat1Rad)*math.Sin(lat2Rad) - math.Sin(lat1Rad)*math.Cos(lat2Rad)*math.Cos(deltaLon)
+
+	bearing := math.Atan2(y, x)
+	bearingDegrees := bearing * 180 / math.Pi
+	
+	// Convert to 0-360 range
+	bearingDegrees = (bearingDegrees + 360) 
+	return math.Mod(bearingDegrees, 360)
 }
