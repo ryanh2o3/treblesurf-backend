@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"treblesurf-backend/internal/model"
 
@@ -441,6 +442,93 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
 		}
 		
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, reports)
+}
+
+// GetSurfReportsWithSimilarBuoyData retrieves surf reports that had similar buoy conditions
+func GetSurfReportsWithSimilarBuoyData(c *gin.Context) {
+	// Parse query parameters
+	waveHeightStr := c.Query("waveHeight")
+	waveDirectionStr := c.Query("waveDirection")
+	periodStr := c.Query("period")
+	buoyName := c.Query("buoyName")
+	countryName := c.Query("country")
+	regionName := c.Query("region")
+	spotName := c.Query("spot")
+	daysBackStr := c.DefaultQuery("daysBack", "365")
+	maxResultsStr := c.DefaultQuery("maxResults", "20")
+
+	// Validate required parameters
+	if waveHeightStr == "" || waveDirectionStr == "" || periodStr == "" || buoyName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Missing required parameters",
+			"message": "waveHeight, waveDirection, period, and buoyName parameters are required",
+			"help": "Please provide buoy data parameters (waveHeight, waveDirection, period, buoyName) in your request.",
+		})
+		return
+	}
+
+	// Parse float values
+	waveHeight, err := strconv.ParseFloat(waveHeightStr, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid waveHeight",
+			"message": "waveHeight must be a valid number",
+		})
+		return
+	}
+
+	waveDirection, err := strconv.ParseFloat(waveDirectionStr, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid waveDirection",
+			"message": "waveDirection must be a valid number",
+		})
+		return
+	}
+
+	period, err := strconv.ParseFloat(periodStr, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid period",
+			"message": "period must be a valid number",
+		})
+		return
+	}
+
+	// Parse optional parameters
+	daysBack, err := strconv.Atoi(daysBackStr)
+	if err != nil {
+		daysBack = 365 // Default to 1 year
+	}
+
+	maxResults, err := strconv.Atoi(maxResultsStr)
+	if err != nil {
+		maxResults = 20 // Default to 20 results
+	}
+
+	// Get reports with similar buoy conditions
+	reports, err := ReportService.GetSurfReportsWithSimilarBuoyData(
+		waveHeight,
+		waveDirection,
+		period,
+		buoyName,
+		countryName,
+		regionName,
+		spotName,
+		daysBack,
+		maxResults,
+	)
+	if err != nil {
+		log.Printf("Failed to retrieve surf reports with similar buoy data: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to retrieve reports",
+			"message": "Unable to fetch surf reports with similar buoy conditions",
+			"help": "Please try again in a moment. If the problem persists, contact support.",
+		})
 		return
 	}
 
