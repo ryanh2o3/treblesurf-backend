@@ -535,6 +535,59 @@ func GetSurfReportsWithSimilarBuoyData(c *gin.Context) {
 	c.JSON(http.StatusOK, reports)
 }
 
+// GetSurfReportsWithMatchingConditions retrieves surf reports for a spot where:
+// 1. Buoy data at the report time (accounting for travel time) matches current buoy data from nearest buoys
+// 2. Wind conditions from forecast data at the report time are similar to current wind conditions
+func GetSurfReportsWithMatchingConditions(c *gin.Context) {
+	// Parse query parameters
+	countryName := c.Query("country")
+	regionName := c.Query("region")
+	spotName := c.Query("spot")
+	daysBackStr := c.DefaultQuery("daysBack", "365")
+	maxResultsStr := c.DefaultQuery("maxResults", "20")
+
+	// Validate required parameters
+	if countryName == "" || regionName == "" || spotName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Missing required parameters",
+			"message": "country, region, and spot parameters are required",
+			"help": "Please provide all required location parameters (country, region, spot) in your request.",
+		})
+		return
+	}
+
+	// Parse optional parameters
+	daysBack, err := strconv.Atoi(daysBackStr)
+	if err != nil {
+		daysBack = 365 // Default to 1 year
+	}
+
+	maxResults, err := strconv.Atoi(maxResultsStr)
+	if err != nil {
+		maxResults = 20 // Default to 20 results
+	}
+
+	// Get reports with matching conditions
+	reports, err := ReportService.GetSurfReportsWithMatchingConditions(
+		countryName,
+		regionName,
+		spotName,
+		daysBack,
+		maxResults,
+	)
+	if err != nil {
+		log.Printf("Failed to retrieve surf reports with matching conditions: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to retrieve reports",
+			"message": "Unable to fetch surf reports with matching conditions",
+			"help": "Please try again in a moment. If the problem persists, contact support.",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, reports)
+}
+
 // GetReportImage retrieves a report image from S3
 func GetReportImage(c *gin.Context) {
 	// Get the image key from the query parameter
