@@ -2056,7 +2056,8 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	}
 
 	// Convert back to map slice
-	var finalReports []map[string]interface{}
+	// Initialize as empty slice (not nil) to ensure JSON serialization returns [] instead of null
+	finalReports := make([]map[string]interface{}, 0)
 	for _, rws := range reportsWithSimilarity {
 		finalReports = append(finalReports, rws.report)
 	}
