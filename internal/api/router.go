@@ -167,6 +167,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	authorized.GET("/getTheme", controller.GetUserTheme)
 	authorized.GET("/getTodaySpotReports", controller.RetrieveTodaysSurfReports)
 	authorized.GET("/getSurfReportsWithSimilarBuoyData", controller.GetSurfReportsWithSimilarBuoyData)
+	authorized.GET("/getSurfReportsWithMatchingConditions", controller.GetSurfReportsWithMatchingConditions)
 	authorized.GET("getReportImage", controller.GetReportImage)
 	authorized.GET("/getReportVideo", controller.GetReportVideo)
 	authorized.GET("/generateVideoViewURL", controller.GenerateVideoViewURL)
