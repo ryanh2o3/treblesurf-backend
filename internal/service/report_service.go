@@ -495,19 +495,35 @@ func (s *ReportService) GetSpotSurfReports(countryName, regionName, spotName str
 			report["IOSValidated"] = false // Default for legacy reports
 		}
 		
+		// Ensure all required fields have defaults if missing
+		if _, exists := report["Consistency"]; !exists {
+			report["Consistency"] = ""
+		}
+		if _, exists := report["Messiness"]; !exists {
+			report["Messiness"] = ""
+		}
+		if _, exists := report["Quality"]; !exists {
+			report["Quality"] = ""
+		}
+		if _, exists := report["SurfSize"]; !exists {
+			report["SurfSize"] = ""
+		}
+		if _, exists := report["WindAmount"]; !exists {
+			report["WindAmount"] = ""
+		}
+		if _, exists := report["WindDirection"]; !exists {
+			report["WindDirection"] = ""
+		}
+		if _, exists := report["Reporter"]; !exists {
+			report["Reporter"] = "Anonymous"
+		}
+		
 		// Keep other fields like reportedBy (UUID), Reporter (name), etc.
 		// The reportedBy field contains the UUID which is safe to expose
 	}
 
-	// Add pagination info if there are more results
-	if result.LastEvaluatedKey != nil {
-		// Add a special marker to indicate there are more results
-		// This will be checked by the controller to determine if pagination info should be included
-		paginationInfo := map[string]interface{}{
-			"_hasMore": true,
-		}
-		reports = append(reports, paginationInfo)
-	}
+	// Note: Pagination info (hasMore) should be handled at the controller level
+	// by checking if result.LastEvaluatedKey != nil, not by adding to the reports array
 
 	return reports, nil
 }
