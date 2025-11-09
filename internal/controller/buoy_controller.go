@@ -83,25 +83,41 @@ func GetLiveBuoyData(c *gin.Context) {
 // Example handler function to use the above function
 func GetBuoyDataRange(c *gin.Context) {
     buoyName := c.Query("buoyName")
-    startTimeStr := c.Query("startTime") // expected format: 2006-01-02T15:00:00Z
-    endTimeStr := c.Query("endTime")     // expected format: 2006-01-02T15:00:00Z
+    startTimeStr := c.Query("startTime") // expected format: 2006-01-02T15:00:00Z or 2006-01-02
+    endTimeStr := c.Query("endTime")     // expected format: 2006-01-02T15:00:00Z or 2006-01-02
 
-    startTime, err := time.Parse("2006-01-02T15:00:00Z", startTimeStr)
+    // Try parsing with full timestamp first, then try date-only format
+    startTime, err := time.Parse("2006-01-02T15:04:05Z", startTimeStr)
     if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start time format"})
-        return
+        // Try parsing as date only
+        startTime, err = time.Parse("2006-01-02", startTimeStr)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start time format. Expected 2006-01-02T15:04:05Z or 2006-01-02"})
+            return
+        }
     }
 
-    endTime, err := time.Parse("2006-01-02T15:00:00Z", endTimeStr)
+    endTime, err := time.Parse("2006-01-02T15:04:05Z", endTimeStr)
     if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end time format"})
-        return
+        // Try parsing as date only
+        endTime, err = time.Parse("2006-01-02", endTimeStr)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end time format. Expected 2006-01-02T15:04:05Z or 2006-01-02"})
+            return
+        }
+        // If parsing date only, set to end of day
+        endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 23, 59, 59, 0, endTime.Location())
     }
 
     data, err := getBuoyDataRange(buoyName, startTime, endTime)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
+    }
+
+    // Return empty array instead of null when no data found
+    if data == nil {
+        data = []map[string]interface{}{}
     }
 
     c.JSON(http.StatusOK, data)
