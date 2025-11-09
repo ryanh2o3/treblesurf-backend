@@ -116,6 +116,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	r.GET("/getLiveBuoyData", controller.GetLiveBuoyData)
 	r.GET("/getSingleBuoyData", controller.GetSingleBuoyData)
 	r.GET("/getLast24BuoyData", controller.GetLast24HoursBuoyData)
+	r.GET("/getBuoyDataRange", controller.GetBuoyDataRange)
 	r.GET("/getMultipleBuoyData", controller.GetMultipleBuoyData)
 	r.GET("/buoyLocationInfo", controller.BuoyLocationInfo)
 	r.GET("/regionBuoys", controller.GetRegionBuoys)
