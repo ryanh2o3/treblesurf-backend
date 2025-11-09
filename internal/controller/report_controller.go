@@ -411,7 +411,7 @@ func GenerateImageUploadURL(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// RetrieveTodaysSurfReports retrieves surf reports for a specific spot
+// RetrieveTodaysSurfReports retrieves the most recent surf report for a specific spot (legacy endpoint)
 func RetrieveTodaysSurfReports(c *gin.Context) {
 	countryName := c.Query("country")
 	regionName := c.Query("region")
@@ -428,6 +428,56 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
 	}
 
 	reports, err := ReportService.GetTodaysSurfReports(countryName, regionName, spotName)
+	if err != nil {
+		log.Printf("Failed to retrieve surf reports: %v", err)
+		
+		// Provide more helpful error messages for common failures
+		if strings.Contains(err.Error(), "failed to query reports") {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to retrieve reports",
+				"message": "Unable to fetch surf reports from the database",
+				"help": "Please try again in a moment. If the problem persists, contact support.",
+			})
+			return
+		}
+		
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, reports)
+}
+
+// GetAllSpotSurfReports retrieves all surf reports for a specific spot with pagination support
+func GetAllSpotSurfReports(c *gin.Context) {
+	countryName := c.Query("country")
+	regionName := c.Query("region")
+	spotName := c.Query("spot")
+	limitStr := c.DefaultQuery("limit", "50") // Default to 50 reports per page
+
+	// Validate required parameters
+	if countryName == "" || regionName == "" || spotName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Missing required parameters",
+			"message": "Country, region, and spot parameters are required",
+			"help": "Please provide all required location parameters in your request.",
+		})
+		return
+	}
+
+	// Parse limit parameter
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid limit parameter",
+			"message": "Limit must be a positive integer or 0 for all reports",
+		})
+		return
+	}
+
+	// For simplicity, we'll skip pagination token handling for now
+	// In a production system, you'd want to handle pagination tokens
+	reports, err := ReportService.GetSpotSurfReports(countryName, regionName, spotName, limit, nil)
 	if err != nil {
 		log.Printf("Failed to retrieve surf reports: %v", err)
 		

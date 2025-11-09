@@ -438,8 +438,15 @@ func (s *ReportService) GenerateVideoUploadURL(country, region, spot, userEmail 
 	}, nil
 }
 
-// GetTodaysSurfReports retrieves surf reports for a specific spot
+// GetTodaysSurfReports retrieves surf reports for a specific spot (legacy - returns only most recent)
 func (s *ReportService) GetTodaysSurfReports(countryName, regionName, spotName string) ([]map[string]interface{}, error) {
+	return s.GetSpotSurfReports(countryName, regionName, spotName, 1, nil)
+}
+
+// GetSpotSurfReports retrieves surf reports for a specific spot with pagination support
+// limit: maximum number of reports to return (0 for all)
+// lastEvaluatedKey: for pagination, provide the last key from previous query
+func (s *ReportService) GetSpotSurfReports(countryName, regionName, spotName string, limit int, lastEvaluatedKey map[string]*dynamodb.AttributeValue) ([]map[string]interface{}, error) {
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
 
 	input := &dynamodb.QueryInput{
@@ -449,7 +456,16 @@ func (s *ReportService) GetTodaysSurfReports(countryName, regionName, spotName s
 			":crs": {S: aws.String(countryRegionSpot)},
 		},
 		ScanIndexForward: aws.Bool(false), // Sort in descending order to get the latest reports
-		Limit:            aws.Int64(1),     // Limit to the last report
+	}
+
+	// Apply limit if specified
+	if limit > 0 {
+		input.Limit = aws.Int64(int64(limit))
+	}
+
+	// Apply pagination if provided
+	if lastEvaluatedKey != nil {
+		input.ExclusiveStartKey = lastEvaluatedKey
 	}
 
 	result, err := s.dbStorage.Query(input)
@@ -481,6 +497,16 @@ func (s *ReportService) GetTodaysSurfReports(countryName, regionName, spotName s
 		
 		// Keep other fields like reportedBy (UUID), Reporter (name), etc.
 		// The reportedBy field contains the UUID which is safe to expose
+	}
+
+	// Add pagination info if there are more results
+	if result.LastEvaluatedKey != nil {
+		// Add a special marker to indicate there are more results
+		// This will be checked by the controller to determine if pagination info should be included
+		paginationInfo := map[string]interface{}{
+			"_hasMore": true,
+		}
+		reports = append(reports, paginationInfo)
 	}
 
 	return reports, nil
