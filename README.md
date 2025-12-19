@@ -15,7 +15,7 @@ This API provides surf forecasting, weather conditions, buoy data, surf reports,
 - Google OAuth for authentication
 - AWS Lambda with API Gateway for hosting
 - WebSocket support for real-time updates
-- AWS MediaLive for streaming
+- AWS Kinesis Video Streams for streaming
 
 ## What It Does
 
