@@ -1,0 +1,135 @@
+name: Deploy to AWS Lambda
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to deploy from"
+        required: true
+        default: "main"
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      GO_ENV: production
+      AWS_REGION: eu-west-1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::759663378274:role/github_actions_oidc
+          aws-region: eu-west-1
+          audience: sts.amazonaws.com
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Verify Go module structure
+        run: |
+          echo "Go module structure:"
+          go mod graph | head -20
+          echo "Internal packages:"
+          find internal/ -name "*.go" | head -10
+          echo "Command packages:"
+          find cmd/ -name "*.go" | head -10
+
+      - name: Build the Go application
+        run: |
+          # Build each function with distinct names from the start
+          # API Lambda - using new cmd/api/main.go structure
+          GOOS=linux GOARCH=amd64 go build -o api-bootstrap ./cmd/api/main.go
+          # WebSocket Lambda - using new cmd/websocket/main.go structure  
+          GOOS=linux GOARCH=amd64 go build -o websocket-bootstrap ./cmd/websocket/main.go
+
+      - name: Package the application
+        run: |
+          # Package API Lambda
+          cp api-bootstrap bootstrap
+          zip bootstrap.zip bootstrap
+          rm bootstrap
+
+          # Package WebSocket Lambda
+          cp websocket-bootstrap bootstrap
+          zip websocket-bootstrap.zip bootstrap
+          rm bootstrap
+
+      - name: Verify build artifacts
+        run: |
+          echo "Build artifacts created:"
+          ls -la *.zip
+          echo "API Lambda size: $(stat -c%s bootstrap.zip) bytes"
+          echo "WebSocket Lambda size: $(stat -c%s websocket-bootstrap.zip) bytes"
+
+      - name: Deploy Lambdas and Setup API Gateway
+        run: |
+          FUNCTION_NAME="api"
+          API_ID="bg4yv0rzhe"
+          REGION="eu-west-1"
+          ZIP_FILE="bootstrap.zip"
+          ROLE_ARN="arn:aws:iam::759663378274:role/service-role/api-role-pydrwpue"
+
+
+          # Deploy Lambda function
+          aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://$ZIP_FILE
+
+          # Wait for the function update to complete before proceeding
+          aws lambda wait function-updated --function-name $FUNCTION_NAME
+
+          # Update Lambda environment variables
+          aws lambda update-function-configuration \
+            --function-name $FUNCTION_NAME \
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+
+      - name: Deploy WebSocket Lambda
+        run: |
+          WS_FUNCTION_NAME="websockets"
+          WS_ZIP_FILE="websocket-bootstrap.zip"
+          REGION="eu-west-1"
+
+          # Update existing WebSocket Lambda
+          aws lambda update-function-code --function-name $WS_FUNCTION_NAME --zip-file fileb://$WS_ZIP_FILE
+
+          # Wait for the function update to complete
+          aws lambda wait function-updated --function-name $WS_FUNCTION_NAME
+
+
+          # Update WebSocket Lambda environment variables
+          aws lambda update-function-configuration \
+            --function-name $WS_FUNCTION_NAME \
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+
+          # Configure permissions for WebSocket API Gateway
+          WEBSOCKET_API_ID="9q47dtf5qe"
+
+          # Add permission for WebSocket API Gateway to invoke the Lambda (if not already added)
+          aws lambda add-permission \
+            --function-name $WS_FUNCTION_NAME \
+            --action lambda:InvokeFunction \
+            --principal apigateway.amazonaws.com \
+            --source-arn "arn:aws:execute-api:$REGION:759663378274:$WEBSOCKET_API_ID/*" \
+            --statement-id AllowWebSocketInvoke-$WEBSOCKET_API_ID \
+            || echo "Permission already exists or couldn't be added"
