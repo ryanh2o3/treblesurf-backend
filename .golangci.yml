@@ -1,0 +1,185 @@
+version: 2
+
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - vendor
+    - local/data
+  skip-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    check-ignore: false
+
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc
+
+  gocyclo:
+    min-complexity: 15
+
+  goimports:
+    local-prefixes: treblesurf-backend
+
+  govet:
+    check-shadowing: true
+    enable-all: true
+
+  lll:
+    line-length: 140
+
+  maligned:
+    suggest-new: true
+
+  misspell:
+    locale: US
+
+  nakedret:
+    max-func-lines: 30
+
+  noctx:
+    check-http-no-close: true
+
+  nolintlint:
+    allow-leading-space: true
+    allow-unused: false
+    require-explanation: false
+    require-specific: false
+
+  revive:
+    min-confidence: 0
+    rules:
+      - name: exported
+        severity: warning
+        disabled: false
+      - name: unexported-return
+        severity: warning
+        disabled: false
+      - name: error-return
+        severity: warning
+        disabled: false
+      - name: error-naming
+        severity: warning
+        disabled: false
+      - name: var-naming
+        severity: warning
+        disabled: false
+      - name: if-return
+        severity: warning
+        disabled: false
+      - name: increment-decrement
+        severity: warning
+        disabled: false
+      - name: var-declaration
+        severity: warning
+        disabled: false
+      - name: range
+        severity: warning
+        disabled: false
+      - name: regexp
+        severity: warning
+        disabled: false
+      - name: string-of-int
+        severity: warning
+        disabled: false
+      - name: superfluous-else
+        severity: warning
+        disabled: false
+      - name: unused-parameter
+        severity: warning
+        disabled: false
+      - name: unhandled-error
+        severity: warning
+        disabled: false
+
+  staticcheck:
+    checks: ["all"]
+
+  stylecheck:
+    checks: ["all"]
+
+  unconvert:
+    fast: false
+
+  unparam:
+    check-exported: false
+
+  whitespace:
+    multi-if: false
+    multi-func: false
+
+linters:
+  disable-all: true
+  enable:
+    - bodyclose
+    - dogsled
+    - dupl
+    - errcheck
+    - copyloopvar
+    - exhaustive
+    - funlen
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - revive
+    - rowserrcheck
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - funlen
+        - gomnd
+
+    # Exclude known linter issues
+    - text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
+      linters:
+        - errcheck
+
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -66,7 +66,7 @@ func (m *MockRekognition) DetectLabels(input *rekognition.DetectLabelsInput) (*r
 type MockKinesis struct{}
 
 // GetHLSStreamingSessionURL returns a fake URL for local development
-func (m *MockKinesis) GetHLSStreamingSessionURL(input interface{}) (interface{}, error) {
+func (m *MockKinesis) GetHLSStreamingSessionURL(_ interface{}) (interface{}, error) {
     // Return a mock streaming URL
     return struct {
         HLSStreamingSessionURL *string
@@ -79,25 +79,25 @@ func (m *MockKinesis) GetHLSStreamingSessionURL(input interface{}) (interface{},
 type MockSTS struct{}
 
 // AssumeRole returns mock credentials for local development
-func (m *MockSTS) AssumeRole(input interface{}) (interface{}, error) {
+func (m *MockSTS) AssumeRole(_ interface{}) (interface{}, error) {
     // Return mock credentials
     expiration := time.Now().Add(1 * time.Hour)
     
     return struct {
         Credentials struct {
-            AccessKeyId     *string
+            AccessKeyID     *string
             SecretAccessKey *string
             SessionToken    *string
             Expiration      *time.Time
         }
     }{
         Credentials: struct {
-            AccessKeyId     *string
+            AccessKeyID     *string
             SecretAccessKey *string
             SessionToken    *string
             Expiration      *time.Time
         }{
-            AccessKeyId:     aws.String("MOCK-ACCESS-KEY"),
+            AccessKeyID:     aws.String("MOCK-ACCESS-KEY"),
             SecretAccessKey: aws.String("mock-secret-key"),
             SessionToken:    aws.String("mock-session-token"),
             Expiration:      &expiration,

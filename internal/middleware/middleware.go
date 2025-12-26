@@ -120,12 +120,12 @@ func CSRFMiddleware() gin.HandlerFunc {
 }
 
 // Helper functions (these would need to be implemented or moved to services)
-func isAdminUser(email string) bool {
+func isAdminUser(_ string) bool {
 	// TODO: Implement admin user check
 	return false
 }
 
-func validateAPIKey(keyValue string, requiredScope string) (interface{}, bool) {
+func validateAPIKey(_ string, requiredScope string) (interface{}, bool) {
 	// TODO: Implement API key validation
 	return nil, false
 }

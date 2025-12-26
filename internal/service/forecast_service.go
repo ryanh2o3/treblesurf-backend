@@ -22,12 +22,12 @@ func (s *ForecastService) GetSpotForecast(spotName, regionName, countryName stri
 }
 
 func (s *ForecastService) GetListSpotsForecast(spots []string, regionName, countryName string) ([][]map[string]interface{}, error) {
-	var spotIds []string
+	var spotIDs []string
 	for _, spot := range spots {
-		spotIds = append(spotIds, fmt.Sprintf("%s#%s#%s", countryName, regionName, spot))
+		spotIDs = append(spotIDs, fmt.Sprintf("%s#%s#%s", countryName, regionName, spot))
 	}
 
-	return s.queryMultipleSpotForecasts(spotIds, aws.Int64(72))
+	return s.queryMultipleSpotForecasts(spotIDs, aws.Int64(72))
 }
 
 func (s *ForecastService) GetRegionForecast(regionName, countryName string) ([]map[string]interface{}, error) {
@@ -70,7 +70,7 @@ func (s *ForecastService) GetCurrentWeather(spotName, regionName, countryName st
 }
 
 func (s *ForecastService) queryForecastByDateTime(spotName, regionName, countryName string, limit *int64) ([]map[string]interface{}, error) {
-	spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
+		spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	currentEpoch := time.Now().Unix()
 	
 	input := &dynamodb.QueryInput{
@@ -78,7 +78,7 @@ func (s *ForecastService) queryForecastByDateTime(spotName, regionName, countryN
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":spot_id": {
-				S: aws.String(spotId),
+				S: aws.String(spotID),
 			},
 			":current_time": {
 				S: aws.String(fmt.Sprintf("%d", currentEpoch)),
@@ -104,17 +104,17 @@ func (s *ForecastService) queryForecastByDateTime(spotName, regionName, countryN
 	return forecasts, nil
 }
 
-func (s *ForecastService) queryMultipleSpotForecasts(spotIds []string, limit *int64) ([][]map[string]interface{}, error) {
+func (s *ForecastService) queryMultipleSpotForecasts(spotIDs []string, limit *int64) ([][]map[string]interface{}, error) {
 	currentEpoch := time.Now().Unix()
 	var allForecasts [][]map[string]interface{}
 
-	for _, spotId := range spotIds {
+	for _, spotID := range spotIDs {
 		input := &dynamodb.QueryInput{
 			TableName: aws.String("SpotForecastData"),
 			KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
 			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 				":spot_id": {
-					S: aws.String(spotId),
+					S: aws.String(spotID),
 				},
 				":current_time": {
 					S: aws.String(fmt.Sprintf("%d", currentEpoch)),

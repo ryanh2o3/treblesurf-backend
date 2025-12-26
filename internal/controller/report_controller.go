@@ -1148,14 +1148,6 @@ func getUserByEmail(email string) (*model.User, error) {
 	return UserService.GetUserByEmail(email)
 }
 
-// isIOSClient detects if the request is from an iOS client
-func isIOSClient(userAgent string) bool {
-	userAgentLower := strings.ToLower(userAgent)
-	return strings.Contains(userAgentLower, "ios") ||
-		strings.Contains(userAgentLower, "iphone") ||
-		strings.Contains(userAgentLower, "ipad")
-}
-
 // isValidMediaKey validates that the media key is in the expected format
 func isValidMediaKey(mediaKey string) bool {
 	// Media keys should follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.ext

@@ -25,7 +25,7 @@ type Config struct {
 }
 
 // Load configuration from environment variables or use development defaults
-func Load(isLocal bool) (*Config, error) {
+func Load(_ bool) (*Config, error) {
     cfg := &Config{
         Environment: "development",
         

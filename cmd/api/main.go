@@ -22,15 +22,13 @@ func init() {
 }
 
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-// Debug logging for API Gateway request
+	// Debug logging for API Gateway request
 
-// Check if path starts with /api and strip it
-if strings.HasPrefix(req.Path, "/api") {
-    req.Path = strings.TrimPrefix(req.Path, "/api")
-}
+	// Check if path starts with /api and strip it
+	req.Path = strings.TrimPrefix(req.Path, "/api")
 
-resp, err := ginLambda.ProxyWithContext(ctx, req)
-    return resp, err
+	resp, err := ginLambda.ProxyWithContext(ctx, req)
+	return resp, err
 }
 
 func main() {

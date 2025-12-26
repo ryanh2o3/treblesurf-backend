@@ -27,7 +27,7 @@ func abs(x int64) int64 {
 }
 
 func (s *SwellPredictionService) GetSpotSwellPrediction(spotName, regionName, countryName string) ([]map[string]interface{}, error) {
-	spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
+	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	
 	// Get current time rounded to the hour (UTC)
 	now := time.Now().UTC()
@@ -39,7 +39,7 @@ func (s *SwellPredictionService) GetSpotSwellPrediction(spotName, regionName, co
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp >= :current_hour"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":spot_id": {
-				S: aws.String(spotId),
+				S: aws.String(spotID),
 			},
 			":current_hour": {
 				S: aws.String(currentHourTimestamp),
@@ -131,7 +131,7 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryNam
 			continue
 		}
 		
-		spotId := prediction["spot_id"].(string)
+		spotID := prediction["spot_id"].(string)
 		
 		// Extract the data field and properly unmarshal it
 		if dataAttr, exists := item["data"]; exists {
@@ -146,8 +146,8 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryNam
 			dataMap["generated_at"] = prediction["generated_at"]
 			
 			// Add to spot's predictions (limit to 3 per spot to avoid too much data)
-			if len(spotPredictionsMap[spotId]) < 3 {
-				spotPredictionsMap[spotId] = append(spotPredictionsMap[spotId], dataMap)
+			if len(spotPredictionsMap[spotID]) < 3 {
+				spotPredictionsMap[spotID] = append(spotPredictionsMap[spotID], dataMap)
 			}
 		}
 	}
@@ -161,7 +161,7 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryNam
 }
 
 func (s *SwellPredictionService) GetSpotSwellPredictionRange(spotName, regionName, countryName string, startTime, endTime time.Time) ([]map[string]interface{}, error) {
-	spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
+	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	startTimestamp := fmt.Sprintf("%d", startTime.Unix())
 	endTimestamp := fmt.Sprintf("%d", endTime.Unix())
 	
@@ -170,7 +170,7 @@ func (s *SwellPredictionService) GetSpotSwellPredictionRange(spotName, regionNam
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp BETWEEN :start AND :end"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":spot_id": {
-				S: aws.String(spotId),
+				S: aws.String(spotID),
 			},
 			":start": {
 				S: aws.String(startTimestamp),
@@ -243,7 +243,7 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 			continue
 		}
 		
-		spotId := prediction["spot_id"].(string)
+		spotID := prediction["spot_id"].(string)
 		
 		// Extract the data field and properly unmarshal it
 		if dataAttr, exists := item["data"]; exists {
@@ -258,8 +258,8 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 			dataMap["generated_at"] = prediction["generated_at"]
 			
 			// Add to spot's predictions (limit to 3 per spot to avoid too much data)
-			if len(spotPredictionsMap[spotId]) < 3 {
-				spotPredictionsMap[spotId] = append(spotPredictionsMap[spotId], dataMap)
+			if len(spotPredictionsMap[spotID]) < 3 {
+				spotPredictionsMap[spotID] = append(spotPredictionsMap[spotID], dataMap)
 			}
 		}
 	}
@@ -274,7 +274,7 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 
 // GetClosestAIPredictionForSpot retrieves the closest AI prediction for a spot around the current time
 func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionName, countryName string) (map[string]interface{}, error) {
-	spotId := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
+	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	
 	// Get current time
 	now := time.Now().UTC()
@@ -292,7 +292,7 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp BETWEEN :start AND :end"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":spot_id": {
-				S: aws.String(spotId),
+				S: aws.String(spotID),
 			},
 			":start": {
 				S: aws.String(startTimestamp),
@@ -323,7 +323,7 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 			KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp >= :start"),
 			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 				":spot_id": {
-					S: aws.String(spotId),
+					S: aws.String(spotID),
 				},
 				":start": {
 					S: aws.String(fallbackStartTimestamp),
@@ -339,7 +339,7 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 		}
 		
 		if len(fallbackResult.Items) == 0 {
-			return nil, fmt.Errorf("no AI predictions found for spot %s", spotId)
+			return nil, fmt.Errorf("no AI predictions found for spot %s", spotID)
 		}
 		
 		// Use fallback results
@@ -348,7 +348,7 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 	}
 
 	// Debug logging
-	fmt.Printf("Found %d raw items for spot %s\n", len(result.Items), spotId)
+	fmt.Printf("Found %d raw items for spot %s\n", len(result.Items), spotID)
 
 	// Find the closest prediction to current time using forecast_timestamp directly
 	var closestPrediction map[string]interface{}
@@ -400,7 +400,7 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 	fmt.Printf("Valid items processed: %d\n", validItems)
 	
 	if closestPrediction == nil {
-		return nil, fmt.Errorf("no valid AI predictions found for spot %s", spotId)
+		return nil, fmt.Errorf("no valid AI predictions found for spot %s", spotID)
 	}
 	
 	return closestPrediction, nil

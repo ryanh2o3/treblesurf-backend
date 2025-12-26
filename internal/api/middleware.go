@@ -194,7 +194,7 @@ func isAdminUser(email string) bool {
 }
 
 // validateAPIKey validates an API key against DynamoDB
-func validateAPIKey(keyValue string, requiredScope string) (*model.APIKey, bool) {
+func validateAPIKey(_ string, requiredScope string) (*model.APIKey, bool) {
 	// TODO: This function needs access to the database client
 	// For now, return false to indicate invalid key
 	// In production, this should use the proper database client
