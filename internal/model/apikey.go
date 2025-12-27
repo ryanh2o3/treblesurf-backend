@@ -1,3 +1,4 @@
+// Package model provides data models used throughout the application.
 package model
 
 import "time"

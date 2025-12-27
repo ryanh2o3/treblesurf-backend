@@ -1,3 +1,4 @@
+// Package storage provides local implementations of storage interfaces for development.
 package storage
 
 import (

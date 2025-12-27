@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/storage"
 	"treblesurf-backend/internal/validation"
@@ -22,6 +23,7 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
+// ReportService provides surf report operations including submission, retrieval, and validation.
 type ReportService struct {
 	dbStorage         storage.DynamoDBStorage
 	s3Storage         storage.S3Storage
@@ -30,6 +32,7 @@ type ReportService struct {
 	userService       *UserService
 }
 
+// NewReportService creates a new report service instance.
 func NewReportService(dbStorage storage.DynamoDBStorage, s3Storage storage.S3Storage, rekognitionClient *rekognition.Rekognition, bucketName string, userService *UserService) *ReportService {
 	return &ReportService{
 		dbStorage:         dbStorage,
@@ -350,12 +353,23 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 	return nil
 }
 
-// GenerateImageUploadURL generates a presigned URL for uploading an image to S3
-func (s *ReportService) GenerateImageUploadURL(country, region, spot, userEmail string) (*model.PresignedUploadResponse, error) {
+// generateUploadURLParams contains common parameters for generating upload URLs
+type generateUploadURLParams struct {
+	user       *model.User
+	keyPrefix  string
+	fileExt    string
+	expiration time.Duration
+}
+
+// prepareUploadURLParams validates user and prepares common parameters for URL generation
+func (s *ReportService) prepareUploadURLParams(
+	country, region, spot, userEmail string,
+	fileExt string,
+) (*generateUploadURLParams, error) {
 	// Get the user's UUID
 	user, err := s.userService.GetUserByEmail(userEmail)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %v", err)
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 	if user == nil {
 		return nil, fmt.Errorf("user not found")
@@ -366,22 +380,41 @@ func (s *ReportService) GenerateImageUploadURL(country, region, spot, userEmail 
 
 	// Generate a predictable S3 key based on location and user UUID
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", country, region, spot)
-	currentTime := time.Now()
+	keyPrefix := fmt.Sprintf("surf-reports/%s", countryRegionSpot)
 
+	return &generateUploadURLParams{
+		user:       user,
+		keyPrefix:  keyPrefix,
+		fileExt:    fileExt,
+		expiration: 15 * time.Minute,
+	}, nil
+}
+
+// GenerateImageUploadURL generates a presigned URL for uploading an image to S3
+func (s *ReportService) GenerateImageUploadURL(
+	country, region, spot, userEmail string,
+) (*model.PresignedUploadResponse, error) {
+	params, err := s.prepareUploadURLParams(country, region, spot, userEmail, "jpg")
+	if err != nil {
+		return nil, err
+	}
+
+	currentTime := time.Now()
 	imageKey := fmt.Sprintf(
-		"surf-reports/%s/%s_%s.jpg",
-		countryRegionSpot,
+		"%s/%s_%s.%s",
+		params.keyPrefix,
 		currentTime.UTC().Format("2006-01-02T15:04:05Z"),
-		user.UUID,
+		params.user.UUID,
+		params.fileExt,
 	)
 
 	// Generate presigned URL valid for 15 minutes
-	presignedURL, err := s.s3Storage.GeneratePresignedUploadURL(s.bucketName, imageKey, 15*time.Minute)
+	presignedURL, err := s.s3Storage.GeneratePresignedUploadURL(s.bucketName, imageKey, params.expiration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate presigned URL: %v", err)
+		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
 
-	expiresAt := currentTime.Add(15 * time.Minute)
+	expiresAt := currentTime.Add(params.expiration)
 
 	return &model.PresignedUploadResponse{
 		UploadURL: presignedURL,
@@ -391,37 +424,30 @@ func (s *ReportService) GenerateImageUploadURL(country, region, spot, userEmail 
 }
 
 // GenerateVideoUploadURL generates a presigned URL for uploading a video to S3
-func (s *ReportService) GenerateVideoUploadURL(country, region, spot, userEmail string) (*model.VideoUploadResponse, error) {
-	// Get the user's UUID
-	user, err := s.userService.GetUserByEmail(userEmail)
+func (s *ReportService) GenerateVideoUploadURL(
+	country, region, spot, userEmail string,
+) (*model.VideoUploadResponse, error) {
+	params, err := s.prepareUploadURLParams(country, region, spot, userEmail, "mp4")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %v", err)
-	}
-	if user == nil {
-		return nil, fmt.Errorf("user not found")
-	}
-	if user.UUID == "" {
-		return nil, fmt.Errorf("user does not have a UUID")
+		return nil, err
 	}
 
-	// Generate a predictable S3 key based on location and user UUID
-	countryRegionSpot := fmt.Sprintf("%s_%s_%s", country, region, spot)
 	currentTime := time.Now()
-
 	videoKey := fmt.Sprintf(
-		"surf-reports/%s/%s_%s.mp4",
-		countryRegionSpot,
+		"%s/%s_%s.%s",
+		params.keyPrefix,
 		currentTime.UTC().Format("2006-01-02T15:04:05Z"),
-		user.UUID,
+		params.user.UUID,
+		params.fileExt,
 	)
 
 	// Generate presigned URL valid for 15 minutes
-	presignedURL, err := s.s3Storage.GeneratePresignedUploadURL(s.bucketName, videoKey, 15*time.Minute)
+	presignedURL, err := s.s3Storage.GeneratePresignedUploadURL(s.bucketName, videoKey, params.expiration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate presigned URL: %v", err)
+		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
 
-	expiresAt := currentTime.Add(15 * time.Minute)
+	expiresAt := currentTime.Add(params.expiration)
 
 	return &model.VideoUploadResponse{
 		UploadURL: presignedURL,
@@ -431,7 +457,9 @@ func (s *ReportService) GenerateVideoUploadURL(country, region, spot, userEmail 
 }
 
 // GetTodaysSurfReports retrieves surf reports for a specific spot (legacy - returns only most recent)
-func (s *ReportService) GetTodaysSurfReports(countryName, regionName, spotName string) ([]map[string]interface{}, error) {
+func (s *ReportService) GetTodaysSurfReports(
+	countryName, regionName, spotName string,
+) ([]map[string]interface{}, error) {
 	return s.GetSpotSurfReports(countryName, regionName, spotName, 1, nil)
 }
 
@@ -627,13 +655,18 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWi
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
 
 	// Determine media type
-	mediaType := "none"
-	if report.ImageKey != "" && report.VideoKey != "" {
+	var mediaType string
+	hasImage := report.ImageKey != ""
+	hasVideo := report.VideoKey != ""
+	switch {
+	case hasImage && hasVideo:
 		mediaType = "both"
-	} else if report.ImageKey != "" {
+	case hasImage:
 		mediaType = "image"
-	} else if report.VideoKey != "" {
+	case hasVideo:
 		mediaType = "video"
+	default:
+		mediaType = "none"
 	}
 
 	// Create the DynamoDB item
@@ -737,7 +770,7 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWi
 
 // validateImageWithRekognition validates an image using AWS Rekognition
 func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, error) {
-	if os.Getenv("GO_ENV") == "development" {
+	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
 		// In development, always return true to allow all images
 		return true, nil
 	}
@@ -774,14 +807,6 @@ func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, er
 	return false, model.ErrImageAnalysisFailed
 }
 
-// minInt helper function (renamed to avoid redefining builtin min)
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // uploadImageToS3 uploads an image to S3
 func (s *ReportService) uploadImageToS3(imageData []byte, key string) (string, error) {
 	err := s.s3Storage.PutObject(s.bucketName, key, imageData, "image/jpeg")
@@ -811,28 +836,33 @@ func (s *ReportService) IsValidSurfSize(swellSize string) bool {
 	return validation.IsValidSurfSize(swellSize)
 }
 
+// IsValidWindAmount validates if a wind amount string is valid.
 func (s *ReportService) IsValidWindAmount(windAmount string) bool {
 	return validation.IsValidWindAmount(windAmount)
 }
 
+// IsValidWindDirection validates if a wind direction string is valid.
 func (s *ReportService) IsValidWindDirection(windDirection string) bool {
 	return validation.IsValidWindDirection(windDirection)
 }
 
+// IsValidSurfConditions validates if a surf conditions string is valid.
 func (s *ReportService) IsValidSurfConditions(surfConditions string) bool {
 	return validation.IsValidSurfConditions(surfConditions)
 }
 
+// IsValidSurfDifficulty validates if a surf difficulty string is valid.
 func (s *ReportService) IsValidSurfDifficulty(surfDifficulty string) bool {
 	return validation.IsValidSurfDifficulty(surfDifficulty)
 }
 
+// IsValidMessiness validates if a messiness string is valid.
 func (s *ReportService) IsValidMessiness(messiness string) bool {
 	return validation.IsValidMessiness(messiness)
 }
 
 // getSpotSubscribers retrieves subscribers for a specific spot
-func (s *ReportService) getSpotSubscribers(_ string, region, spot string) ([]string, error) {
+func (s *ReportService) getSpotSubscribers(_ string, _ string, _ string) ([]string, error) {
 	// TODO: Implement spot subscribers retrieval
 	// For now, return empty list
 	return []string{}, nil
@@ -1007,12 +1037,12 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 	// Unmarshal reports
 	var reports []map[string]interface{}
 	var items []map[string]*dynamodb.AttributeValue
-
-	if result != nil {
+	switch {
+	case result != nil:
 		items = result.Items
-	} else if scanResult != nil {
+	case scanResult != nil:
 		items = scanResult.Items
-	} else {
+	default:
 		return []map[string]interface{}{}, nil // No results
 	}
 
@@ -1646,7 +1676,9 @@ func (s *ReportService) getCurrentWindConditions(countryName, regionName, spotNa
 }
 
 // getForecastDataAtTime retrieves forecast data for a spot at a specific time
-func (s *ReportService) getForecastDataAtTime(countryName, regionName, spotName string, targetTime time.Time) map[string]interface{} {
+func (s *ReportService) getForecastDataAtTime(
+	countryName, regionName, spotName string, targetTime time.Time,
+) map[string]interface{} {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	targetEpoch := targetTime.Unix()
 
@@ -1922,7 +1954,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 
 			// Calculate travel time independently for this buoy
 			var travelTimeHours float64
-			var targetBuoyTime = reportTime
+			targetBuoyTime := reportTime
 
 			// Calculate bearing from buoy to spot
 			bearingToSpot := s.calculateBearing(buoyLat, buoyLon, spotLat, spotLon)
@@ -1950,8 +1982,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 
 				targetBuoyTime = reportTime.Add(-time.Duration(travelTimeHours) * time.Hour)
 			} else {
-				// Spot is not directly downwave
-				targetBuoyTime = reportTime
+				// Spot is not directly downwave (targetBuoyTime already set to reportTime)
 				travelTimeHours = 0.0
 			}
 

@@ -1,3 +1,4 @@
+// Package main provides a script to seed the local database with test data.
 package main
 
 import (
@@ -7,6 +8,8 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 	"treblesurf-backend/local/config"
 	"treblesurf-backend/local/storage"
@@ -1101,12 +1104,23 @@ func findNextSample(samples []map[string]interface{}, current map[string]interfa
 
 // Helper function to encode an image file to a base64 string
 func encodeImageToBase64(imagePath string) (string, error) {
+    // Validate and clean the file path to prevent directory traversal
+    cleanedPath := filepath.Clean(imagePath)
+    // Ensure the path doesn't contain directory traversal sequences
+    if strings.Contains(cleanedPath, "..") {
+        return "", fmt.Errorf("invalid file path: contains directory traversal")
+    }
+    
     // Open the image file
-    file, err := os.Open(imagePath)
+    file, err := os.Open(cleanedPath)
     if err != nil {
         return "", fmt.Errorf("failed to open image file: %w", err)
     }
-    defer file.Close()
+    defer func() {
+        if closeErr := file.Close(); closeErr != nil {
+            log.Printf("Warning: Failed to close image file: %v", closeErr)
+        }
+    }()
 
     // Read the file content
     fileContent, err := io.ReadAll(file)

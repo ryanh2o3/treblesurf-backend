@@ -13,10 +13,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// SwellPredictionController provides HTTP handlers for swell prediction endpoints.
 type SwellPredictionController struct {
 	swellPredictionService *service.SwellPredictionService
 }
 
+// NewSwellPredictionController creates a new swell prediction controller instance.
 func NewSwellPredictionController(swellPredictionService *service.SwellPredictionService) *SwellPredictionController {
 	return &SwellPredictionController{
 		swellPredictionService: swellPredictionService,

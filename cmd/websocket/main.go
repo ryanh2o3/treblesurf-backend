@@ -1,6 +1,8 @@
+// Package main provides the WebSocket Lambda handler for the Treble Surf WebSocket API.
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"treblesurf-backend/internal/service"
@@ -13,7 +15,7 @@ import (
 
 var websocketHandler *websocket.WebSocketHandler
 
-func init() {
+func initialize() error {
 	// Get configuration from environment
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
@@ -23,13 +25,13 @@ func init() {
 	// Initialize storage
 	dbStorage, err := storage.NewDynamoDBStorage(region)
 	if err != nil {
-		log.Fatalf("Failed to initialize DynamoDB storage: %v", err)
+		return fmt.Errorf("failed to initialize DynamoDB storage: %w", err)
 	}
 
 	// Get JWT secret from environment
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
+		return fmt.Errorf("JWT_SECRET environment variable is required")
 	}
 
 	// Initialize WebSocket service
@@ -39,6 +41,7 @@ func init() {
 	websocketHandler = websocket.NewWebSocketHandler(websocketService)
 
 	log.Println("WebSocket handler initialized successfully")
+	return nil
 }
 
 func Handler(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -46,5 +49,8 @@ func Handler(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxy
 }
 
 func main() {
+	if err := initialize(); err != nil {
+		log.Fatal(err)
+	}
 	lambda.Start(Handler)
 }

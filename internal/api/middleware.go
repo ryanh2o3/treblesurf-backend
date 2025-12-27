@@ -36,7 +36,8 @@ func CorsMiddleware() gin.HandlerFunc {
 		}
 		
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cookie")
+		c.Header("Access-Control-Allow-Headers",
+			"Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cookie")
 		c.Header("Access-Control-Expose-Headers", "Content-Length, X-CSRF-Token, Set-Cookie")
 		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Max-Age", "86400") // 24 hours
@@ -78,6 +79,7 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
+// AdminMiddleware returns a Gin middleware function that validates admin user permissions.
 func AdminMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         email, exists := c.Get("email")
@@ -101,6 +103,7 @@ func AdminMiddleware() gin.HandlerFunc {
     }
 }
 
+// APIKeyAuthMiddleware returns a Gin middleware function that validates API key authentication with the specified scope.
 func APIKeyAuthMiddleware(requiredScope string) gin.HandlerFunc {
     return func(c *gin.Context) {
         authHeader := c.GetHeader("Authorization")

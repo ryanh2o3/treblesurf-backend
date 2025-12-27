@@ -8,10 +8,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
+// UserService provides user-related operations.
 type UserService struct {
 	db *dynamodb.DynamoDB
 }
 
+// NewUserService creates a new user service instance.
 func NewUserService(db *dynamodb.DynamoDB) *UserService {
 	return &UserService{db: db}
 }

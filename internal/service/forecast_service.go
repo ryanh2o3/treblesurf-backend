@@ -69,7 +69,9 @@ func (s *ForecastService) GetCurrentWeather(spotName, regionName, countryName st
 	return s.queryForecastByDateTime(spotName, regionName, countryName, aws.Int64(1))
 }
 
-func (s *ForecastService) queryForecastByDateTime(spotName, regionName, countryName string, limit *int64) ([]map[string]interface{}, error) {
+func (s *ForecastService) queryForecastByDateTime(
+	spotName, regionName, countryName string, limit *int64,
+) ([]map[string]interface{}, error) {
 		spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	currentEpoch := time.Now().Unix()
 	
@@ -104,7 +106,9 @@ func (s *ForecastService) queryForecastByDateTime(spotName, regionName, countryN
 	return forecasts, nil
 }
 
-func (s *ForecastService) queryMultipleSpotForecasts(spotIDs []string, limit *int64) ([][]map[string]interface{}, error) {
+func (s *ForecastService) queryMultipleSpotForecasts(
+	spotIDs []string, limit *int64,
+) ([][]map[string]interface{}, error) {
 	currentEpoch := time.Now().Unix()
 	var allForecasts [][]map[string]interface{}
 

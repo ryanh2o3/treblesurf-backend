@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -24,19 +25,49 @@ func NewLocalS3Storage() *LocalS3Storage {
     }
 }
 
+// validatePathWithinBase ensures the resolved path is within the base directory to prevent directory traversal
+func validatePathWithinBase(resolvedPath, basePath string) error {
+    // Ensure both paths are absolute and cleaned
+    absBasePath, err := filepath.Abs(basePath)
+    if err != nil {
+        return fmt.Errorf("failed to resolve base path: %w", err)
+    }
+    absBasePath = filepath.Clean(absBasePath)
+    
+    absResolvedPath, err := filepath.Abs(resolvedPath)
+    if err != nil {
+        return fmt.Errorf("failed to resolve file path: %w", err)
+    }
+    absResolvedPath = filepath.Clean(absResolvedPath)
+    
+    // Check if resolved path is within base path
+    // Use a separator to ensure exact prefix match (e.g., /path/to vs /path/to2)
+    basePathWithSep := absBasePath + string(filepath.Separator)
+    if absResolvedPath != absBasePath && !strings.HasPrefix(absResolvedPath, basePathWithSep) {
+        return fmt.Errorf("invalid file path: outside base directory")
+    }
+    
+    return nil
+}
+
 // PutObject stores a file locally to simulate S3
 func (s *LocalS3Storage) PutObject(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
     bucketName := aws.StringValue(input.Bucket)
     key := aws.StringValue(input.Key)
     
-    // Create directory if it doesn't exist
-    dirPath := filepath.Join(s.basePath, bucketName, filepath.Dir(key))
-    if err := os.MkdirAll(dirPath, 0755); err != nil {
+    // Write file
+    filePath := filepath.Join(s.basePath, bucketName, key)
+    
+    // Validate that the resolved path is within basePath to prevent directory traversal
+    if err := validatePathWithinBase(filePath, s.basePath); err != nil {
         return nil, err
     }
     
-    // Write file
-    filePath := filepath.Join(s.basePath, bucketName, key)
+    // Create directory if it doesn't exist
+    dirPath := filepath.Dir(filePath)
+    if err := os.MkdirAll(dirPath, 0750); err != nil {
+        return nil, err
+    }
     
     // Read the body
     data, err := io.ReadAll(input.Body)
@@ -45,7 +76,7 @@ func (s *LocalS3Storage) PutObject(input *s3.PutObjectInput) (*s3.PutObjectOutpu
     }
     
     // Write to file
-    if err := os.WriteFile(filePath, data, 0644); err != nil {
+    if err := os.WriteFile(filePath, data, 0600); err != nil {
         return nil, err
     }
     
@@ -60,7 +91,7 @@ func (s *LocalS3Storage) PutObject(input *s3.PutObjectInput) (*s3.PutObjectOutpu
             }
         }
         
-        if err := os.WriteFile(metadataPath, metadataContent.Bytes(), 0644); err != nil {
+        if err := os.WriteFile(metadataPath, metadataContent.Bytes(), 0600); err != nil {
             log.Printf("Warning: Failed to write metadata: %v", err)
         }
     }
@@ -78,6 +109,11 @@ func (s *LocalS3Storage) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutpu
     
     filePath := filepath.Join(s.basePath, bucketName, key)
     
+    // Validate that the resolved path is within basePath to prevent directory traversal
+    if err := validatePathWithinBase(filePath, s.basePath); err != nil {
+        return nil, err
+    }
+    
     // Check if file exists
     if _, err := os.Stat(filePath); os.IsNotExist(err) {
         return nil, fmt.Errorf("file not found: %s", filePath)
@@ -92,6 +128,7 @@ func (s *LocalS3Storage) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutpu
     // Read metadata if it exists
     metadata := make(map[string]*string)
     metadataPath := filePath + ".metadata"
+    // Validate metadata path is also within basePath (inherits safety from filePath validation above)
     if _, err := os.Stat(metadataPath); err == nil {
         metadataContent, err := os.ReadFile(metadataPath)
         if err == nil {
@@ -129,7 +166,9 @@ func (s *LocalS3Storage) DeleteObject(input *s3.DeleteObjectInput) (*s3.DeleteOb
     // Also delete metadata if it exists
     metadataPath := filePath + ".metadata"
     if _, err := os.Stat(metadataPath); err == nil {
-        os.Remove(metadataPath)
+        if removeErr := os.Remove(metadataPath); removeErr != nil {
+            log.Printf("Warning: Failed to remove metadata file: %v", removeErr)
+        }
     }
     
     return &s3.DeleteObjectOutput{}, nil

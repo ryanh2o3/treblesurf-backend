@@ -1,3 +1,4 @@
+// Package models provides AWS service registry models.
 package models
 
 import (
@@ -13,5 +14,5 @@ type AWSClientRegistry struct {
     Rekognition   *rekognition.Rekognition
 }
 
-// Global instance that can be set during initialization
+// Registry is a global AWS service registry instance that can be set during initialization.
 var Registry AWSClientRegistry

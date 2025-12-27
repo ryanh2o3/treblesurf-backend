@@ -1,3 +1,4 @@
+// Package controller provides HTTP handlers for API endpoints.
 package controller
 
 import (

@@ -1,16 +1,16 @@
+// Package auth provides authentication and authorization middleware and services.
 package auth
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
 
-	"github.com/adam-hanna/sessions/user"
 	"github.com/gin-gonic/gin"
 )
 
+// AuthMiddleware returns a Gin middleware function that validates user sessions.
 func AuthMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -27,9 +27,10 @@ func AuthMiddleware() gin.HandlerFunc {
         // Only try session auth, no fallback to JWT
         if sessionService != nil {
             userSession, err := sessionService.GetUserSession(c.Request)
-            if err != nil {
+            switch {
+            case err != nil:
                 log.Printf("Session service error: %v", err)
-            } else if userSession != nil {
+            case userSession != nil:
                 log.Printf("Valid session found for user: %s", userSession.UserID)
                 // Session is valid
                 c.Set("email", userSession.UserID)
@@ -65,7 +66,7 @@ func AuthMiddleware() gin.HandlerFunc {
                 
                 c.Next()
                 return
-            } else {
+            default:
                 log.Printf("No valid session found")
             }
         } else {
@@ -78,7 +79,7 @@ func AuthMiddleware() gin.HandlerFunc {
     }
 }
 
-// CSRFMiddleware adds CSRF protection to routes that modify state
+// CSRFMiddleware returns a Gin middleware function that adds CSRF protection to routes that modify state.
 func CSRFMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         // Only check POST, PUT, DELETE requests
@@ -128,41 +129,4 @@ func CSRFMiddleware() gin.HandlerFunc {
 
         c.Next()
     }
-}
-
-// regenerateCSRFToken regenerates a CSRF token for a user session
-func regenerateCSRFToken(userSession *user.Session) error {
-    if sessionService == nil {
-        return fmt.Errorf("session service not available")
-    }
-    
-    // Generate new CSRF token
-    newCSRFToken, err := GenerateCSRFToken()
-    if err != nil {
-        return fmt.Errorf("failed to generate new CSRF token: %v", err)
-    }
-    
-    // Parse existing session data
-    var sessionData SessionJSON
-    if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err != nil {
-        return fmt.Errorf("failed to parse session data: %v", err)
-    }
-    
-    // Update CSRF token and reset creation time
-    sessionData.CSRF = newCSRFToken
-    sessionData.CreatedAt = time.Now()
-    sessionData.LastActive = time.Now()
-    
-    // Marshal updated data
-    updatedJSON, err := json.Marshal(sessionData)
-    if err != nil {
-        return fmt.Errorf("failed to marshal updated session data: %v", err)
-    }
-    
-    // Update session in storage using the session service
-    userSession.JSON = string(updatedJSON)
-    // Note: The session service will handle persistence when ExtendUserSession is called
-    
-    log.Printf("CSRF token regenerated successfully for user: %s", userSession.UserID)
-    return nil
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// BuoyLocationInfo returns location information for all buoys.
 func BuoyLocationInfo(c *gin.Context) {
 	input := &dynamodb.ScanInput{
 		TableName: aws.String("BuoyLocations"),
@@ -35,6 +36,7 @@ func BuoyLocationInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, locations)
 }
 
+// IndividualBuoyLocationInfo returns location information for a specific buoy.
 func IndividualBuoyLocationInfo(c *gin.Context) {
 	regionName := c.Query("region")
 	buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")
@@ -69,6 +71,7 @@ func IndividualBuoyLocationInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, buoy)
 }
 
+// GetLiveBuoyData returns the most recent buoy data for all buoys.
 func GetLiveBuoyData(c *gin.Context) {
 	buoys := []string{"M4", "Blackstones", "West Hebrides", "M2", "M3", "M5", "M6"}
 	var buoyData []map[string]interface{}
@@ -82,6 +85,7 @@ func GetLiveBuoyData(c *gin.Context) {
 }
 
 // Example handler function to use the above function
+// GetBuoyDataRange returns buoy data for a specific buoy within a specified time range.
 func GetBuoyDataRange(c *gin.Context) {
 	buoyName := c.Query("buoyName")
 	startTimeStr := c.Query("startTime") // expected format: 2006-01-02T15:00:00Z or 2006-01-02
@@ -93,7 +97,9 @@ func GetBuoyDataRange(c *gin.Context) {
 		// Try parsing as date only
 		startTime, err = time.Parse("2006-01-02", startTimeStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start time format. Expected 2006-01-02T15:04:05Z or 2006-01-02"})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid start time format. Expected 2006-01-02T15:04:05Z or 2006-01-02",
+			})
 			return
 		}
 	}
@@ -124,6 +130,7 @@ func GetBuoyDataRange(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
+// GetSingleBuoyData returns the most recent data for a specific buoy.
 func GetSingleBuoyData(c *gin.Context) {
 	// buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")
 	var data map[string]interface{}
@@ -143,6 +150,7 @@ func GetSingleBuoyData(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
+// GetLast24HoursBuoyData returns buoy data from the last 24 hours for a specific buoy.
 func GetLast24HoursBuoyData(c *gin.Context) {
 	// buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")
 	// Calculate time range
@@ -164,6 +172,7 @@ func GetLast24HoursBuoyData(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
+// GetMultipleBuoyData returns the most recent data for multiple specified buoys.
 func GetMultipleBuoyData(c *gin.Context) {
 	buoysStr := c.Query("buoys")
 	buoys := strings.Split(buoysStr, ",")
@@ -272,6 +281,7 @@ func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
 	return buoyData
 }
 
+// GetRegionBuoys returns buoy location information for a specific region.
 func GetRegionBuoys(c *gin.Context) {
 	regionName := c.Query("region")
 	var buoys []model.Buoy

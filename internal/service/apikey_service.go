@@ -1,3 +1,4 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
@@ -24,7 +25,12 @@ func NewAPIKeyService(dbStorage storage.DynamoDBStorage) *APIKeyService {
 }
 
 // GenerateAPIKey creates a new API key with specified parameters
-func (s *APIKeyService) GenerateAPIKey(description string, createdBy string, durationDays int, scopes []string) (*model.APIKey, error) {
+func (s *APIKeyService) GenerateAPIKey(
+	description string,
+	createdBy string,
+	durationDays int,
+	scopes []string,
+) (*model.APIKey, error) {
 	// Generate a random key
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

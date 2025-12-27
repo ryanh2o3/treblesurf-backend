@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"treblesurf-backend/internal/auth"
+	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/controller"
 
 	"github.com/gin-contrib/cors"
@@ -21,7 +22,7 @@ func SetupRouter(container *Container) *gin.Engine {
 
 	setupRoutes(r, container)
 
-	if isLocal == "development" {
+	if isLocal == constants.EnvDevelopment {
 		// Add CORS middleware for development environment
 		r.Use(cors.New(cors.Config{
 			AllowOrigins:     []string{"http://localhost:5173"},
@@ -71,7 +72,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	
 	// CSRF token refresh endpoint (requires authentication)
 	csrfRoutes := r.Group("/auth")
-	if os.Getenv("GO_ENV") == "development" {
+	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
 		// In local dev, use mock auth
 		csrfRoutes.Use(DevAuthMiddleware())
 	} else {
@@ -85,7 +86,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	})
 	
 	// Development-only endpoint for iOS simulator
-	if os.Getenv("GO_ENV") == "development" {
+	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
 		r.POST("/auth/dev-session", func(c *gin.Context) {
 			var req struct {
 				Email string `json:"email"`
@@ -133,7 +134,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	r.GET("/swellPredictionStatus", container.SwellPredictionController.GetSwellPredictionStatus)
 	r.GET("/closestAIPrediction", container.SwellPredictionController.GetClosestAIPredictionForSpot)
 
-	isLocal := os.Getenv("GO_ENV") == "development"
+	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
 
 	// Protected routes (auth required)
 	authorized := r.Group("/")

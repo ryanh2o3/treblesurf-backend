@@ -75,7 +75,11 @@ func UploadSnapshotHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open uploaded file"})
 		return
 	}
-	defer src.Close()
+	defer func() {
+		if closeErr := src.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close uploaded file: %v", closeErr)
+		}
+	}()
 
 	// Generate a unique filename
 	ext := filepath.Ext(file.Filename)

@@ -18,11 +18,13 @@ import (
 	"github.com/golang-jwt/jwt"
 )
 
+// WebSocketService provides WebSocket connection management and messaging operations.
 type WebSocketService struct {
 	dbStorage storage.DynamoDBStorage
 	jwtSecret []byte
 }
 
+// NewWebSocketService creates a new WebSocket service instance.
 func NewWebSocketService(dbStorage storage.DynamoDBStorage, jwtSecret []byte) *WebSocketService {
 	return &WebSocketService{
 		dbStorage: dbStorage,

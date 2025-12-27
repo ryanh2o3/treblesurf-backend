@@ -1,3 +1,4 @@
+// Package api provides the API container for dependency injection and route setup.
 package api
 
 import (
@@ -9,6 +10,7 @@ import (
 	"os"
 	"time"
 	"treblesurf-backend/internal/auth"
+	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/controller"
 	"treblesurf-backend/internal/service"
 	"treblesurf-backend/internal/storage"
@@ -21,6 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+// Container holds all the dependencies for the API (storage, services, controllers).
 type Container struct {
 	// Storage
 	DynamoDBStorage storage.DynamoDBStorage
@@ -40,6 +43,7 @@ type Container struct {
 	SwellPredictionController *controller.SwellPredictionController
 }
 
+// NewContainer creates and initializes a new API container with all dependencies.
 func NewContainer() (*Container, error) {
 	// Get configuration from environment
 	region := os.Getenv("AWS_REGION")
@@ -53,7 +57,7 @@ func NewContainer() (*Container, error) {
 	}
 
 	// Check if we're running locally
-	isLocal := os.Getenv("GO_ENV") == "development"
+	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
 	
 	var dynamoDBClient *dynamodb.DynamoDB
 	var rekognitionClient *rekognition.Rekognition
@@ -120,7 +124,13 @@ func NewContainer() (*Container, error) {
 	// Initialize WebSocket service
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "default-jwt-secret" // fallback for local development
+		if isLocal {
+			// Only allow default secret in local development with warning
+			jwtSecret = "default-jwt-secret"
+			log.Println("WARNING: Using default JWT secret for local development. Set JWT_SECRET environment variable in production.")
+		} else {
+			return nil, fmt.Errorf("JWT_SECRET environment variable is required")
+		}
 	}
 	websocketService := service.NewWebSocketService(dbStorage, []byte(jwtSecret))
 
@@ -247,9 +257,17 @@ func (l *localS3Wrapper) GetObject(bucket, key string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object from S3: %v", err)
 	}
-	defer result.Body.Close()
+	defer func() {
+		if closeErr := result.Body.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close S3 response body: %v", closeErr)
+		}
+	}()
 
-	return io.ReadAll(result.Body)
+	data, readErr := io.ReadAll(result.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("failed to read S3 object body: %v", readErr)
+	}
+	return data, nil
 }
 
 func (l *localS3Wrapper) PutObject(bucket, key string, data []byte, contentType string) error {

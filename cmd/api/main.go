@@ -1,3 +1,4 @@
+// Package main provides the API Gateway Lambda handler for the Treble Surf API.
 package main
 
 import (
@@ -12,13 +13,14 @@ import (
 
 var ginLambda *ginadapter.GinLambda
 
-func init() {
+func initialize() error {
 	container, err := api.NewContainer()
 	if err != nil {
-		panic(err)
+		return err
 	}
-    r := api.SetupRouter(container)
-    ginLambda = ginadapter.New(r)
+	r := api.SetupRouter(container)
+	ginLambda = ginadapter.New(r)
+	return nil
 }
 
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -32,5 +34,8 @@ func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.API
 }
 
 func main() {
+	if err := initialize(); err != nil {
+		panic(err)
+	}
 	lambda.Start(Handler)
 }

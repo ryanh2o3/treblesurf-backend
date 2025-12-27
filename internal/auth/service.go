@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"treblesurf-backend/internal/constants"
+
 	"github.com/adam-hanna/sessions"
 	"github.com/adam-hanna/sessions/auth"
 	"github.com/adam-hanna/sessions/transport"
@@ -25,16 +27,18 @@ import (
 	"google.golang.org/api/idtoken"
 )
 
-// Types
+// TokenClaims represents JWT token claims containing user email.
 type TokenClaims struct {
 	Email string `json:"email"`
 	jwt.RegisteredClaims
 }
 
+// TokenRequest represents a request to validate a Google ID token.
 type TokenRequest struct {
 	IDToken string `json:"id_token"`
 }
 
+// User represents user information for authentication.
 type User struct {
 	UUID       string `json:"uuid"`
 	Email      string `json:"email"`
@@ -47,6 +51,7 @@ type User struct {
 	Theme      string `json:"theme"`
 }
 
+// SessionJSON represents session data stored as JSON.
 type SessionJSON struct {
 	CSRF       string    `json:"csrf"`
 	UserAgent  string    `json:"user_agent"`
@@ -55,6 +60,7 @@ type SessionJSON struct {
 	LastActive time.Time `json:"last_active"`
 }
 
+// SessionInfo represents session information returned to clients.
 type SessionInfo struct {
 	SessionID  string    `json:"session_id"`
 	ExpiresAt  time.Time `json:"expires_at"`
@@ -493,7 +499,7 @@ func getClientIP(c *gin.Context) string {
 	return c.ClientIP()
 }
 
-// Main handler functions
+// GoogleAuthHandler handles Google OAuth authentication requests.
 func GoogleAuthHandler(c *gin.Context) {
 	var req TokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -501,13 +507,19 @@ func GoogleAuthHandler(c *gin.Context) {
 		return
 	}
 
-	// Replace with your actual Google Client ID
-	clientID := "667754725634-pmth2mlieh3jfebl8ujkjji7nqqih3tf.apps.googleusercontent.com"
-	iosClientID := "667754725634-9tck0kii14dm6d1e0u05preefmfppp5b.apps.googleusercontent.com"
+	// Get Google OAuth Client IDs from environment variables
+	clientID := os.Getenv("GOOGLE_CLIENT_ID")
+	iosClientID := os.Getenv("GOOGLE_IOS_CLIENT_ID")
+	
+	if clientID == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Google OAuth not configured"})
+		return
+	}
 
-	clientIDs := map[string]bool{
-		clientID:    true,
-		iosClientID: true,
+	clientIDs := make(map[string]bool)
+	clientIDs[clientID] = true
+	if iosClientID != "" {
+		clientIDs[iosClientID] = true
 	}
 
 	var payload *idtoken.Payload
@@ -686,7 +698,7 @@ func ValidateTokenHandler(c *gin.Context) {
 	c.Header("Pragma", "no-cache")
 	c.Header("Expires", "0")
 
-	if os.Getenv("GO_ENV") == "development" {
+	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
 		// In development mode, always return valid mock user without checking for email
 		log.Println("Development mode: returning mock user for validation")
 		c.JSON(http.StatusOK, gin.H{
@@ -775,6 +787,7 @@ func ValidateTokenHandler(c *gin.Context) {
 	})
 }
 
+// LogoutHandler handles user logout requests.
 func LogoutHandler(c *gin.Context) {
 	// Clear auth cookie
 	c.SetCookie(
@@ -808,6 +821,7 @@ func LogoutHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
 
+// GetUserSessionsHandler returns a list of active sessions for the authenticated user.
 func GetUserSessionsHandler(c *gin.Context) {
 	// Get current user's email from the context
 	email, exists := c.Get("email")
@@ -868,6 +882,7 @@ func GetUserSessionsHandler(c *gin.Context) {
 	})
 }
 
+// TerminateSessionHandler terminates a specific user session.
 func TerminateSessionHandler(c *gin.Context) {
 	// Get current user's email from context
 	email, exists := c.Get("email")
@@ -922,6 +937,7 @@ func TerminateSessionHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Session terminated successfully"})
 }
 
+// GetWebSocketTokenHandler generates a JWT token for WebSocket authentication.
 func GetWebSocketTokenHandler(c *gin.Context) {
 	// Get current user's email from context
 	email, exists := c.Get("email")

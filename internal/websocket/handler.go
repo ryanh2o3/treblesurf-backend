@@ -1,3 +1,4 @@
+// Package websocket provides WebSocket handlers for API Gateway WebSocket connections.
 package websocket
 
 import (
@@ -13,10 +14,12 @@ import (
 	"github.com/golang-jwt/jwt"
 )
 
+// WebSocketHandler handles WebSocket events from API Gateway.
 type WebSocketHandler struct {
 	websocketService *service.WebSocketService
 }
 
+// NewWebSocketHandler creates a new WebSocket handler instance.
 func NewWebSocketHandler(websocketService *service.WebSocketService) *WebSocketHandler {
 	return &WebSocketHandler{
 		websocketService: websocketService,
@@ -24,7 +27,9 @@ func NewWebSocketHandler(websocketService *service.WebSocketService) *WebSocketH
 }
 
 // HandleWebSocketEvent handles WebSocket events from API Gateway
-func (h *WebSocketHandler) HandleWebSocketEvent(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (h *WebSocketHandler) HandleWebSocketEvent(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	log.Printf("WebSocket event: %s, ConnectionID: %s", req.RequestContext.RouteKey, req.RequestContext.ConnectionID)
 
 	switch req.RequestContext.RouteKey {
@@ -39,7 +44,9 @@ func (h *WebSocketHandler) HandleWebSocketEvent(req events.APIGatewayWebsocketPr
 	}
 }
 
-func (h *WebSocketHandler) handleConnect(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (h *WebSocketHandler) handleConnect(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
 	// Parse token from query parameters
@@ -107,7 +114,9 @@ func (h *WebSocketHandler) handleConnect(req events.APIGatewayWebsocketProxyRequ
 	}, nil
 }
 
-func (h *WebSocketHandler) handleDisconnect(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (h *WebSocketHandler) handleDisconnect(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
 	// Delete the connection record
@@ -122,7 +131,9 @@ func (h *WebSocketHandler) handleDisconnect(req events.APIGatewayWebsocketProxyR
 	}, nil
 }
 
-func (h *WebSocketHandler) handleDefault(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (h *WebSocketHandler) handleDefault(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	var message model.WebSocketMessage
 	if err := json.Unmarshal([]byte(req.Body), &message); err != nil {
 		return events.APIGatewayProxyResponse{
@@ -132,7 +143,9 @@ func (h *WebSocketHandler) handleDefault(req events.APIGatewayWebsocketProxyRequ
 	}
 
 	// Update last active timestamp
-	h.websocketService.UpdateConnectionLastActive(req.RequestContext.ConnectionID)
+	if err := h.websocketService.UpdateConnectionLastActive(req.RequestContext.ConnectionID); err != nil {
+		log.Printf("Warning: Failed to update connection last active: %v", err)
+	}
 
 	// Process based on the action
 	if message.Action == "" {
@@ -147,7 +160,9 @@ func (h *WebSocketHandler) handleDefault(req events.APIGatewayWebsocketProxyRequ
 }
 
 // handleCustomRoute processes custom WebSocket messages
-func (h *WebSocketHandler) handleCustomRoute(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (h *WebSocketHandler) handleCustomRoute(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	var message model.WebSocketMessage
 	if err := json.Unmarshal([]byte(req.Body), &message); err != nil {
 		log.Printf("Error parsing message: %v", err)
@@ -175,7 +190,9 @@ func (h *WebSocketHandler) handleCustomRoute(req events.APIGatewayWebsocketProxy
 }
 
 // handleSubscribeAction processes WebSocket subscription requests
-func (h *WebSocketHandler) handleSubscribeAction(req events.APIGatewayWebsocketProxyRequest, data json.RawMessage) (events.APIGatewayProxyResponse, error) {
+func (h *WebSocketHandler) handleSubscribeAction(
+	req events.APIGatewayWebsocketProxyRequest, data json.RawMessage,
+) (events.APIGatewayProxyResponse, error) {
 	// Parse the subscription data
 	var subRequest model.SubscriptionRequest
 	if err := json.Unmarshal(data, &subRequest); err != nil {
@@ -211,12 +228,16 @@ func (h *WebSocketHandler) handleSubscribeAction(req events.APIGatewayWebsocketP
 	}
 
 	// Update connection metadata with current spot
-	h.websocketService.UpdateConnectionSpot(connectionID, spotIdentifier)
+	if err := h.websocketService.UpdateConnectionSpot(connectionID, spotIdentifier); err != nil {
+		log.Printf("Warning: Failed to update connection spot: %v", err)
+	}
 
 	// Send confirmation back to client
 	response := h.websocketService.CreateSubscriptionResponse(spotIdentifier)
 	responseJSON, _ := json.Marshal(response)
-	h.websocketService.SendToConnection(connectionID, string(responseJSON))
+	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
+		log.Printf("Warning: Failed to send message to connection: %v", err)
+	}
 
 	log.Printf("User %s subscribed to spot: %s via connection %s", userID, spotIdentifier, connectionID)
 	return events.APIGatewayProxyResponse{
@@ -226,16 +247,22 @@ func (h *WebSocketHandler) handleSubscribeAction(req events.APIGatewayWebsocketP
 }
 
 // handlePingAction responds to ping messages to keep the connection alive
-func (h *WebSocketHandler) handlePingAction(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (h *WebSocketHandler) handlePingAction(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
 	// Update last active time
-	h.websocketService.UpdateConnectionLastActive(connectionID)
+	if err := h.websocketService.UpdateConnectionLastActive(connectionID); err != nil {
+		log.Printf("Warning: Failed to update connection last active: %v", err)
+	}
 
 	// Send pong response
 	response := h.websocketService.CreatePongResponse()
 	responseJSON, _ := json.Marshal(response)
-	h.websocketService.SendToConnection(connectionID, string(responseJSON))
+	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
+		log.Printf("Warning: Failed to send message to connection: %v", err)
+	}
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
