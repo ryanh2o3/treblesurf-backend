@@ -118,32 +118,8 @@ func CSRFMiddleware() gin.HandlerFunc {
             return
         }
 
-        // Validate token
+        // Validate token - must match exactly
         if clientToken == "" || clientToken != serverToken {
-            // Try to regenerate CSRF token if the token is invalid
-            if clientToken != "" {
-                // Try to get the user session and regenerate the token
-                if sessionService != nil {
-                    userSession, err := sessionService.GetUserSession(c.Request)
-                    if err == nil && userSession != nil {
-                        log.Printf("Attempting to regenerate CSRF token for user: %s", userSession.UserID)
-                        
-                        // Regenerate the CSRF token
-                        if err := regenerateCSRFToken(userSession); err == nil {
-                            // Parse the updated session to get the new token
-                            var sessionData SessionJSON
-                            if json.Unmarshal([]byte(userSession.JSON), &sessionData) == nil {
-                                if sessionData.CSRF == clientToken {
-                                    log.Printf("CSRF token regenerated and validated successfully")
-                                    c.Next()
-                                    return
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
             c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
                 "error": "CSRF token invalid",
             })
