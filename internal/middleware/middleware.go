@@ -27,6 +27,7 @@ func CorsMiddleware() gin.HandlerFunc {
 	}
 }
 
+// AdminMiddleware returns a Gin middleware function that validates admin user permissions.
 func AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		email, exists := c.Get("email")
@@ -44,6 +45,8 @@ func AdminMiddleware() gin.HandlerFunc {
 	}
 }
 
+// APIKeyAuthMiddleware returns a Gin middleware function that validates API key authentication
+// with the specified scope.
 func APIKeyAuthMiddleware(requiredScope string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -127,7 +130,7 @@ func isAdminUser(_ string) bool {
 	return false
 }
 
-func validateAPIKey(_ string, requiredScope string) (interface{}, bool) {
+func validateAPIKey(_ string, _ string) (interface{}, bool) {
 	// TODO: Implement API key validation
 	return nil, false
 }

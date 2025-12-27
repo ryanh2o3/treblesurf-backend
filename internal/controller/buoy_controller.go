@@ -84,7 +84,6 @@ func GetLiveBuoyData(c *gin.Context) {
 	c.JSON(http.StatusOK, buoyData)
 }
 
-// Example handler function to use the above function
 // GetBuoyDataRange returns buoy data for a specific buoy within a specified time range.
 func GetBuoyDataRange(c *gin.Context) {
 	buoyName := c.Query("buoyName")

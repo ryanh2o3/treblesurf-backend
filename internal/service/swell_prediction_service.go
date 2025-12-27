@@ -29,7 +29,9 @@ func abs(x int64) int64 {
 }
 
 // GetSpotSwellPrediction retrieves swell predictions for a specific spot.
-func (s *SwellPredictionService) GetSpotSwellPrediction(spotName, regionName, countryName string) ([]map[string]interface{}, error) {
+func (s *SwellPredictionService) GetSpotSwellPrediction(
+	spotName, regionName, countryName string,
+) ([]map[string]interface{}, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	
 	// Get current time rounded to the hour (UTC)
@@ -85,7 +87,9 @@ func (s *SwellPredictionService) GetSpotSwellPrediction(spotName, regionName, co
 }
 
 // GetListSpotsSwellPrediction retrieves swell predictions for multiple spots.
-func (s *SwellPredictionService) GetListSpotsSwellPrediction(spots []string, regionName, countryName string) ([][]map[string]interface{}, error) {
+func (s *SwellPredictionService) GetListSpotsSwellPrediction(
+	spots []string, regionName, countryName string,
+) ([][]map[string]interface{}, error) {
 	var allPredictions [][]map[string]interface{}
 	
 	for _, spot := range spots {
@@ -100,7 +104,9 @@ func (s *SwellPredictionService) GetListSpotsSwellPrediction(spots []string, reg
 }
 
 // GetRegionSwellPrediction retrieves swell predictions for all spots in a region.
-func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryName string) ([]map[string]interface{}, error) {
+func (s *SwellPredictionService) GetRegionSwellPrediction(
+	regionName, countryName string,
+) ([]map[string]interface{}, error) {
 	// Get current time rounded to the hour (UTC)
 	now := time.Now().UTC()
 	currentHour := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.UTC)
@@ -166,7 +172,10 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(regionName, countryNam
 }
 
 // GetSpotSwellPredictionRange retrieves swell predictions for a spot within a time range.
-func (s *SwellPredictionService) GetSpotSwellPredictionRange(spotName, regionName, countryName string, startTime, endTime time.Time) ([]map[string]interface{}, error) {
+func (s *SwellPredictionService) GetSpotSwellPredictionRange(
+	spotName, regionName, countryName string,
+	startTime, endTime time.Time,
+) ([]map[string]interface{}, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	startTimestamp := fmt.Sprintf("%d", startTime.Unix())
 	endTimestamp := fmt.Sprintf("%d", endTime.Unix())
@@ -376,7 +385,9 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 			var dataMap map[string]interface{}
 			err := dynamodbattribute.Unmarshal(dataAttr, &dataMap)
 			if err != nil {
-				fmt.Printf("Failed to unmarshal data field for item %d: %v\n", i, err)
+				fmt.Printf(
+					"Failed to unmarshal data field for item %d: %v\n", i, err,
+				)
 				continue
 			}
 			

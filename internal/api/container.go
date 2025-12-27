@@ -126,8 +126,11 @@ func NewContainer() (*Container, error) {
 	if jwtSecret == "" {
 		if isLocal {
 			// Only allow default secret in local development with warning
-			jwtSecret = "default-jwt-secret"
-			log.Println("WARNING: Using default JWT secret for local development. Set JWT_SECRET environment variable in production.")
+			jwtSecret = "default-jwt-secret" //nolint:gosec // Local development only
+			log.Println(
+				"WARNING: Using default JWT secret for local development. " +
+					"Set JWT_SECRET environment variable in production.",
+			)
 		} else {
 			return nil, fmt.Errorf("JWT_SECRET environment variable is required")
 		}

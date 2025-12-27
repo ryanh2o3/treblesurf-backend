@@ -832,6 +832,7 @@ func (s *ReportService) ValidateImageKeyExists(imageKey string) (bool, error) {
 	return true, nil
 }
 
+// IsValidSurfSize validates if a surf size string is valid.
 func (s *ReportService) IsValidSurfSize(swellSize string) bool {
 	return validation.IsValidSurfSize(swellSize)
 }

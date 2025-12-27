@@ -692,6 +692,7 @@ func GoogleAuthHandler(c *gin.Context) {
 	})
 }
 
+// ValidateTokenHandler validates a JWT token and returns the user information.
 func ValidateTokenHandler(c *gin.Context) {
 	// Add cache control headers to prevent browser caching
 	c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")

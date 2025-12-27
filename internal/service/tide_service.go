@@ -4,6 +4,7 @@ import (
 	"time"
 )
 
+// TideService provides tide information operations.
 type TideService struct {
 	// Add any dependencies here if needed
 }

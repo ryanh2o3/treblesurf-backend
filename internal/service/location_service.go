@@ -11,13 +11,19 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
+// LocationService provides location-related operations including regions, spots, and coordinates.
 type LocationService struct {
 	dbStorage  storage.DynamoDBStorage
 	s3Storage  storage.S3Storage
 	bucketName string
 }
 
-func NewLocationService(dbStorage storage.DynamoDBStorage, s3Storage storage.S3Storage, bucketName string) *LocationService {
+// NewLocationService creates a new location service instance.
+func NewLocationService(
+	dbStorage storage.DynamoDBStorage,
+	s3Storage storage.S3Storage,
+	bucketName string,
+) *LocationService {
 	return &LocationService{
 		dbStorage:  dbStorage,
 		s3Storage:  s3Storage,

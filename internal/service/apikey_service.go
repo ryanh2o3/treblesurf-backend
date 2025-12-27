@@ -14,10 +14,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
+// APIKeyService provides API key management operations.
 type APIKeyService struct {
 	dbStorage storage.DynamoDBStorage
 }
 
+// NewAPIKeyService creates a new API key service instance.
 func NewAPIKeyService(dbStorage storage.DynamoDBStorage) *APIKeyService {
 	return &APIKeyService{
 		dbStorage: dbStorage,

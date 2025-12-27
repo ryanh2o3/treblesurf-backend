@@ -18,7 +18,10 @@ type ForecastController struct {
 }
 
 // NewForecastController creates a new forecast controller instance.
-func NewForecastController(forecastService *service.ForecastService, tideService *service.TideService) *ForecastController {
+func NewForecastController(
+	forecastService *service.ForecastService,
+	tideService *service.TideService,
+) *ForecastController {
 	return &ForecastController{
 		forecastService: forecastService,
 		tideService:     tideService,

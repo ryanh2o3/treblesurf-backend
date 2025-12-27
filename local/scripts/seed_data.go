@@ -549,12 +549,30 @@ surfData2 := []map[string]interface{}{
                         stepDateForecastedFor := stepTime.Format("2006-01-02 15:04:05")
                         
                         // Linear interpolation between samples
-                        interpolatedSwellHeight := interpolate(sample["swellHeight"].(float64), nextSample["swellHeight"].(float64), progress)
-                        interpolatedSwellPeriod := interpolate(sample["swellPeriod"].(float64), nextSample["swellPeriod"].(float64), progress)
-                        interpolatedWindSpeed := interpolate(sample["windSpeed"].(float64), nextSample["windSpeed"].(float64), progress)
-                        interpolatedWindDirection := interpolateAngle(sample["windDirection"].(float64), nextSample["windDirection"].(float64), progress)
-                        interpolatedSwellDirection := interpolateAngle(sample["swellDirection"].(float64), nextSample["swellDirection"].(float64), progress)
-                        interpolatedTemperature := interpolate(sample["temperature"].(float64), nextSample["temperature"].(float64), progress)
+                        interpolatedSwellHeight := interpolate(
+							sample["swellHeight"].(float64),
+							nextSample["swellHeight"].(float64), progress,
+						)
+                        interpolatedSwellPeriod := interpolate(
+							sample["swellPeriod"].(float64),
+							nextSample["swellPeriod"].(float64), progress,
+						)
+                        interpolatedWindSpeed := interpolate(
+							sample["windSpeed"].(float64),
+							nextSample["windSpeed"].(float64), progress,
+						)
+                        interpolatedWindDirection := interpolateAngle(
+							sample["windDirection"].(float64),
+							nextSample["windDirection"].(float64), progress,
+						)
+                        interpolatedSwellDirection := interpolateAngle(
+							sample["swellDirection"].(float64),
+							nextSample["swellDirection"].(float64), progress,
+						)
+                        interpolatedTemperature := interpolate(
+							sample["temperature"].(float64),
+							nextSample["temperature"].(float64), progress,
+						)
                         interpolatedWaterTemperature := interpolate(sample["waterTemperature"].(float64), nextSample["waterTemperature"].(float64), progress)
                         interpolatedPressure := interpolate(sample["pressure"].(float64), nextSample["pressure"].(float64), progress)
                         interpolatedHumidity := interpolate(sample["humidity"].(float64), nextSample["humidity"].(float64), progress)

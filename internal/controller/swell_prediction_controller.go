@@ -147,7 +147,9 @@ func (c *SwellPredictionController) GetSpotSwellPredictionRange(ctx *gin.Context
 		return
 	}
 
-	predictions, err := c.swellPredictionService.GetSpotSwellPredictionRange(spotName, regionName, countryName, startTime, endTime)
+	predictions, err := c.swellPredictionService.GetSpotSwellPredictionRange(
+		spotName, regionName, countryName, startTime, endTime,
+	)
 	if err != nil {
 		log.Printf("Error getting spot swell prediction range: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

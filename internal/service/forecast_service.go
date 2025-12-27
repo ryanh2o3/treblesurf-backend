@@ -9,18 +9,24 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
+// ForecastService provides forecast data operations.
 type ForecastService struct {
 	db *dynamodb.DynamoDB
 }
 
+// NewForecastService creates a new forecast service instance.
 func NewForecastService(db *dynamodb.DynamoDB) *ForecastService {
 	return &ForecastService{db: db}
 }
 
-func (s *ForecastService) GetSpotForecast(spotName, regionName, countryName string) ([]map[string]interface{}, error) {
+// GetSpotForecast returns forecast data for a specific spot.
+func (s *ForecastService) GetSpotForecast(
+	spotName, regionName, countryName string,
+) ([]map[string]interface{}, error) {
 	return s.queryForecastByDateTime(spotName, regionName, countryName, nil)
 }
 
+// GetListSpotsForecast returns forecast data for multiple spots.
 func (s *ForecastService) GetListSpotsForecast(spots []string, regionName, countryName string) ([][]map[string]interface{}, error) {
 	var spotIDs []string
 	for _, spot := range spots {
@@ -30,6 +36,7 @@ func (s *ForecastService) GetListSpotsForecast(spots []string, regionName, count
 	return s.queryMultipleSpotForecasts(spotIDs, aws.Int64(72))
 }
 
+// GetRegionForecast returns forecast data for all spots in a region.
 func (s *ForecastService) GetRegionForecast(regionName, countryName string) ([]map[string]interface{}, error) {
 	forecastDate := time.Now().Format("2006-01-02")
 
@@ -65,12 +72,14 @@ func (s *ForecastService) GetRegionForecast(regionName, countryName string) ([]m
 	return forecasts, nil
 }
 
+// GetCurrentWeather returns current weather conditions for a location.
 func (s *ForecastService) GetCurrentWeather(spotName, regionName, countryName string) ([]map[string]interface{}, error) {
 	return s.queryForecastByDateTime(spotName, regionName, countryName, aws.Int64(1))
 }
 
 func (s *ForecastService) queryForecastByDateTime(
-	spotName, regionName, countryName string, limit *int64,
+	spotName, regionName, countryName string,
+	limit *int64,
 ) ([]map[string]interface{}, error) {
 		spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	currentEpoch := time.Now().Unix()
