@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/service"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/golang-jwt/jwt"
 )
 
 // WebSocketHandler handles WebSocket events from API Gateway.
@@ -48,70 +46,25 @@ func (h *WebSocketHandler) handleConnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
-
-	// Parse token from query parameters
 	token := req.QueryStringParameters["token"]
-	if token == "" {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusUnauthorized,
-			Body:       "Authentication required",
-		}, nil
-	}
 
-	// Parse the temporary token
-	wsToken, err := h.websocketService.ValidateWebSocketToken(token)
-	if err != nil || !wsToken.Valid {
+	userID, sessionID, err := h.validateWebSocketToken(token)
+	if err != nil || userID == "" {
+		if token == "" {
+			return unauthorizedResponse(), nil
+		}
 		log.Printf("Invalid WebSocket token: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusUnauthorized,
-			Body:       "Invalid token",
-		}, nil
+		return invalidTokenResponse(), nil
 	}
 
-	// Extract claims
-	claims, ok := wsToken.Claims.(jwt.MapClaims)
-	if !ok {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-			Body:       "Invalid token format",
-		}, nil
-	}
-
-	// Get user ID from claims
-	userID, ok := claims["user_id"].(string)
-	if !ok {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       "Invalid token payload",
-		}, nil
-	}
-
-	// Get session ID for reference (optional)
-	sessionID, _ := claims["session_id"].(string)
-
-	// Store connection info in DynamoDB
-	connection := &model.ConnectionInfo{
-		ConnectionID: connectionID,
-		UserID:       userID,
-		ConnectedAt:  time.Unix(req.RequestContext.RequestTimeEpoch, 0),
-		LastActive:   time.Unix(req.RequestContext.RequestTimeEpoch, 0),
-		UserAgent:    req.Headers["User-Agent"],
-		IPAddress:    h.websocketService.GetSourceIP(req.Headers),
-	}
-
+	connection := h.createConnectionInfo(connectionID, userID, req)
 	if err := h.websocketService.SaveConnection(connection); err != nil {
 		log.Printf("Failed to save connection: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-			Body:       "Failed to establish connection",
-		}, nil
+		return connectionFailedResponse(), nil
 	}
 
 	log.Printf("Client connected: %s, User: %s, Session: %s", connectionID, userID, sessionID)
-	return events.APIGatewayProxyResponse{
-		StatusCode: http.StatusOK,
-		Body:       "Connected",
-	}, nil
+	return successResponse("Connected"), nil
 }
 
 func (h *WebSocketHandler) handleDisconnect(

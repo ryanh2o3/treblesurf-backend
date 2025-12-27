@@ -3,7 +3,6 @@ package controller
 import (
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -65,260 +64,97 @@ func handleImageError(c *gin.Context, err error, logPrefix string) {
 
 // SubmitCurrentSurfReport handles surf report submission
 func SubmitCurrentSurfReport(c *gin.Context) {
-	log.Printf("=== Report Submission Request ===")
-	log.Printf("User-Agent: %s", c.Request.UserAgent())
-	log.Printf("Method: %s", c.Request.Method)
-	log.Printf("Content-Type: %s", c.GetHeader("Content-Type"))
-	log.Printf("X-CSRF-Token: %s", c.GetHeader("X-CSRF-Token"))
-	log.Printf("Origin: %s", c.GetHeader("Origin"))
-	log.Printf("Referer: %s", c.GetHeader("Referer"))
-
+	logRequestDetails(c, "Report Submission Request")
 	log.Print("start of submit report")
+
 	var report model.ReportWithImage
 	if err := c.BindJSON(&report); err != nil {
-		log.Printf("Failed to bind JSON: %v", err)
-		log.Printf("Request body: %+v", c.Request.Body)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request format",
-			"message": "The request data is not in the correct format",
-			"help": "Please ensure you're sending valid JSON data with all required fields.",
-		})
+		handleReportBindingError(c, err)
 		return
 	}
 
 	log.Printf("Report data received: Country=%s, Region=%s, Spot=%s, SurfSize=%s",
 		report.Country, report.Region, report.Spot, report.SurfSize)
 
-	// Validate required fields
-	if report.Country == "" || report.Region == "" || report.Spot == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing required fields",
-			"message": "Country, region, and spot are required",
-			"help": "Please provide all required location information.",
-		})
+	if !validateReportLocation(c, report.Country, report.Region, report.Spot) {
 		return
 	}
 
-	// Validate surf size if provided
-	if report.SurfSize != "" && !ReportService.IsValidSurfSize(report.SurfSize) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid surf size",
-			"message": fmt.Sprintf("Surf size '%s' is not valid", report.SurfSize),
-			"help": "Valid surf sizes are: flat, knee-waist, chest-shoulder, head-high, overhead, double-overhead",
-		})
+	if !validateReportFields(c, &report) {
 		return
 	}
 
-	// Validate wind amount if provided
-	if report.WindAmount != "" && !ReportService.IsValidWindAmount(report.WindAmount) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid wind amount",
-			"message": fmt.Sprintf("Wind amount '%s' is not valid", report.WindAmount),
-			"help": "Valid wind amounts are: light, moderate, strong, very-strong",
-		})
+	email, ok := getAuthenticatedUserEmail(c)
+	if !ok {
 		return
 	}
 
-	// Validate wind direction if provided
-	if report.WindDirection != "" && !ReportService.IsValidWindDirection(report.WindDirection) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid wind direction",
-			"message": fmt.Sprintf("Wind direction '%s' is not valid", report.WindDirection),
-			"help": "Valid wind directions are: onshore, offshore, cross-shore, no-wind",
-		})
-		return
-	}
-
-	// Validate consistency if provided
-	if report.Consistency != "" && !ReportService.IsValidSurfDifficulty(report.Consistency) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid consistency",
-			"message": fmt.Sprintf("Consistency '%s' is not valid", report.Consistency),
-			"help": "Valid consistency values are: setty, consistent, inconsistent, sporadic",
-		})
-		return
-	}
-
-	// Validate quality if provided
-	if report.Quality != "" && !ReportService.IsValidSurfConditions(report.Quality) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid quality",
-			"message": fmt.Sprintf("Quality '%s' is not valid", report.Quality),
-			"help": "Valid quality values are: mushy, average, okay, good, excellent",
-		})
-		return
-	}
-
-	// Validate messiness if provided
-	if report.Messiness != "" && !ReportService.IsValidMessiness(report.Messiness) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid messiness",
-			"message": fmt.Sprintf("Messiness '%s' is not valid", report.Messiness),
-			"help": "Valid messiness values are: clean, slight-chop, choppy, messy",
-		})
-		return
-	}
-
-	email, exists := c.Get("email")
-	if !exists {
-		log.Printf("No email found in context - authentication issue")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-			"message": "You must be logged in to submit a surf report",
-			"help": "Please log in and try again.",
-		})
-		return
-	}
-
-	log.Printf("User email from context: %s", email.(string))
-
-	user, err2 := getUserByEmail(email.(string))
-	if err2 != nil {
-		log.Printf("Failed to fetch user information: %v", err2)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "User information error",
-			"message": "Unable to retrieve your user profile",
-			"help": "Please try again in a moment. If the problem persists, contact support.",
-		})
-		return
-	}
-
-	// Use the report service to submit the report
-	err := ReportService.SubmitSurfReport(&report, email.(string), user.GivenName)
+	log.Printf("User email from context: %s", email)
+	user, err := getUserByEmail(email)
 	if err != nil {
+		log.Printf("Failed to fetch user information: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "User information error",
+			"message": "Unable to retrieve your user profile",
+			"help":    "Please try again in a moment. If the problem persists, contact support.",
+		})
+		return
+	}
+
+	if err := ReportService.SubmitSurfReport(&report, email, user.GivenName); err != nil {
 		handleImageError(c, err, "Failed to submit report")
 		return
 	}
 
-	log.Printf("Report submitted successfully for user: %s", email.(string))
+	log.Printf("Report submitted successfully for user: %s", email)
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
 // SubmitSurfReportWithS3Image handles surf report submission with pre-uploaded S3 image
 func SubmitSurfReportWithS3Image(c *gin.Context) {
-	log.Printf("=== S3 Image Report Submission Request ===")
-	log.Printf("User-Agent: %s", c.Request.UserAgent())
-	log.Printf("Method: %s", c.Request.Method)
-	log.Printf("Content-Type: %s", c.GetHeader("Content-Type"))
-
+	logRequestDetails(c, "S3 Image Report Submission Request")
 	log.Print("start of submit S3 image report")
+
 	var report model.ReportWithS3Image
 	if err := c.BindJSON(&report); err != nil {
-		log.Printf("Failed to bind JSON: %v", err)
-		log.Printf("Request body: %+v", c.Request.Body)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request format",
-			"message": "The request data is not in the correct format",
-			"help": "Please ensure you're sending valid JSON data with all required fields.",
-		})
+		handleReportBindingError(c, err)
 		return
 	}
 
 	log.Printf("S3 Image Report data received: Country=%s, Region=%s, Spot=%s, ImageKey=%s",
 		report.Country, report.Region, report.Spot, report.ImageKey)
 
-	// Validate required fields
-	if report.Country == "" || report.Region == "" || report.Spot == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing required fields",
-			"message": "Country, region, and spot are required",
-			"help": "Please provide all required location information.",
-		})
+	if !validateReportLocation(c, report.Country, report.Region, report.Spot) {
 		return
 	}
 
-	// Validate surf size if provided
-	if report.SurfSize != "" && !ReportService.IsValidSurfSize(report.SurfSize) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid surf size",
-			"message": fmt.Sprintf("Surf size '%s' is not valid", report.SurfSize),
-			"help": "Valid surf sizes are: flat, knee-waist, chest-shoulder, head-high, overhead, double-overhead",
-		})
+	if !validateS3ReportFields(c, &report) {
 		return
 	}
 
-	// Validate wind amount if provided
-	if report.WindAmount != "" && !ReportService.IsValidWindAmount(report.WindAmount) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid wind amount",
-			"message": fmt.Sprintf("Wind amount '%s' is not valid", report.WindAmount),
-			"help": "Valid wind amounts are: light, moderate, strong, very-strong",
-		})
+	email, ok := getAuthenticatedUserEmail(c)
+	if !ok {
 		return
 	}
 
-	// Validate wind direction if provided
-	if report.WindDirection != "" && !ReportService.IsValidWindDirection(report.WindDirection) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid wind direction",
-			"message": fmt.Sprintf("Wind direction '%s' is not valid", report.WindDirection),
-			"help": "Valid wind directions are: onshore, offshore, cross-shore, no-wind",
-		})
-		return
-	}
-
-	// Validate consistency if provided
-	if report.Consistency != "" && !ReportService.IsValidSurfDifficulty(report.Consistency) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid consistency",
-			"message": fmt.Sprintf("Consistency '%s' is not valid", report.Consistency),
-			"help": "Valid consistency values are: setty, consistent, inconsistent, sporadic",
-		})
-		return
-	}
-
-	// Validate quality if provided
-	if report.Quality != "" && !ReportService.IsValidSurfConditions(report.Quality) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid quality",
-			"message": fmt.Sprintf("Quality '%s' is not valid", report.Quality),
-			"help": "Valid quality values are: mushy, average, okay, good, excellent",
-		})
-		return
-	}
-
-	// Validate messiness if provided
-	if report.Messiness != "" && !ReportService.IsValidMessiness(report.Messiness) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid messiness",
-			"message": fmt.Sprintf("Messiness '%s' is not valid", report.Messiness),
-			"help": "Valid messiness values are: clean, slight-chop, choppy, messy",
-		})
-		return
-	}
-
-	email, exists := c.Get("email")
-	if !exists {
-		log.Printf("No email found in context - authentication issue")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-			"message": "You must be logged in to submit a surf report",
-			"help": "Please log in and try again.",
-		})
-		return
-	}
-
-	log.Printf("User email from context: %s", email.(string))
-
-	user, err2 := getUserByEmail(email.(string))
-	if err2 != nil {
-		log.Printf("Failed to fetch user information: %v", err2)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "User information error",
-			"message": "Unable to retrieve your user profile",
-			"help": "Please try again in a moment. If the problem persists, contact support.",
-		})
-		return
-	}
-
-	// Use the report service to submit the report with S3 image
-	err := ReportService.SubmitSurfReportWithS3Image(&report, email.(string), user.GivenName)
+	log.Printf("User email from context: %s", email)
+	user, err := getUserByEmail(email)
 	if err != nil {
+		log.Printf("Failed to fetch user information: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "User information error",
+			"message": "Unable to retrieve your user profile",
+			"help":    "Please try again in a moment. If the problem persists, contact support.",
+		})
+		return
+	}
+
+	if err := ReportService.SubmitSurfReportWithS3Image(&report, email, user.GivenName); err != nil {
 		handleImageError(c, err, "Failed to submit S3 image report")
 		return
 	}
 
-	log.Printf("S3 Image Report submitted successfully for user: %s", email.(string))
+	log.Printf("S3 Image Report submitted successfully for user: %s", email)
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
@@ -466,67 +302,17 @@ func GetAllSpotSurfReports(c *gin.Context) {
 
 // GetSurfReportsWithSimilarBuoyData retrieves surf reports that had similar buoy conditions
 func GetSurfReportsWithSimilarBuoyData(c *gin.Context) {
-	// Parse query parameters
-	waveHeightStr := c.Query("waveHeight")
-	waveDirectionStr := c.Query("waveDirection")
-	periodStr := c.Query("period")
-	buoyName := c.Query("buoyName")
+	waveHeight, waveDirection, period, buoyName, ok := parseBuoyQueryParams(c)
+	if !ok {
+		return
+	}
+
 	countryName := c.Query("country")
 	regionName := c.Query("region")
 	spotName := c.Query("spot")
-	daysBackStr := c.DefaultQuery("daysBack", "365")
-	maxResultsStr := c.DefaultQuery("maxResults", "20")
+	daysBack := parseOptionalIntParam(c, "daysBack", 365)
+	maxResults := parseOptionalIntParam(c, "maxResults", 20)
 
-	// Validate required parameters
-	if waveHeightStr == "" || waveDirectionStr == "" || periodStr == "" || buoyName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing required parameters",
-			"message": "waveHeight, waveDirection, period, and buoyName parameters are required",
-			"help": "Please provide buoy data parameters (waveHeight, waveDirection, period, buoyName) in your request.",
-		})
-		return
-	}
-
-	// Parse float values
-	waveHeight, err := strconv.ParseFloat(waveHeightStr, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid waveHeight",
-			"message": "waveHeight must be a valid number",
-		})
-		return
-	}
-
-	waveDirection, err := strconv.ParseFloat(waveDirectionStr, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid waveDirection",
-			"message": "waveDirection must be a valid number",
-		})
-		return
-	}
-
-	period, err := strconv.ParseFloat(periodStr, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid period",
-			"message": "period must be a valid number",
-		})
-		return
-	}
-
-	// Parse optional parameters
-	daysBack, err := strconv.Atoi(daysBackStr)
-	if err != nil {
-		daysBack = 365 // Default to 1 year
-	}
-
-	maxResults, err := strconv.Atoi(maxResultsStr)
-	if err != nil {
-		maxResults = 20 // Default to 20 results
-	}
-
-	// Get reports with similar buoy conditions
 	reports, err := ReportService.GetSurfReportsWithSimilarBuoyData(
 		waveHeight,
 		waveDirection,
@@ -541,9 +327,9 @@ func GetSurfReportsWithSimilarBuoyData(c *gin.Context) {
 	if err != nil {
 		log.Printf("Failed to retrieve surf reports with similar buoy data: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to retrieve reports",
+			"error":   "Failed to retrieve reports",
 			"message": "Unable to fetch surf reports with similar buoy conditions",
-			"help": "Please try again in a moment. If the problem persists, contact support.",
+			"help":    "Please try again in a moment. If the problem persists, contact support.",
 		})
 		return
 	}
@@ -747,97 +533,40 @@ func GetReportVideo(c *gin.Context) {
 func GenerateVideoViewURL(c *gin.Context) {
 	log.Printf("=== Generate Video View URL Request ===")
 
-	// Get the video key from the query parameter
 	videoKey := c.Query("key")
 	if videoKey == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing video key",
+			"error":   "Missing video key",
 			"message": "Video key parameter is required",
-			"help": "Please provide the video key in your request.",
+			"help":    "Please provide the video key in your request.",
 		})
 		return
 	}
 
-	email, exists := c.Get("email")
-	if !exists {
-		log.Printf("No email found in context - authentication issue")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-			"message": "You must be logged in to generate a video view URL",
-			"help": "Please log in and try again.",
-		})
+	email, ok := getAuthenticatedUserEmail(c)
+	if !ok {
 		return
 	}
 
-	log.Printf("Generating video view URL for key: %s, user: %s", videoKey, email.(string))
-
-	// Generate the presigned URL
-	response, err := ReportService.GenerateVideoViewURL(videoKey, email.(string))
+	log.Printf("Generating video view URL for key: %s, user: %s", videoKey, email)
+	response, err := ReportService.GenerateVideoViewURL(videoKey, email)
 	if err != nil {
-		log.Printf("Failed to generate video view URL: %v", err)
-		
-		// Provide more helpful error messages for common failures
-		if strings.Contains(err.Error(), "video not found or not accessible") {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "Video not found",
-				"message": "The requested video could not be found or accessed",
-				"help": "The video may have been deleted or the video key may be incorrect.",
-			})
-			return
-		}
-		
-		if strings.Contains(err.Error(), "user not found") {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "User not found",
-				"message": "Unable to verify your user account",
-				"help": "Please log in again and try again.",
-			})
-			return
-		}
-		
-		if strings.Contains(err.Error(), "access denied") {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Access denied",
-				"message": "You don't have permission to view this video",
-				"help": "You can only view videos from your own surf reports.",
-			})
-			return
-		}
-		
-		if strings.Contains(err.Error(), "failed to generate presigned view URL") {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to generate view URL",
-				"message": "Unable to create a secure view link for the video",
-				"help": "Please try again in a moment. If the problem persists, contact support.",
-			})
-			return
-		}
-		
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate video view URL"})
+		handleVideoViewURLError(c, err)
 		return
 	}
 
-	log.Printf("Video view URL generated successfully for user: %s", email.(string))
+	log.Printf("Video view URL generated successfully for user: %s", email)
 	c.JSON(http.StatusOK, response)
 }
 
 // SubmitSurfReportWithIOSValidation handles surf report submission with iOS validation
 func SubmitSurfReportWithIOSValidation(c *gin.Context) {
-	log.Printf("=== iOS Validated Report Submission Request ===")
-	log.Printf("User-Agent: %s", c.Request.UserAgent())
-	log.Printf("Method: %s", c.Request.Method)
-	log.Printf("Content-Type: %s", c.GetHeader("Content-Type"))
-
+	logRequestDetails(c, "iOS Validated Report Submission Request")
 	log.Print("start of submit iOS validated report")
+
 	var report model.ReportWithIOSValidation
 	if err := c.BindJSON(&report); err != nil {
-		log.Printf("Failed to bind JSON: %v", err)
-		log.Printf("Request body: %+v", c.Request.Body)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request format",
-			"message": "The request data is not in the correct format",
-			"help": "Please ensure you're sending valid JSON data with all required fields.",
-		})
+		handleReportBindingError(c, err)
 		return
 	}
 
@@ -845,265 +574,81 @@ func SubmitSurfReportWithIOSValidation(c *gin.Context) {
 		"iOS Validated Report data received: Country=%s, Region=%s, Spot=%s, ImageKey=%s, VideoKey=%s, IOSValidated=%t",
 		report.Country, report.Region, report.Spot, report.ImageKey, report.VideoKey, report.IOSValidated)
 
-	// Validate required fields
-	if report.Country == "" || report.Region == "" || report.Spot == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing required fields",
-			"message": "Country, region, and spot are required",
-			"help": "Please provide all required location information.",
-		})
+	if !validateReportLocation(c, report.Country, report.Region, report.Spot) {
 		return
 	}
 
-	// Validate that iOS validation flag is set
-	if !report.IOSValidated {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "iOS validation required",
-			"message": "This endpoint requires iOS validation to be set to true",
-			"help": "Please use the iOS app to validate your surf report before submission.",
-		})
+	if !validateIOSValidation(c, report.IOSValidated) {
 		return
 	}
 
-	// Validate that at least one media type is provided
-	if report.ImageKey == "" && report.VideoKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "No media provided",
-			"message": "At least one image or video must be provided",
-			"help": "Please provide either an imageKey or videoKey (or both).",
-		})
+	if !validateMediaProvided(c, report.ImageKey, report.VideoKey) {
 		return
 	}
 
-	// Validate surf size if provided
-	if report.SurfSize != "" && !ReportService.IsValidSurfSize(report.SurfSize) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid surf size",
-			"message": fmt.Sprintf("Surf size '%s' is not valid", report.SurfSize),
-			"help": "Valid surf sizes are: flat, knee-waist, chest-shoulder, head-high, overhead, double-overhead",
-		})
+	if !validateIOSReportFields(c, &report) {
 		return
 	}
 
-	// Validate wind amount if provided
-	if report.WindAmount != "" && !ReportService.IsValidWindAmount(report.WindAmount) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid wind amount",
-			"message": fmt.Sprintf("Wind amount '%s' is not valid", report.WindAmount),
-			"help": "Valid wind amounts are: light, moderate, strong, very-strong",
-		})
+	email, ok := getAuthenticatedUserEmail(c)
+	if !ok {
 		return
 	}
 
-	// Validate wind direction if provided
-	if report.WindDirection != "" && !ReportService.IsValidWindDirection(report.WindDirection) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid wind direction",
-			"message": fmt.Sprintf("Wind direction '%s' is not valid", report.WindDirection),
-			"help": "Valid wind directions are: onshore, offshore, cross-shore, no-wind",
-		})
-		return
-	}
-
-	// Validate consistency if provided
-	if report.Consistency != "" && !ReportService.IsValidSurfDifficulty(report.Consistency) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid consistency",
-			"message": fmt.Sprintf("Consistency '%s' is not valid", report.Consistency),
-			"help": "Valid consistency values are: setty, consistent, inconsistent, sporadic",
-		})
-		return
-	}
-
-	// Validate quality if provided
-	if report.Quality != "" && !ReportService.IsValidSurfConditions(report.Quality) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid quality",
-			"message": fmt.Sprintf("Quality '%s' is not valid", report.Quality),
-			"help": "Valid quality values are: mushy, average, okay, good, excellent",
-		})
-		return
-	}
-
-	// Validate messiness if provided
-	if report.Messiness != "" && !ReportService.IsValidMessiness(report.Messiness) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid messiness",
-			"message": fmt.Sprintf("Messiness '%s' is not valid", report.Messiness),
-			"help": "Valid messiness values are: clean, slight-chop, choppy, messy",
-		})
-		return
-	}
-
-	email, exists := c.Get("email")
-	if !exists {
-		log.Printf("No email found in context - authentication issue")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-			"message": "You must be logged in to submit a surf report",
-			"help": "Please log in and try again.",
-		})
-		return
-	}
-
-	log.Printf("User email from context: %s", email.(string))
-
-	user, err2 := getUserByEmail(email.(string))
-	if err2 != nil {
-		log.Printf("Failed to fetch user information: %v", err2)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "User information error",
-			"message": "Unable to retrieve your user profile",
-			"help": "Please try again in a moment. If the problem persists, contact support.",
-		})
-		return
-	}
-
-	// Use the report service to submit the iOS-validated report
-	err := ReportService.SubmitSurfReportWithIOSValidation(&report, email.(string), user.GivenName)
+	log.Printf("User email from context: %s", email)
+	user, err := getUserByEmail(email)
 	if err != nil {
-		log.Printf("Failed to submit iOS validated report: %v", err)
-		
-		// Handle specific error types
-		switch {
-		case errors.Is(err, model.ErrVideoUploadFailed):
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Video upload failed",
-				"message": "Failed to upload the video to storage",
-				"help": "Please try again in a moment. If the problem persists, contact support.",
-			})
-		case errors.Is(err, model.ErrVideoRetrievalFailed):
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Video not found",
-				"message": "The uploaded video could not be found or accessed",
-				"help": "Please try uploading your video again. If the problem persists, contact support.",
-			})
-		case errors.Is(err, model.ErrInvalidVideoFormat):
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Invalid video format",
-				"message": "The video format is not supported",
-				"help": "Please upload a video in MP4, MOV, or AVI format.",
-			})
-		case errors.Is(err, model.ErrVideoTooLarge):
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Video too large",
-				"message": "The video file is too large",
-				"help": "Please upload a video smaller than 100MB.",
-			})
-		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit report"})
-		}
+		log.Printf("Failed to fetch user information: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "User information error",
+			"message": "Unable to retrieve your user profile",
+			"help":    "Please try again in a moment. If the problem persists, contact support.",
+		})
 		return
 	}
 
-	log.Printf("iOS Validated Report submitted successfully for user: %s", email.(string))
+	if err := ReportService.SubmitSurfReportWithIOSValidation(&report, email, user.GivenName); err != nil {
+		handleIOSReportError(c, err)
+		return
+	}
+
+	log.Printf("iOS Validated Report submitted successfully for user: %s", email)
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
 // DeleteUploadedMedia handles deletion of uploaded media from S3
 func DeleteUploadedMedia(c *gin.Context) {
-	log.Printf("=== Delete Uploaded Media Request ===")
-	log.Printf("User-Agent: %s", c.Request.UserAgent())
-	log.Printf("Method: %s", c.Request.Method)
-	log.Printf("Content-Type: %s", c.GetHeader("Content-Type"))
+	logRequestDetails(c, "Delete Uploaded Media Request")
 
-	// Get query parameters
 	mediaKey := c.Query("key")
 	mediaType := c.Query("type")
 
-	// Validate required parameters
-	if mediaKey == "" || mediaType == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing required parameters",
-			"message": "Both 'key' and 'type' parameters are required",
-			"help": "Please provide the media key and type (image or video) in your request.",
-		})
+	if !validateMediaDeletionRequest(c, mediaKey, mediaType) {
 		return
 	}
 
-	// Validate media type
-	if mediaType != "image" && mediaType != "video" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid media type",
-			"message": "Media type must be either 'image' or 'video'",
-			"help": "Please specify 'image' for images or 'video' for videos.",
-		})
+	email, ok := getAuthenticatedUserEmail(c)
+	if !ok {
 		return
 	}
 
-	// Validate media key format to prevent path traversal
-	if !isValidMediaKey(mediaKey) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid media key format",
-			"message": "The media key format is not valid",
-			"help": "Please provide a valid media key.",
-		})
+	log.Printf("Deleting %s media: %s for user: %s", mediaType, mediaKey, email)
+	user, ok := verifyMediaAccess(c, email, mediaKey, mediaType)
+	if !ok {
 		return
 	}
 
-	email, exists := c.Get("email")
-	if !exists {
-		log.Printf("No email found in context - authentication issue")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-			"message": "You must be logged in to delete media",
-			"help": "Please log in and try again.",
-		})
+	_ = user // User verified but not used further
+
+	if err := ReportService.DeleteMediaFromS3(mediaKey); err != nil {
+		handleMediaDeletionError(c, err)
 		return
 	}
 
-	log.Printf("Deleting %s media: %s for user: %s", mediaType, mediaKey, email.(string))
-
-	// Verify user has permission to delete this media
-	user, err := getUserByEmail(email.(string))
-	if err != nil {
-		log.Printf("Failed to fetch user information: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "User information error",
-			"message": "Unable to retrieve your user profile",
-			"help": "Please try again in a moment. If the problem persists, contact support.",
-		})
-		return
-	}
-
-	// Verify user has access to this media
-	if !canUserAccessMedia(mediaKey, user.UUID, mediaType) {
-		log.Printf("User %s attempted to delete media they don't own: %s", email.(string), mediaKey)
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "Access denied",
-			"message": "You don't have permission to delete this media",
-			"help": "You can only delete media that you uploaded.",
-		})
-		return
-	}
-
-	// Delete the media from S3
-	err = ReportService.DeleteMediaFromS3(mediaKey)
-	if err != nil {
-		log.Printf("Failed to delete media %s: %v", mediaKey, err)
-		
-		// Provide more helpful error messages for common failures
-		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "NoSuchKey") {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "Media not found",
-				"message": "The requested media could not be found",
-				"help": "The media may have already been deleted or the key may be incorrect.",
-			})
-			return
-		}
-		
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to delete media",
-			"message": "Unable to delete the media from storage",
-			"help": "Please try again in a moment. If the problem persists, contact support.",
-		})
-		return
-	}
-
-	log.Printf("Successfully deleted %s media: %s for user: %s", mediaType, mediaKey, email.(string))
+	log.Printf("Successfully deleted %s media: %s for user: %s", mediaType, mediaKey, email)
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Media deleted successfully",
-		"mediaKey": mediaKey,
+		"message":   "Media deleted successfully",
+		"mediaKey":  mediaKey,
 		"mediaType": mediaType,
 	})
 }

@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -507,212 +506,103 @@ func GoogleAuthHandler(c *gin.Context) {
 		return
 	}
 
-	// Get Google OAuth Client IDs from environment variables
-	clientID := os.Getenv("GOOGLE_CLIENT_ID")
-	iosClientID := os.Getenv("GOOGLE_IOS_CLIENT_ID")
-	
-	if clientID == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Google OAuth not configured"})
+	payload, email, name, picture, familyName, givenName := validateAndExtractGoogleClaims(c, req.IDToken)
+	if payload == nil {
 		return
 	}
 
-	clientIDs := make(map[string]bool)
-	clientIDs[clientID] = true
-	if iosClientID != "" {
-		clientIDs[iosClientID] = true
+	finalUser, theme := processGoogleAuthUser(email, name, picture, familyName, givenName, c)
+	if finalUser == nil {
+		return
 	}
 
-	var payload *idtoken.Payload
-	var err error
+	setupAuthSession(email, c)
+	c.JSON(http.StatusOK, gin.H{
+		"user": buildUserResponse(finalUser, email, name, picture, familyName, givenName, theme),
+	})
+}
 
-	for id := range clientIDs {
-		payload, err = idtoken.Validate(context.Background(), req.IDToken, id)
-		if err == nil {
-			break
-		}
+// validateAndExtractGoogleClaims validates the ID token and extracts user claims.
+func validateAndExtractGoogleClaims(c *gin.Context, idToken string) (*idtoken.Payload, string, string, string, string, string) {
+	clientIDs, err := getGoogleClientIDs()
+	if err != nil || clientIDs == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Google OAuth not configured"})
+		return nil, "", "", "", "", ""
 	}
 
+	payload, err := validateGoogleIDToken(idToken, clientIDs)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-		return
+		return nil, "", "", "", "", ""
 	}
 
-	// Log available claims for debugging
-	log.Printf("JWT claims available: %v", payload.Claims)
-
-	// Safely extract claims with validation
-	email, ok := payload.Claims["email"].(string)
-	if !ok || email == "" {
+	email, name, picture, familyName, givenName, err := extractUserClaims(payload)
+	if err != nil || email == "" {
 		log.Printf("Missing or invalid email claim in JWT")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token: missing email"})
-		return
+		return nil, "", "", "", "", ""
 	}
 
-	name, ok := payload.Claims["name"].(string)
-	if !ok {
-		name = "" // Default to empty string if not present
-	}
-
-	picture, ok := payload.Claims["picture"].(string)
-	if !ok {
-		picture = "" // Default to empty string if not present
-	}
-
-	familyName, ok := payload.Claims["family_name"].(string)
-	if !ok {
-		familyName = "" // Default to empty string if not present
-	}
-
-	givenName, ok := payload.Claims["given_name"].(string)
-	if !ok {
-		givenName = "" // Default to empty string if not present
-	}
 	log.Printf("User email: %s", email)
-	theme := "dark"
+	return payload, email, name, picture, familyName, givenName
+}
 
-	// Check if user exists in database
+// processGoogleAuthUser processes user creation/login and returns user and theme.
+func processGoogleAuthUser(email, name, picture, familyName, givenName string, c *gin.Context) (*User, string) {
 	existingUser, err := getUserByEmail(email)
 	if err != nil {
 		log.Printf("Error checking user: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
+		return nil, ""
 	}
+
+	theme := "dark"
+	var finalUser *User
 
 	if existingUser == nil {
-		// Create new user
-		newUser := User{
-			Email:      email,
-			Name:       name,
-			Picture:    picture,
-			FamilyName: familyName,
-			GivenName:  givenName,
-		}
-
-		if err := createUser(newUser); err != nil {
+		finalUser, err = handleNewUser(email, name, picture, familyName, givenName)
+		if err != nil {
 			log.Printf("Error creating user: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-			return
+			return nil, ""
 		}
-
-		log.Printf("Created new user: %s", email)
 	} else {
-		// Update last login time
-		if err := updateUserLastLogin(email); err != nil {
-			log.Printf("Error updating last login: %v", err)
-			// Continue anyway, not a critical error
-		}
-		
-		// Ensure the user has a UUID
-		if err := ensureUserHasUUID(email); err != nil {
-			log.Printf("Error ensuring user has UUID: %v", err)
-			// Continue anyway, not a critical error
-		}
-		
-		// Get the updated user to get the UUID
-		existingUser, err = getUserByEmail(email)
+		finalUser, err = handleExistingUser(email)
 		if err != nil {
-			log.Printf("Error getting updated user: %v", err)
-			// Continue anyway, not a critical error
+			log.Printf("Error handling existing user: %v", err)
 		}
-		
-		theme = existingUser.Theme
-
-		log.Printf("User logged in: %s", email)
-	}
-
-	// Generate CSRF token
-	csrfToken, err := GenerateCSRFToken()
-	if err == nil {
-		c.SetCookie(
-			"csrf_token",
-			csrfToken,
-			int(24*time.Hour.Seconds()),
-			"/",
-			"",
-			true,  // Secure
-			false, // Not HTTP-only (JS needs to access it)
-		)
-		// Include it in response for SPA to use
-		c.Header("X-CSRF-Token", csrfToken)
-	}
-
-	// Create session if session service is available
-	if sessionService != nil {
-		// Generate a session with CSRF token
-		sessionData := SessionJSON{
-			CSRF:       csrfToken,
-			UserAgent:  c.Request.UserAgent(),
-			IPAddress:  getClientIP(c),
-			CreatedAt:  time.Now(),
-			LastActive: time.Now(),
-		}
-		jsonBytes, err := json.Marshal(sessionData)
-		if err == nil {
-			_, err = sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
-			if err != nil {
-				// Just log the error, don't fail the request
-				log.Printf("Error creating session: %v", err)
-			}
+		if finalUser != nil {
+			theme = finalUser.Theme
 		}
 	}
 
-	// Set auth cookie
-	c.SetCookie(
-		"auth_token",
-		"authenticated", // Simple flag for now
-		int(24*time.Hour.Seconds()),
-		"/",
-		"",
-		true, // Secure (HTTPS only)
-		true, // HTTP-only
-	)
+	return finalUser, theme
+}
 
-	// Get the user data to include UUID in response
-	var userUUID string
-	if existingUser != nil {
-		userUUID = existingUser.UUID
-	} else {
-		// For new users, we need to get the user data to get the generated UUID
-		newUserData, err := getUserByEmail(email)
-		if err == nil && newUserData != nil {
-			userUUID = newUserData.UUID
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"user": gin.H{
-			"uuid":         userUUID,
-			"email":        email,
-			"name":         name,
-			"picture":      picture,
-			"family_name":  familyName,
-			"given_name":   givenName,
-			"theme":        theme,
-		},
-	})
+// setupAuthSession sets up CSRF token, session, and auth cookie.
+func setupAuthSession(email string, c *gin.Context) {
+	csrfToken := setupCSRFToken(c)
+	createSession(email, csrfToken, c)
+	setAuthCookie(c)
 }
 
 // ValidateTokenHandler validates a JWT token and returns the user information.
 func ValidateTokenHandler(c *gin.Context) {
-	// Add cache control headers to prevent browser caching
-	c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-	c.Header("Pragma", "no-cache")
-	c.Header("Expires", "0")
+	setCacheControlHeaders(c)
 
 	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
-		// In development mode, always return valid mock user without checking for email
 		log.Println("Development mode: returning mock user for validation")
 		c.JSON(http.StatusOK, gin.H{
 			"valid":     true,
 			"auth_type": "development",
 			"user": gin.H{
-				"uuid":         "dev-uuid-12345",
-				"email":        "testuser@example.com",
-				"name":         "Test User",
-				"picture":      "https://via.placeholder.com/150",
-				"family_name":  "User",
-				"given_name":   "Test",
-				"theme":        "dark",
+				"uuid":        "dev-uuid-12345",
+				"email":       "testuser@example.com",
+				"name":        "Test User",
+				"picture":     "https://via.placeholder.com/150",
+				"family_name": "User",
+				"given_name":  "Test",
+				"theme":       "dark",
 			},
 		})
 		return
@@ -729,7 +619,6 @@ func ValidateTokenHandler(c *gin.Context) {
 		return
 	}
 
-	// Session is valid, get user data
 	email := userSession.UserID
 	user, err := getUserByEmail(email)
 	if err != nil {
@@ -742,50 +631,11 @@ func ValidateTokenHandler(c *gin.Context) {
 		return
 	}
 
-	// Ensure the user has a UUID
-	if err := ensureUserHasUUID(email); err != nil {
-		log.Printf("Error ensuring user has UUID: %v", err)
-		// Continue anyway, not a critical error
-	}
-	
-	// Get the updated user data to ensure we have the UUID
-	if user.UUID == "" {
-		user, err = getUserByEmail(email)
-		if err != nil {
-			log.Printf("Error getting updated user data: %v", err)
-			// Continue anyway, not a critical error
-		}
-	}
-
-	// Get CSRF token from session and update last active time
-	var sessionData SessionJSON
-	if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
-		sessionData.LastActive = time.Now()
-		updatedJSON, _ := json.Marshal(sessionData)
-		userSession.JSON = string(updatedJSON)
-
-		if sessionData.CSRF != "" {
-			c.Header("X-CSRF-Token", sessionData.CSRF)
-		}
-	}
-
-	// Extend session validity
+	user = ensureUserUUID(user, email)
+	updateSessionLastActive(userSession, c)
 	_ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
 
-	// Return user data for web client
-	c.JSON(http.StatusOK, gin.H{
-		"valid":     true,
-		"auth_type": "session",
-		"user": gin.H{
-			"email":       user.Email,
-			"name":        user.Name,
-			"picture":     user.Picture,
-			"family_name": user.FamilyName,
-			"given_name":  user.GivenName,
-			"theme":       user.Theme,
-			"uuid":        user.UUID, // Include UUID in the response
-		},
-	})
+	c.JSON(http.StatusOK, buildValidateTokenResponse(user, "session"))
 }
 
 // LogoutHandler handles user logout requests.

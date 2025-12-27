@@ -49,11 +49,19 @@ func main() {
 func seedRealForecastData() error {
     log.Println("Seeding realistic forecast data for Donegal locations...")
     
-    // Create timestamp for base forecast time
     baseTime := time.Now().Truncate(24 * time.Hour)
+    locations := getLocationDefinitions()
     
-    // Define locations with their metadata and image paths
-    locations := map[string]map[string]interface{}{
+    if err := seedLocationData(locations); err != nil {
+        return err
+    }
+    
+    return seedForecastData(baseTime)
+}
+
+// getLocationDefinitions returns the location definitions with metadata.
+func getLocationDefinitions() map[string]map[string]interface{} {
+    return map[string]map[string]interface{}{
         "Ireland/Donegal/Ballyhiernan": {
             "BeachDirection":      200,
             "Latitude":            55.1938,
@@ -95,15 +103,16 @@ func seedRealForecastData() error {
             "ImagePath":           "../images/spotImages/Ireland/Donegal/Tullan StrandLow.jpg",
         },
     }
-    
-    // First, create location data entries with base64 encoded images
+}
+
+// seedLocationData seeds location data entries with base64 encoded images.
+func seedLocationData(locations map[string]map[string]interface{}) error {
     for spotID, metadata := range locations {
-        // Read and encode the image
         imagePath := metadata["ImagePath"].(string)
         base64Image, err := encodeImageToBase64(imagePath)
         if err != nil {
             log.Printf("Warning: Failed to encode image for %s: %v", spotID, err)
-            base64Image = "" // Set empty string if image encoding fails
+            base64Image = ""
         }
         
         locationItem := map[string]interface{}{
@@ -133,8 +142,35 @@ func seedRealForecastData() error {
         log.Printf("Successfully seeded location data for %s with image (size: %d bytes)", 
             spotID, len(base64Image))
     }
+    return nil
+}
+
+// seedForecastData seeds forecast data for all spots.
+func seedForecastData(baseTime time.Time) error {
+    surfData1 := getSurfData1()
+    surfData2 := getSurfData2()
     
-    surfData1 := []map[string]interface{}{
+    spotData := map[string][]map[string]interface{}{
+        "Ireland#Donegal#Ballyhiernan": surfData1,
+        "Ireland#Donegal#Ballymastocker": surfData2,
+        "Ireland#Donegal#Tullan Strand": surfData1,
+        "Ireland#Donegal#Marble Hill": surfData2,
+        "Ireland#Donegal#Rossnowlagh": surfData1,
+    }
+    
+    for spotID, forecastSamples := range spotData {
+        log.Printf("Seeding forecast data for %s...", spotID)
+        if err := seedSpotForecasts(spotID, forecastSamples, baseTime); err != nil {
+            return err
+        }
+    }
+    
+    return nil
+}
+
+// getSurfData1 returns the first set of surf forecast data.
+func getSurfData1() []map[string]interface{} {
+    return []map[string]interface{}{
     {
         "swellPeriod":        15.81,
         "waterTemperature":   7.92,
@@ -297,10 +333,12 @@ func seedRealForecastData() error {
         "windSpeed":          15.78,
         "hourOffset":         48,
     },
+    }
 }
 
-// Sample forecast data for Ballymastocker Bay
-surfData2 := []map[string]interface{}{
+// getSurfData2 returns the second set of surf forecast data.
+func getSurfData2() []map[string]interface{} {
+    return []map[string]interface{}{
     {
         "swellPeriod":        12.48,
         "waterTemperature":   8.15,
@@ -464,171 +502,144 @@ surfData2 := []map[string]interface{}{
         "windSpeed":          15.34,
         "hourOffset":         48,
     },
-}
-    
-    // Create the forecasts
-    spotData := map[string][]map[string]interface{}{
-        "Ireland#Donegal#Ballyhiernan": surfData1,
-        "Ireland#Donegal#Ballymastocker": surfData2,
-        "Ireland#Donegal#Tullan Strand": surfData1,
-        "Ireland#Donegal#Marble Hill": surfData2,
-        "Ireland#Donegal#Rossnowlagh": surfData1,
     }
-    
-    for spotID, forecastSamples := range spotData {
-        log.Printf("Seeding forecast data for %s...", spotID)
-        
-        for _, sample := range forecastSamples {
-            // Calculate the forecast time
-            forecastTime := baseTime.Add(time.Duration(sample["hourOffset"].(int)) * time.Hour)
-            currentTime := time.Now()
-            generatedAtTimestampStr := fmt.Sprintf("%d", currentTime.Unix())
-            // Get the nearest previous hour for forecast_timestamp
-            nearestHour := time.Now().Truncate(time.Hour)
-            forecastTimestampStr := fmt.Sprintf("%d", nearestHour.Unix())  
+}
 
-            dateForecastedFor := forecastTime.Format("2006-01-02 15:04:05")
-            
-            // Create the data field with raw values instead of type annotations
-            dataMap := map[string]interface{}{
-                "swellPeriod":           sample["swellPeriod"].(float64),
-                "waterTemperature":      sample["waterTemperature"].(float64),
-                "surfMessiness":         sample["surfMessiness"].(string),
-                "pressure":              sample["pressure"].(float64),
-                "waveEnergy":            sample["waveEnergy"].(float64),
-                "precipitation":         sample["precipitation"].(float64),
-                "relativeWindDirection": sample["relativeWindDirection"].(string),
-                "swellHeight":           sample["swellHeight"].(float64),
-                "swellDirection":        sample["swellDirection"].(float64),
-                "temperature":           sample["temperature"].(float64),
-                "directionQuality":      sample["directionQuality"].(float64),
-                "humidity":              sample["humidity"].(float64),
-                "surfSize":              sample["surfSize"].(float64),
-                "windDirection":         sample["windDirection"].(float64),
-                "windSpeed":             sample["windSpeed"].(float64),
-                "dateForecastedFor":     dateForecastedFor,
-            }
-                    
-            forecast := map[string]interface{}{
-                "spot_id":            spotID,
-                "forecast_timestamp": forecastTimestampStr,
-                "data":               dataMap,
-                "generated_at":       generatedAtTimestampStr,
-            }
-            
-            item, err := dynamodbattribute.MarshalMap(forecast)
-            if err != nil {
-                return fmt.Errorf("failed to marshal forecast: %w", err)
-            }
-            
-            _, err = storage.DB.PutItem(&dynamodb.PutItemInput{
-                TableName: aws.String("SpotForecastData"),
-                Item:      item,
-            })
-            
-            if err != nil {
-                return fmt.Errorf("failed to put forecast item: %w", err)
-            }
-            
-            // Create additional entries at 3-hour intervals for better forecast coverage
-            // between the sample points
-            if !isLastSample(forecastSamples, sample) {
-                nextSample := findNextSample(forecastSamples, sample)
-                
-                // Generate intermediate points (only if hours between samples > 3)
-                hourDiff := nextSample["hourOffset"].(int) - sample["hourOffset"].(int)
-                if hourDiff > 3 {
-                    steps := hourDiff/3 - 1
-                    for step := 1; step <= steps; step++ {
-                        // Create interpolated forecast
-                        progress := float64(step*3) / float64(hourDiff)
-                        stepHours := sample["hourOffset"].(int) + step*3
-                        
-                        stepTime := baseTime.Add(time.Duration(stepHours) * time.Hour)
-                        stepTimestampStr := fmt.Sprintf("%d", stepTime.Unix())
-                        stepDateForecastedFor := stepTime.Format("2006-01-02 15:04:05")
-                        
-                        // Linear interpolation between samples
-                        interpolatedSwellHeight := interpolate(
-							sample["swellHeight"].(float64),
-							nextSample["swellHeight"].(float64), progress,
-						)
-                        interpolatedSwellPeriod := interpolate(
-							sample["swellPeriod"].(float64),
-							nextSample["swellPeriod"].(float64), progress,
-						)
-                        interpolatedWindSpeed := interpolate(
-							sample["windSpeed"].(float64),
-							nextSample["windSpeed"].(float64), progress,
-						)
-                        interpolatedWindDirection := interpolateAngle(
-							sample["windDirection"].(float64),
-							nextSample["windDirection"].(float64), progress,
-						)
-                        interpolatedSwellDirection := interpolateAngle(
-							sample["swellDirection"].(float64),
-							nextSample["swellDirection"].(float64), progress,
-						)
-                        interpolatedTemperature := interpolate(
-							sample["temperature"].(float64),
-							nextSample["temperature"].(float64), progress,
-						)
-                        interpolatedWaterTemperature := interpolate(sample["waterTemperature"].(float64), nextSample["waterTemperature"].(float64), progress)
-                        interpolatedPressure := interpolate(sample["pressure"].(float64), nextSample["pressure"].(float64), progress)
-                        interpolatedHumidity := interpolate(sample["humidity"].(float64), nextSample["humidity"].(float64), progress)
-                        interpolatedWaveEnergy := interpolate(sample["waveEnergy"].(float64), nextSample["waveEnergy"].(float64), progress)
-                        interpolatedDirectionQuality := interpolate(sample["directionQuality"].(float64), nextSample["directionQuality"].(float64), progress)
-                        interpolatedSurfSize := interpolate(sample["surfSize"].(float64), nextSample["surfSize"].(float64), progress)
-                        interpolatedPrecipitation := interpolate(sample["precipitation"].(float64), nextSample["precipitation"].(float64), progress)
-                        
-                        // Create the data field with raw values for interpolated data
-                        interpDataMap := map[string]interface{}{
-                            "swellPeriod":           interpolatedSwellPeriod,
-                            "waterTemperature":      interpolatedWaterTemperature,
-                            "surfMessiness":         sample["surfMessiness"].(string),
-                            "pressure":              interpolatedPressure,
-                            "waveEnergy":            interpolatedWaveEnergy,
-                            "precipitation":         interpolatedPrecipitation,
-                            "relativeWindDirection": sample["relativeWindDirection"].(string),
-                            "swellHeight":           interpolatedSwellHeight,
-                            "swellDirection":        interpolatedSwellDirection,
-                            "temperature":           interpolatedTemperature,
-                            "directionQuality":      interpolatedDirectionQuality,
-                            "humidity":              interpolatedHumidity,
-                            "surfSize":              interpolatedSurfSize,
-                            "windDirection":         interpolatedWindDirection,
-                            "windSpeed":             interpolatedWindSpeed,
-                            "dateForecastedFor":     stepDateForecastedFor,
-                        }
-                        
-                        
-                        interpolatedForecast := map[string]interface{}{
-                            "spot_id":            spotID,
-                            "forecast_timestamp": stepTimestampStr,
-                            "data":               interpDataMap,
-                            "generated_at":       generatedAtTimestampStr,
-                        }
-                        
-                        item, err := dynamodbattribute.MarshalMap(interpolatedForecast)
-                        if err != nil {
-                            return fmt.Errorf("failed to marshal interpolated forecast: %w", err)
-                        }
-                        
-                        _, err = storage.DB.PutItem(&dynamodb.PutItemInput{
-                            TableName: aws.String("SpotForecastData"),
-                            Item:      item,
-                        })
-                        
-                        if err != nil {
-                            return fmt.Errorf("failed to put interpolated forecast item: %w", err)
-                        }
-                    }
-                }
+// seedSpotForecasts seeds forecast data for a single spot.
+func seedSpotForecasts(spotID string, forecastSamples []map[string]interface{}, baseTime time.Time) error {
+    for _, sample := range forecastSamples {
+        if err := seedForecastSample(spotID, sample, baseTime); err != nil {
+            return err
+        }
+        
+        if !isLastSample(forecastSamples, sample) {
+            nextSample := findNextSample(forecastSamples, sample)
+            if err := seedInterpolatedForecasts(spotID, sample, nextSample, baseTime); err != nil {
+                return err
             }
         }
     }
-    
     return nil
+}
+
+// seedForecastSample seeds a single forecast sample.
+func seedForecastSample(spotID string, sample map[string]interface{}, baseTime time.Time) error {
+    forecastTime := baseTime.Add(time.Duration(sample["hourOffset"].(int)) * time.Hour)
+    currentTime := time.Now()
+    generatedAtTimestampStr := fmt.Sprintf("%d", currentTime.Unix())
+    nearestHour := time.Now().Truncate(time.Hour)
+    forecastTimestampStr := fmt.Sprintf("%d", nearestHour.Unix())
+    dateForecastedFor := forecastTime.Format("2006-01-02 15:04:05")
+    
+    dataMap := buildForecastDataMap(sample, dateForecastedFor)
+    forecast := map[string]interface{}{
+        "spot_id":            spotID,
+        "forecast_timestamp": forecastTimestampStr,
+        "data":               dataMap,
+        "generated_at":       generatedAtTimestampStr,
+    }
+    
+    item, err := dynamodbattribute.MarshalMap(forecast)
+    if err != nil {
+        return fmt.Errorf("failed to marshal forecast: %w", err)
+    }
+    
+    _, err = storage.DB.PutItem(&dynamodb.PutItemInput{
+        TableName: aws.String("SpotForecastData"),
+        Item:      item,
+    })
+    
+    if err != nil {
+        return fmt.Errorf("failed to put forecast item: %w", err)
+    }
+    return nil
+}
+
+// buildForecastDataMap builds the data map for a forecast sample.
+func buildForecastDataMap(sample map[string]interface{}, dateForecastedFor string) map[string]interface{} {
+    return map[string]interface{}{
+        "swellPeriod":           sample["swellPeriod"].(float64),
+        "waterTemperature":      sample["waterTemperature"].(float64),
+        "surfMessiness":         sample["surfMessiness"].(string),
+        "pressure":              sample["pressure"].(float64),
+        "waveEnergy":            sample["waveEnergy"].(float64),
+        "precipitation":         sample["precipitation"].(float64),
+        "relativeWindDirection": sample["relativeWindDirection"].(string),
+        "swellHeight":           sample["swellHeight"].(float64),
+        "swellDirection":        sample["swellDirection"].(float64),
+        "temperature":           sample["temperature"].(float64),
+        "directionQuality":      sample["directionQuality"].(float64),
+        "humidity":              sample["humidity"].(float64),
+        "surfSize":              sample["surfSize"].(float64),
+        "windDirection":         sample["windDirection"].(float64),
+        "windSpeed":             sample["windSpeed"].(float64),
+        "dateForecastedFor":     dateForecastedFor,
+    }
+}
+
+// seedInterpolatedForecasts seeds interpolated forecasts between two samples.
+func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]interface{}, baseTime time.Time) error {
+    hourDiff := nextSample["hourOffset"].(int) - sample["hourOffset"].(int)
+    if hourDiff <= 3 {
+        return nil
+    }
+    
+    steps := hourDiff/3 - 1
+    currentTime := time.Now()
+    generatedAtTimestampStr := fmt.Sprintf("%d", currentTime.Unix())
+    
+    for step := 1; step <= steps; step++ {
+        progress := float64(step*3) / float64(hourDiff)
+        stepHours := sample["hourOffset"].(int) + step*3
+        stepTime := baseTime.Add(time.Duration(stepHours) * time.Hour)
+        stepTimestampStr := fmt.Sprintf("%d", stepTime.Unix())
+        stepDateForecastedFor := stepTime.Format("2006-01-02 15:04:05")
+        
+        interpDataMap := buildInterpolatedDataMap(sample, nextSample, progress, stepDateForecastedFor)
+        interpolatedForecast := map[string]interface{}{
+            "spot_id":            spotID,
+            "forecast_timestamp": stepTimestampStr,
+            "data":               interpDataMap,
+            "generated_at":       generatedAtTimestampStr,
+        }
+        
+        item, err := dynamodbattribute.MarshalMap(interpolatedForecast)
+        if err != nil {
+            return fmt.Errorf("failed to marshal interpolated forecast: %w", err)
+        }
+        
+        _, err = storage.DB.PutItem(&dynamodb.PutItemInput{
+            TableName: aws.String("SpotForecastData"),
+            Item:      item,
+        })
+        
+        if err != nil {
+            return fmt.Errorf("failed to put interpolated forecast item: %w", err)
+        }
+    }
+    return nil
+}
+
+// buildInterpolatedDataMap builds an interpolated data map between two samples.
+func buildInterpolatedDataMap(sample, nextSample map[string]interface{}, progress float64, dateForecastedFor string) map[string]interface{} {
+    return map[string]interface{}{
+        "swellPeriod":           interpolate(sample["swellPeriod"].(float64), nextSample["swellPeriod"].(float64), progress),
+        "waterTemperature":      interpolate(sample["waterTemperature"].(float64), nextSample["waterTemperature"].(float64), progress),
+        "surfMessiness":         sample["surfMessiness"].(string),
+        "pressure":              interpolate(sample["pressure"].(float64), nextSample["pressure"].(float64), progress),
+        "waveEnergy":            interpolate(sample["waveEnergy"].(float64), nextSample["waveEnergy"].(float64), progress),
+        "precipitation":         interpolate(sample["precipitation"].(float64), nextSample["precipitation"].(float64), progress),
+        "relativeWindDirection": sample["relativeWindDirection"].(string),
+        "swellHeight":           interpolate(sample["swellHeight"].(float64), nextSample["swellHeight"].(float64), progress),
+        "swellDirection":        interpolateAngle(sample["swellDirection"].(float64), nextSample["swellDirection"].(float64), progress),
+        "temperature":           interpolate(sample["temperature"].(float64), nextSample["temperature"].(float64), progress),
+        "directionQuality":      interpolate(sample["directionQuality"].(float64), nextSample["directionQuality"].(float64), progress),
+        "humidity":              interpolate(sample["humidity"].(float64), nextSample["humidity"].(float64), progress),
+        "surfSize":              interpolate(sample["surfSize"].(float64), nextSample["surfSize"].(float64), progress),
+        "windDirection":         interpolateAngle(sample["windDirection"].(float64), nextSample["windDirection"].(float64), progress),
+        "windSpeed":             interpolate(sample["windSpeed"].(float64), nextSample["windSpeed"].(float64), progress),
+        "dateForecastedFor":     dateForecastedFor,
+    }
 }
 
 // Helper function for linear interpolation
@@ -698,7 +709,21 @@ func seedBuoyData() error {
 }
 
 func seedBuoyLocationData() error {
-    buoys := []map[string]interface{}{
+    buoys := getBuoyLocationDefinitions()
+    
+    for _, buoy := range buoys {
+        if err := seedSingleBuoyLocation(buoy); err != nil {
+            return err
+        }
+    }
+    
+    log.Printf("Successfully seeded %d buoy locations", len(buoys))
+    return nil
+}
+
+// getBuoyLocationDefinitions returns the buoy location definitions.
+func getBuoyLocationDefinitions() []map[string]interface{} {
+    return []map[string]interface{}{
         {
             "region_buoy": "NorthAtlantic_M6",
             "Latitude": 52.986,
@@ -742,31 +767,62 @@ func seedBuoyLocationData() error {
             "Name": "West Hebrides",
         },
     }
-    
-    for _, buoy := range buoys {
-        item, err := dynamodbattribute.MarshalMap(buoy)
-        if err != nil {
-            return fmt.Errorf("failed to marshal buoy location: %w", err)
-        }
-        
-        _, err = storage.DB.PutItem(&dynamodb.PutItemInput{
-            TableName: aws.String("BuoyLocations"),
-            Item:      item,
-        })
-        
-        if err != nil {
-            return fmt.Errorf("failed to put buoy location item: %w", err)
-        }
+}
+
+// seedSingleBuoyLocation seeds a single buoy location.
+func seedSingleBuoyLocation(buoy map[string]interface{}) error {
+    item, err := dynamodbattribute.MarshalMap(buoy)
+    if err != nil {
+        return fmt.Errorf("failed to marshal buoy location: %w", err)
     }
     
-    log.Printf("Successfully seeded %d buoy locations", len(buoys))
+    _, err = storage.DB.PutItem(&dynamodb.PutItemInput{
+        TableName: aws.String("BuoyLocations"),
+        Item:      item,
+    })
+    
+    if err != nil {
+        return fmt.Errorf("failed to put buoy location item: %w", err)
+    }
     return nil
 }
 
 func seedBuoyMeasurements() error {
-    // Sample M4 buoy data - we'll use a condensed subset for brevity
     now := time.Now().UTC().Truncate(time.Hour)
-    measurementsTemplate := []map[string]interface{}{
+    measurementsTemplate := getBuoyMeasurementsTemplate()
+    buoys := getBuoyDefinitions()
+    
+    totalCount := 0
+    
+    for _, buoy := range buoys {
+        buoyMeasurements, err := generateBuoyMeasurements(buoy, measurementsTemplate, now)
+        if err != nil {
+            return err
+        }
+        
+        if err := storeBuoyMeasurements(buoyMeasurements); err != nil {
+            return err
+        }
+        
+        log.Printf("Successfully seeded %d measurements for buoy %s (period range: %.1f-%.1fs, height range: %.1f-%.1fm)", 
+            len(buoyMeasurements), 
+            buoy["name"], 
+            buoyMeasurements[0]["WavePeriod"].(float64),
+            buoyMeasurements[len(buoyMeasurements)-1]["WavePeriod"].(float64),
+            buoyMeasurements[0]["WaveHeight"].(float64),
+            buoyMeasurements[len(buoyMeasurements)-1]["WaveHeight"].(float64))
+        
+        totalCount += len(buoyMeasurements)
+    }
+    
+    log.Printf("Successfully seeded %d total buoy measurements", totalCount)
+    return nil
+}
+
+// getBuoyMeasurementsTemplate returns the template for buoy measurements.
+//nolint:funlen // Large data structure, cannot be meaningfully split
+func getBuoyMeasurementsTemplate() []map[string]interface{} {
+    return []map[string]interface{}{
         {
             "region_buoy": "Ireland_M4",
             "AirTemperature": 9.531,
@@ -948,8 +1004,11 @@ func seedBuoyMeasurements() error {
             "WindSpeed": 23.908,
         },
     }
+}
 
-    buoys := []map[string]interface{}{
+// getBuoyDefinitions returns the buoy definitions with variation factors.
+func getBuoyDefinitions() []map[string]interface{} {
+    return []map[string]interface{}{
         {
             "region_buoy": "Ireland_M6",
             "name": "M6",
@@ -1006,88 +1065,73 @@ func seedBuoyMeasurements() error {
             "max_height_factor": 1.25,
         },
     }
+}
+
+// generateBuoyMeasurements generates measurement data for a buoy.
+func generateBuoyMeasurements(buoy map[string]interface{}, measurementsTemplate []map[string]interface{}, now time.Time) ([]map[string]interface{}, error) {
+    buoyMeasurements := make([]map[string]interface{}, len(measurementsTemplate))
+    waveHeightFactor := buoy["wave_height_factor"].(float64)
+    wavePeriodOffset := buoy["wave_period_offset"].(float64)
+    maxHeightFactor := buoy["max_height_factor"].(float64)
     
-    totalCount := 0
-    
-    // For each buoy, generate measurement data
-    for _, buoy := range buoys {
-        buoyMeasurements := make([]map[string]interface{}, len(measurementsTemplate))
+    for i, template := range measurementsTemplate {
+        measurement := cloneMeasurementTemplate(template)
+        measurement["region_buoy"] = buoy["region_buoy"]
+        measurement["name"] = buoy["name"]
         
-        // Get the variation factors for this buoy
-        waveHeightFactor := buoy["wave_height_factor"].(float64)
-        wavePeriodOffset := buoy["wave_period_offset"].(float64)
-        maxHeightFactor := buoy["max_height_factor"].(float64)
+        applyWaveVariations(measurement, waveHeightFactor, wavePeriodOffset, maxHeightFactor)
         
-        for i, template := range measurementsTemplate {
-            // Clone the template
-            measurement := make(map[string]interface{})
-            for k, v := range template {
-                measurement[k] = v
-            }
-            
-            // Add buoy-specific fields
-            measurement["region_buoy"] = buoy["region_buoy"]
-            measurement["name"] = buoy["name"]
-            
-            // Apply wave variations to make each buoy unique
-            // Adjust wave period to be between 8-16 seconds
-            basePeriod := measurement["WavePeriod"].(float64)
-            adjustedPeriod := math.Max(8.0, math.Min(16.0, basePeriod + wavePeriodOffset))
-            measurement["WavePeriod"] = adjustedPeriod
-            
-            // Also adjust MaxPeriod to be consistent
-            baseMaxPeriod := measurement["MaxPeriod"].(float64)
-            adjustedMaxPeriod := math.Max(10.0, math.Min(18.0, baseMaxPeriod + wavePeriodOffset))
-            measurement["MaxPeriod"] = adjustedMaxPeriod
-            
-            // Adjust wave height to be between 0.2-5m
-            baseHeight := measurement["WaveHeight"].(float64)
-            adjustedHeight := math.Max(0.2, math.Min(5.0, baseHeight * waveHeightFactor))
-            measurement["WaveHeight"] = adjustedHeight
-            
-            // Also adjust MaxHeight to be consistent
-            baseMaxHeight := measurement["MaxHeight"].(float64)
-            adjustedMaxHeight := math.Max(0.5, math.Min(8.0, baseMaxHeight * maxHeightFactor))
-            measurement["MaxHeight"] = adjustedMaxHeight
-            
-            // Set the timestamp to be relative to now, with most recent being last
-            // Reverse the order so the most recent entry is last in the array
-            hourOffset := len(measurementsTemplate) - 1 - i
-            timestamp := now.Add(time.Duration(-hourOffset) * time.Hour)
-            measurement["dataDateTime"] = timestamp.Format(time.RFC3339)
-            
-            buoyMeasurements[i] = measurement
-        }
+        hourOffset := len(measurementsTemplate) - 1 - i
+        timestamp := now.Add(time.Duration(-hourOffset) * time.Hour)
+        measurement["dataDateTime"] = timestamp.Format(time.RFC3339)
         
-        // For each measurement, create an entry in DynamoDB
-        for _, measurement := range buoyMeasurements {
-            item, err := dynamodbattribute.MarshalMap(measurement)
-            if err != nil {
-                return fmt.Errorf("failed to marshal buoy measurement: %w", err)
-            }
-            
-            _, err = storage.DB.PutItem(&dynamodb.PutItemInput{
-                TableName: aws.String("BuoyData"),
-                Item:      item,
-            })
-            
-            if err != nil {
-                return fmt.Errorf("failed to put buoy measurement item: %w", err)
-            }
-        }
-        
-        log.Printf("Successfully seeded %d measurements for buoy %s (period range: %.1f-%.1fs, height range: %.1f-%.1fm)", 
-            len(buoyMeasurements), 
-            buoy["name"], 
-            buoyMeasurements[0]["WavePeriod"].(float64),
-            buoyMeasurements[len(buoyMeasurements)-1]["WavePeriod"].(float64),
-            buoyMeasurements[0]["WaveHeight"].(float64),
-            buoyMeasurements[len(buoyMeasurements)-1]["WaveHeight"].(float64))
-        
-        totalCount += len(buoyMeasurements)
+        buoyMeasurements[i] = measurement
     }
     
-    log.Printf("Successfully seeded %d total buoy measurements", totalCount)
+    return buoyMeasurements, nil
+}
+
+// cloneMeasurementTemplate clones a measurement template.
+func cloneMeasurementTemplate(template map[string]interface{}) map[string]interface{} {
+    measurement := make(map[string]interface{})
+    for k, v := range template {
+        measurement[k] = v
+    }
+    return measurement
+}
+
+// applyWaveVariations applies wave variations to a measurement.
+func applyWaveVariations(measurement map[string]interface{}, waveHeightFactor, wavePeriodOffset, maxHeightFactor float64) {
+    basePeriod := measurement["WavePeriod"].(float64)
+    measurement["WavePeriod"] = math.Max(8.0, math.Min(16.0, basePeriod+wavePeriodOffset))
+    
+    baseMaxPeriod := measurement["MaxPeriod"].(float64)
+    measurement["MaxPeriod"] = math.Max(10.0, math.Min(18.0, baseMaxPeriod+wavePeriodOffset))
+    
+    baseHeight := measurement["WaveHeight"].(float64)
+    measurement["WaveHeight"] = math.Max(0.2, math.Min(5.0, baseHeight*waveHeightFactor))
+    
+    baseMaxHeight := measurement["MaxHeight"].(float64)
+    measurement["MaxHeight"] = math.Max(0.5, math.Min(8.0, baseMaxHeight*maxHeightFactor))
+}
+
+// storeBuoyMeasurements stores buoy measurements in DynamoDB.
+func storeBuoyMeasurements(buoyMeasurements []map[string]interface{}) error {
+    for _, measurement := range buoyMeasurements {
+        item, err := dynamodbattribute.MarshalMap(measurement)
+        if err != nil {
+            return fmt.Errorf("failed to marshal buoy measurement: %w", err)
+        }
+        
+        _, err = storage.DB.PutItem(&dynamodb.PutItemInput{
+            TableName: aws.String("BuoyData"),
+            Item:      item,
+        })
+        
+        if err != nil {
+            return fmt.Errorf("failed to put buoy measurement item: %w", err)
+        }
+    }
     return nil
 }
 

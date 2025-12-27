@@ -1,8 +1,6 @@
 package service
 
 import (
-	"bytes"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"math"
@@ -20,7 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/rekognition"
-	"github.com/rwcarlsen/goexif/exif"
 )
 
 // ReportService provides surf report operations including submission, retrieval, and validation.
@@ -45,310 +42,79 @@ func NewReportService(dbStorage storage.DynamoDBStorage, s3Storage storage.S3Sto
 
 // SubmitSurfReport submits a new surf report
 func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmail string, userName string) error {
-	currentTime := time.Now()
+	user, err := s.getUserAndValidate(userEmail)
+	if err != nil {
+		return err
+	}
+
+	currentTime := parseReportDate(report.Date)
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
 
-	// Get the user's UUID
-	user, err := s.userService.GetUserByEmail(userEmail)
+	// Process image data if provided
+	s3KeyReport, err := s.processBase64Image(report.ImageData, report.Date, countryRegionSpot, user.UUID, &currentTime)
 	if err != nil {
-		return fmt.Errorf("failed to get user: %v", err)
-	}
-	if user == nil {
-		return fmt.Errorf("user not found")
-	}
-	if user.UUID == "" {
-		return fmt.Errorf("user does not have a UUID")
+		return err
 	}
 
-	if report.Date != "" {
-		parsedDate, err := time.Parse("2006-01-02 15:04:05", report.Date)
-		if err != nil {
-			log.Printf("Failed to parse date '%s': %v, using current time", report.Date, err)
-		} else {
-			currentTime = parsedDate
-		}
-	}
-	if report.ImageData != "" {
-		// Extract base64 data
-		base64String := report.ImageData
-
-		// Handle data URIs by removing the prefix
-		if strings.HasPrefix(base64String, "data:") {
-			// Find the comma that separates the header from the data
-			commaIndex := strings.Index(base64String, ",")
-			if commaIndex != -1 {
-				base64String = base64String[commaIndex+1:]
-			}
-		}
-
-		imageData, err := base64.StdEncoding.DecodeString(base64String)
-		if err != nil {
-			return model.ErrInvalidImageData
-		}
-
-		if report.Date == "" {
-			exifData, err := exif.Decode(bytes.NewReader(imageData))
-			if err == nil {
-				if dateTime, err := exifData.DateTime(); err == nil {
-					currentTime = dateTime
-					log.Printf("Extracted EXIF time from image: %v", currentTime)
-				}
-			}
-		}
-	}
-
-	// Use UUID instead of email in dateReported field
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
+	item := s.createBaseReportItem(countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false)
+	addReportFieldsToItem(item, report.SurfSize, report.WindAmount, report.WindDirection, report.Consistency, report.Quality, report.Messiness)
 
-	// Create the DynamoDB item
-	item := map[string]*dynamodb.AttributeValue{
-		"country_region_spot": {S: aws.String(countryRegionSpot)},
-		"dateReported":        {S: aws.String(dateReported)},
-		"SurfSize":            {S: aws.String(report.SurfSize)},
-		"WindAmount":          {S: aws.String(report.WindAmount)},
-		"WindDirection":       {S: aws.String(report.WindDirection)},
-		"Consistency":         {S: aws.String(report.Consistency)},
-		"Quality":             {S: aws.String(report.Quality)},
-		"Messiness":           {S: aws.String(report.Messiness)},
-		"UserEmail":           {S: aws.String(userEmail)},
-		"Reporter":            {S: aws.String(userName)},
-		"Time":                {S: aws.String(currentTime.String())},
-		"reportedBy":          {S: aws.String(user.UUID)},
-		"MediaType":           {S: aws.String("image")}, // Default to image for legacy reports
-		"IOSValidated":        {BOOL: aws.Bool(false)},  // Default to false for legacy reports
+	if s3KeyReport != "" {
+		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(s3KeyReport)}
 	}
 
-	var s3KeyReport = ""
-
-	// Process image if provided
-	if report.ImageData != "" {
-		// Extract base64 data again for validation and upload
-		base64String := report.ImageData
-
-		// Handle data URIs by removing the prefix
-		if strings.HasPrefix(base64String, "data:") {
-			// Find the comma that separates the header from the data
-			commaIndex := strings.Index(base64String, ",")
-			if commaIndex != -1 {
-				base64String = base64String[commaIndex+1:]
-			}
-		}
-
-		imageData, err := base64.StdEncoding.DecodeString(base64String)
-		if err != nil {
-			return model.ErrInvalidImageData
-		}
-
-		// Validate image using Rekognition
-		valid, err := s.validateImageWithRekognition(imageData)
-		if err != nil {
-			return err
-		}
-
-		if !valid {
-			return model.ErrImageNotSurfRelated
-		}
-
-		// Upload to S3
-		imageKey := fmt.Sprintf(
-			"surf-reports/%s/%s_%s.jpg",
-			countryRegionSpot,
-			currentTime.UTC().Format("2006-01-02T15:04:05Z"),
-			user.UUID,
-		)
-		s3Key, err := s.uploadImageToS3(imageData, imageKey)
-		if err != nil {
-			return model.NewImageValidationError(err, "failed to upload image")
-		}
-
-		// Store just the S3 key in DynamoDB
-		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(s3Key)}
-		s3KeyReport = s3Key
+	if err := s.storeReport(item); err != nil {
+		return err
 	}
 
-	// Insert into DynamoDB
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("SurfReports"),
-		Item:      item,
+	reportFields := map[string]string{
+		"quality":       report.Quality,
+		"surfSize":      report.SurfSize,
+		"windAmount":    report.WindAmount,
+		"windDirection": report.WindDirection,
+		"messiness":     report.Messiness,
+		"consistency":   report.Consistency,
 	}
-
-	_, err = s.dbStorage.PutItem(input)
-	if err != nil {
-		return fmt.Errorf("failed to store report: %v", err)
-	}
-
-	log.Print("done putting")
-
-	// Build message for WebSocket broadcasting
-	message := map[string]interface{}{
-		"action": "new_report",
-		"data": map[string]interface{}{
-			"country":       report.Country,
-			"region":        report.Region,
-			"spot":          report.Spot,
-			"quality":       report.Quality,
-			"surfSize":      report.SurfSize,
-			"windAmount":    report.WindAmount,
-			"windDirection": report.WindDirection,
-			"messiness":     report.Messiness,
-			"consistency":   report.Consistency,
-			"reporter":      userName,
-			"reportedBy":    user.UUID,
-			"imageKey":      s3KeyReport,
-			"videoKey":      "",      // No video for legacy reports
-			"mediaType":     "image", // Default to image for legacy reports
-			"iosValidated":  false,   // Default to false for legacy reports
-			"reportTime":    currentTime.Format(time.RFC3339),
-		},
-	}
-
-	// Get spot subscribers and broadcast (this is what was missing!)
-	var subscribers []string
-	subscribers, subErr := s.getSpotSubscribers(report.Country, report.Region, report.Spot)
-	if subErr != nil {
-		log.Printf("Failed to get subscribers: %v", subErr)
-	} else {
-		// Broadcast to subscribers asynchronously
-		go func() {
-			s.broadcastToUsers(subscribers, message)
-		}()
-	}
+	message := buildWebSocketMessage(report.Country, report.Region, report.Spot, userName, user.UUID, s3KeyReport, "", "image", false, reportFields, currentTime)
+	s.broadcastReportMessage(report.Country, report.Region, report.Spot, message)
 
 	return nil
 }
 
 // SubmitSurfReportWithS3Image submits a new surf report with a pre-uploaded S3 image
 func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Image, userEmail string, userName string) error {
-	currentTime := time.Now()
-	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
-
-	// Get the user's UUID
-	user, err := s.userService.GetUserByEmail(userEmail)
+	user, err := s.getUserAndValidate(userEmail)
 	if err != nil {
-		return fmt.Errorf("failed to get user: %v", err)
-	}
-	if user == nil {
-		return fmt.Errorf("user not found")
-	}
-	if user.UUID == "" {
-		return fmt.Errorf("user does not have a UUID")
+		return err
 	}
 
+	currentTime := parseReportDate(report.Date)
+	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
 
-	if report.Date != "" {
-		parsedDate, err := time.Parse("2006-01-02 15:04:05", report.Date)
-		if err != nil {
-			log.Printf("Failed to parse date '%s': %v, using current time", report.Date, err)
-		} else {
-			currentTime = parsedDate
-		}
-	}
+	item := s.createBaseReportItem(countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false)
+	addReportFieldsToItem(item, report.SurfSize, report.WindAmount, report.WindDirection, report.Consistency, report.Quality, report.Messiness)
 
-	// Create the DynamoDB item
-	item := map[string]*dynamodb.AttributeValue{
-		"country_region_spot": {S: aws.String(countryRegionSpot)},
-		"dateReported":        {S: aws.String(dateReported)},
-		"SurfSize":            {S: aws.String(report.SurfSize)},
-		"WindAmount":          {S: aws.String(report.WindAmount)},
-		"WindDirection":       {S: aws.String(report.WindDirection)},
-		"Consistency":         {S: aws.String(report.Consistency)},
-		"Quality":             {S: aws.String(report.Quality)},
-		"Messiness":           {S: aws.String(report.Messiness)},
-		"UserEmail":           {S: aws.String(userEmail)},
-		"Reporter":            {S: aws.String(userName)},
-		"Time":                {S: aws.String(currentTime.String())},
-		"reportedBy":          {S: aws.String(user.UUID)},
-		"MediaType":           {S: aws.String("image")}, // Default to image for legacy reports
-		"IOSValidated":        {BOOL: aws.Bool(false)},  // Default to false for legacy reports
-	}
-
-	var s3KeyReport = ""
-
-	// Process pre-uploaded image if provided
-	if report.ImageKey != "" {
-		// Retrieve the image from S3 for validation
-		imageData, err := s.s3Storage.GetObject(s.bucketName, report.ImageKey)
-		if err != nil {
-			// If image doesn't exist, clean up and return error
-			log.Printf("Failed to retrieve pre-uploaded image %s: %v", report.ImageKey, err)
-			// Try to delete the image key if it exists
-			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
-			return model.ErrImageRetrievalFailed
-		}
-
-		// Validate image using Rekognition
-		valid, err := s.validateImageWithRekognition(imageData)
-		if err != nil {
-			// Clean up invalid image
-			log.Printf("Failed to validate pre-uploaded image %s: %v", report.ImageKey, err)
-			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
-			return err
-		}
-
-		if !valid {
-			// Clean up invalid image
-			log.Printf("Pre-uploaded image %s failed validation, deleting", report.ImageKey)
-			_ = s.s3Storage.DeleteObject(s.bucketName, report.ImageKey)
-			return model.ErrImageNotSurfRelated
-		}
-
-		// Store the S3 key in DynamoDB when validation succeeds
-		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(report.ImageKey)}
-		s3KeyReport = report.ImageKey
-	}
-
-	// Insert into DynamoDB
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("SurfReports"),
-		Item:      item,
-	}
-
-	_, err = s.dbStorage.PutItem(input)
+	s3KeyReport, err := s.processS3ImageForReport(report.ImageKey, item)
 	if err != nil {
-		// If database insertion fails, clean up the image
-		if s3KeyReport != "" {
-			log.Printf("Database insertion failed, cleaning up image %s", s3KeyReport)
-			_ = s.s3Storage.DeleteObject(s.bucketName, s3KeyReport)
-		}
-		return fmt.Errorf("failed to store report: %v", err)
+		return err
 	}
 
-	log.Print("done putting")
-
-	// Build message for WebSocket broadcasting
-	message := map[string]interface{}{
-		"action": "new_report",
-		"data": map[string]interface{}{
-			"country":       report.Country,
-			"region":        report.Region,
-			"spot":          report.Spot,
-			"quality":       report.Quality,
-			"surfSize":      report.SurfSize,
-			"windAmount":    report.WindAmount,
-			"windDirection": report.WindDirection,
-			"messiness":     report.Messiness,
-			"consistency":   report.Consistency,
-			"reporter":      userName,
-			"reportedBy":    user.UUID,
-			"imageKey":      s3KeyReport,
-			"videoKey":      "",      // No video for legacy reports
-			"mediaType":     "image", // Default to image for legacy reports
-			"iosValidated":  false,   // Default to false for legacy reports
-			"reportTime":    currentTime.Format(time.RFC3339),
-		},
+	if err := s.storeReportWithCleanup(item, s3KeyReport); err != nil {
+		return err
 	}
 
-	// Get spot subscribers and broadcast
-	subscribers, err := s.getSpotSubscribers(report.Country, report.Region, report.Spot)
-	if err != nil {
-		log.Printf("Failed to get subscribers: %v", err)
-	} else {
-		// Broadcast to subscribers asynchronously
-		go func() {
-			s.broadcastToUsers(subscribers, message)
-		}()
+	reportFields := map[string]string{
+		"quality":       report.Quality,
+		"surfSize":      report.SurfSize,
+		"windAmount":    report.WindAmount,
+		"windDirection": report.WindDirection,
+		"messiness":     report.Messiness,
+		"consistency":   report.Consistency,
 	}
+	message := buildWebSocketMessage(report.Country, report.Region, report.Spot, userName, user.UUID, s3KeyReport, "", "image", false, reportFields, currentTime)
+	s.broadcastReportMessage(report.Country, report.Region, report.Spot, message)
 
 	return nil
 }
@@ -469,82 +235,18 @@ func (s *ReportService) GetTodaysSurfReports(
 func (s *ReportService) GetSpotSurfReports(countryName, regionName, spotName string, limit int, lastEvaluatedKey map[string]*dynamodb.AttributeValue) ([]map[string]interface{}, error) {
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
 
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("SurfReports"),
-		KeyConditionExpression: aws.String("country_region_spot = :crs"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":crs": {S: aws.String(countryRegionSpot)},
-		},
-		ScanIndexForward: aws.Bool(false), // Sort in descending order to get the latest reports
-	}
-
-	// Apply limit if specified
-	if limit > 0 {
-		input.Limit = aws.Int64(int64(limit))
-	}
-
-	// Apply pagination if provided
-	if lastEvaluatedKey != nil {
-		input.ExclusiveStartKey = lastEvaluatedKey
-	}
-
+	input := s.buildSpotReportsQueryInput(countryRegionSpot, limit, lastEvaluatedKey)
 	result, err := s.dbStorage.Query(input)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query reports: %v", err)
+		return nil, fmt.Errorf("failed to query reports: %w", err)
 	}
 
-	var reports []map[string]interface{}
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &reports)
+	reports, err := s.unmarshalSpotReports(result.Items)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal reports: %v", err)
+		return nil, err
 	}
 
-	// Filter out sensitive fields before returning to users
-	for _, report := range reports {
-		// Remove UserEmail field for privacy
-		delete(report, "UserEmail")
-
-		// Ensure new fields are included with defaults if missing
-		if _, exists := report["VideoKey"]; !exists {
-			report["VideoKey"] = ""
-		}
-		if _, exists := report["MediaType"]; !exists {
-			report["MediaType"] = "image" // Default for legacy reports
-		}
-		if _, exists := report["IOSValidated"]; !exists {
-			report["IOSValidated"] = false // Default for legacy reports
-		}
-
-		// Ensure all required fields have defaults if missing
-		if _, exists := report["Consistency"]; !exists {
-			report["Consistency"] = ""
-		}
-		if _, exists := report["Messiness"]; !exists {
-			report["Messiness"] = ""
-		}
-		if _, exists := report["Quality"]; !exists {
-			report["Quality"] = ""
-		}
-		if _, exists := report["SurfSize"]; !exists {
-			report["SurfSize"] = ""
-		}
-		if _, exists := report["WindAmount"]; !exists {
-			report["WindAmount"] = ""
-		}
-		if _, exists := report["WindDirection"]; !exists {
-			report["WindDirection"] = ""
-		}
-		if _, exists := report["Reporter"]; !exists {
-			report["Reporter"] = "Anonymous"
-		}
-
-		// Keep other fields like reportedBy (UUID), Reporter (name), etc.
-		// The reportedBy field contains the UUID which is safe to expose
-	}
-
-	// Note: Pagination info (hasMore) should be handled at the controller level
-	// by checking if result.LastEvaluatedKey != nil, not by adding to the reports array
-
+	s.normalizeSpotReports(reports)
 	return reports, nil
 }
 
@@ -627,143 +329,35 @@ func (s *ReportService) GenerateVideoViewURL(videoKey string, userEmail string) 
 
 // SubmitSurfReportWithIOSValidation submits a surf report that has been validated using iOS Vision framework
 func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWithIOSValidation, userEmail string, userName string) error {
-	currentTime := time.Now()
+	user, err := s.getUserAndValidate(userEmail)
+	if err != nil {
+		return err
+	}
+
+	currentTime := parseReportDate(report.Date)
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
-
-	// Get the user's UUID
-	user, err := s.userService.GetUserByEmail(userEmail)
-	if err != nil {
-		return fmt.Errorf("failed to get user: %v", err)
-	}
-	if user == nil {
-		return fmt.Errorf("user not found")
-	}
-	if user.UUID == "" {
-		return fmt.Errorf("user does not have a UUID")
-	}
-
-	if report.Date != "" {
-		parsedDate, err := time.Parse("2006-01-02 15:04:05", report.Date)
-		if err != nil {
-			log.Printf("Failed to parse date '%s': %v, using current time", report.Date, err)
-		} else {
-			currentTime = parsedDate
-		}
-	}
-
-	// Use UUID instead of email in dateReported field
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
+	mediaType := determineMediaType(report.ImageKey != "", report.VideoKey != "")
 
-	// Determine media type
-	var mediaType string
-	hasImage := report.ImageKey != ""
-	hasVideo := report.VideoKey != ""
-	switch {
-	case hasImage && hasVideo:
-		mediaType = "both"
-	case hasImage:
-		mediaType = "image"
-	case hasVideo:
-		mediaType = "video"
-	default:
-		mediaType = "none"
+	item := s.createBaseReportItem(countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, mediaType, report.IOSValidated)
+	addReportFieldsToItem(item, report.SurfSize, report.WindAmount, report.WindDirection, report.Consistency, report.Quality, report.Messiness)
+
+	s3KeyReport, videoKeyReport := s.processIOSMediaKeys(report.ImageKey, report.VideoKey, item)
+
+	if err := s.storeReport(item); err != nil {
+		return err
 	}
 
-	// Create the DynamoDB item
-	item := map[string]*dynamodb.AttributeValue{
-		"country_region_spot": {S: aws.String(countryRegionSpot)},
-		"dateReported":        {S: aws.String(dateReported)},
-		"SurfSize":            {S: aws.String(report.SurfSize)},
-		"WindAmount":          {S: aws.String(report.WindAmount)},
-		"WindDirection":       {S: aws.String(report.WindDirection)},
-		"Consistency":         {S: aws.String(report.Consistency)},
-		"Quality":             {S: aws.String(report.Quality)},
-		"Messiness":           {S: aws.String(report.Messiness)},
-		"UserEmail":           {S: aws.String(userEmail)},
-		"Reporter":            {S: aws.String(userName)},
-		"Time":                {S: aws.String(currentTime.String())},
-		"reportedBy":          {S: aws.String(user.UUID)},
-		"MediaType":           {S: aws.String(mediaType)},
-		"IOSValidated":        {BOOL: aws.Bool(report.IOSValidated)},
+	reportFields := map[string]string{
+		"quality":       report.Quality,
+		"surfSize":      report.SurfSize,
+		"windAmount":    report.WindAmount,
+		"windDirection": report.WindDirection,
+		"messiness":     report.Messiness,
+		"consistency":   report.Consistency,
 	}
-
-	var s3KeyReport = ""
-	var videoKeyReport = ""
-
-	// Process image if provided
-	if report.ImageKey != "" {
-		// For iOS validated reports, we trust the client-side validation
-		// Skip S3 verification to avoid permission issues - the presigned URL upload
-		// already ensures the file exists and is accessible
-		log.Printf("iOS validated report with image: %s", report.ImageKey)
-		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(report.ImageKey)}
-		s3KeyReport = report.ImageKey
-		log.Printf("Set s3KeyReport to: %s", s3KeyReport)
-	} else {
-		log.Printf("No image key provided in iOS validated report")
-	}
-
-	// Process video if provided
-	if report.VideoKey != "" {
-		// For iOS validated reports, we trust the client-side validation
-		// Skip S3 verification to avoid permission issues - the presigned URL upload
-		// already ensures the file exists and is accessible
-		log.Printf("iOS validated report with video: %s", report.VideoKey)
-		item["VideoKey"] = &dynamodb.AttributeValue{S: aws.String(report.VideoKey)}
-		videoKeyReport = report.VideoKey
-		log.Printf("Set videoKeyReport to: %s", videoKeyReport)
-	} else {
-		log.Printf("No video key provided in iOS validated report")
-	}
-
-	// Insert into DynamoDB
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("SurfReports"),
-		Item:      item,
-	}
-
-	_, err = s.dbStorage.PutItem(input)
-	if err != nil {
-		return fmt.Errorf("failed to store report: %v", err)
-	}
-
-	log.Print("done putting iOS validated report")
-
-	// Build message for WebSocket broadcasting
-	message := map[string]interface{}{
-		"action": "new_report",
-		"data": map[string]interface{}{
-			"country":       report.Country,
-			"region":        report.Region,
-			"spot":          report.Spot,
-			"quality":       report.Quality,
-			"surfSize":      report.SurfSize,
-			"windAmount":    report.WindAmount,
-			"windDirection": report.WindDirection,
-			"messiness":     report.Messiness,
-			"consistency":   report.Consistency,
-			"reporter":      userName,
-			"reportedBy":    user.UUID,
-			"imageKey":      s3KeyReport,
-			"videoKey":      videoKeyReport,
-			"mediaType":     mediaType,
-			"iosValidated":  report.IOSValidated,
-			"reportTime":    currentTime.Format(time.RFC3339),
-		},
-	}
-
-	log.Printf("WebSocket message - ImageKey: %s, VideoKey: %s, MediaType: %s", s3KeyReport, videoKeyReport, mediaType)
-
-	// Get spot subscribers and broadcast
-	subscribers, err := s.getSpotSubscribers(report.Country, report.Region, report.Spot)
-	if err != nil {
-		log.Printf("Failed to get subscribers: %v", err)
-	} else {
-		// Broadcast to subscribers asynchronously
-		go func() {
-			s.broadcastToUsers(subscribers, message)
-		}()
-	}
+	message := buildWebSocketMessage(report.Country, report.Region, report.Spot, userName, user.UUID, s3KeyReport, videoKeyReport, mediaType, report.IOSValidated, reportFields, currentTime)
+	s.broadcastReportMessage(report.Country, report.Region, report.Spot, message)
 
 	return nil
 }
@@ -1590,90 +1184,24 @@ func (s *ReportService) getCurrentBuoyData(buoyName string) map[string]interface
 // getCurrentWindConditions retrieves current wind conditions from forecast data for a spot
 func (s *ReportService) getCurrentWindConditions(countryName, regionName, spotName string) (windSpeed float64, windDirection float64, err error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
-	currentEpoch := time.Now().Unix()
-
-	// Query for forecast data after current time (most recent forecast)
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("SpotForecastData"),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":current_time": {
-				S: aws.String(fmt.Sprintf("%d", currentEpoch-3600)), // 1 hour ago to get current/just past forecast
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
-		Limit:            aws.Int64(1),
-	}
-
-	result, err := s.dbStorage.Query(input)
+	result, err := s.queryCurrentForecast(spotID)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to query current forecast: %v", err)
+		return 0, 0, err
 	}
 
 	if len(result.Items) == 0 {
-		// Try looking backwards up to 24 hours
-		for i := 1; i <= 24; i++ {
-			pastEpoch := currentEpoch - int64(i*3600)
-			backwardInput := &dynamodb.QueryInput{
-				TableName:              aws.String("SpotForecastData"),
-				KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-				ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-					":spot_id": {
-						S: aws.String(spotID),
-					},
-					":current_time": {
-						S: aws.String(fmt.Sprintf("%d", pastEpoch)),
-					},
-				},
-				ScanIndexForward: aws.Bool(true),
-				Limit:            aws.Int64(1),
-			}
-
-			result, err = s.dbStorage.Query(backwardInput)
-			if err == nil && len(result.Items) > 0 {
-				break
-			}
+		result, err = s.queryHistoricalForecast(spotID)
+		if err != nil || len(result.Items) == 0 {
+			return 0, 0, fmt.Errorf("no forecast data found for spot")
 		}
 	}
 
-	if len(result.Items) == 0 {
-		return 0, 0, fmt.Errorf("no forecast data found for spot")
-	}
-
-	var forecast map[string]interface{}
-	err = dynamodbattribute.UnmarshalMap(result.Items[0], &forecast)
+	forecast, err := s.unmarshalForecast(result.Items[0])
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to unmarshal forecast: %v", err)
+		return 0, 0, err
 	}
 
-	// Extract wind data from nested data field
-	data, ok := forecast["data"].(map[string]interface{})
-	if !ok {
-		return 0, 0, fmt.Errorf("invalid forecast data structure")
-	}
-
-	// Extract wind speed
-	if ws, ok := data["windSpeed"].(float64); ok {
-		windSpeed = ws
-	} else if wsStr, ok := data["windSpeed"].(string); ok {
-		if ws, err := strconv.ParseFloat(wsStr, 64); err == nil {
-			windSpeed = ws
-		}
-	}
-
-	// Extract wind direction
-	if wd, ok := data["windDirection"].(float64); ok {
-		windDirection = wd
-	} else if wdStr, ok := data["windDirection"].(string); ok {
-		if wd, err := strconv.ParseFloat(wdStr, 64); err == nil {
-			windDirection = wd
-		}
-	}
-
-	return windSpeed, windDirection, nil
+	return s.extractWindData(forecast)
 }
 
 // getForecastDataAtTime retrieves forecast data for a spot at a specific time

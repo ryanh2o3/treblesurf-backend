@@ -3,9 +3,9 @@ package controller
 import (
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -20,56 +20,11 @@ import (
 
 // UploadSnapshotHandler handles image uploads from devices
 func UploadSnapshotHandler(c *gin.Context) {
-	// Get the spot ID from form data
-	spotID := c.PostForm("spot_id")
+	spotID, timestamp, file := validateSnapshotUpload(c)
 	if spotID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "spot_id is required"})
 		return
 	}
 
-	// Parse timestamp if provided, otherwise use current time
-	timestampStr := c.PostForm("timestamp")
-	var timestamp time.Time
-	var err error
-	if timestampStr != "" {
-		// Try multiple timestamp formats
-		formats := []string{
-			time.RFC3339,
-			"2006-01-02T15:04:05.999999", // Python's isoformat()
-			"2006-01-02T15:04:05",         // isoformat without microseconds
-			"2006-01-02 15:04:05",
-		}
-
-		var parseError error
-		for _, format := range formats {
-			timestamp, parseError = time.Parse(format, timestampStr)
-			if parseError == nil {
-				break
-			}
-		}
-
-		if parseError != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid timestamp format. Use ISO 8601/RFC3339"})
-			return
-		}
-	} else {
-		timestamp = time.Now()
-	}
-
-	// Get the uploaded file
-	file, err := c.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
-		return
-	}
-
-	// Validate file is an image
-	if !strings.HasPrefix(file.Header.Get("Content-Type"), "image/") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Uploaded file must be an image"})
-		return
-	}
-
-	// Open the file
 	src, err := file.Open()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open uploaded file"})
@@ -81,51 +36,15 @@ func UploadSnapshotHandler(c *gin.Context) {
 		}
 	}()
 
-	// Generate a unique filename
-	ext := filepath.Ext(file.Filename)
-	uniqueID := uuid.New().String()
-	s3Key := fmt.Sprintf("snapshots/%s/%s%s", spotID, uniqueID, ext)
-
-	// Upload to S3
-	_, err = S3Client.PutObject(&s3.PutObjectInput{
-		Bucket: aws.String("treblesurf-images"),
-		Key:    aws.String(s3Key),
-		Body:   src,
-		ContentType: aws.String(file.Header.Get("Content-Type")),
-		Metadata: map[string]*string{
-			"SpotId":    aws.String(spotID),
-			"Timestamp": aws.String(timestamp.Format(time.RFC3339)),
-		},
-	})
-
-	if err != nil {
+	s3Key := generateSnapshotS3Key(spotID, file.Filename)
+	if err := uploadSnapshotToS3(src, s3Key, file.Header.Get("Content-Type"), spotID, timestamp); err != nil {
 		log.Printf("S3 upload error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
 		return
 	}
 
-	// Store metadata in DynamoDB
-	snapshot := SpotSnapshot{
-		SpotID:     spotID,
-		ImageKey:   s3Key,
-		Timestamp:  timestamp,
-		UploadedAt: time.Now(),
-	}
-
-	item, err := dynamodbattribute.MarshalMap(snapshot)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process snapshot metadata"})
-		return
-	}
-
-	// Use UpdateItem to ensure we're always storing the latest snapshot
-	_, err = DB.PutItem(&dynamodb.PutItemInput{
-		TableName: aws.String("SpotSnapshots"),
-		Item:      item,
-	})
-
-	if err != nil {
-		fmt.Print("Failed to store snapshot:", err)
+	if err := storeSnapshotMetadata(spotID, s3Key, timestamp); err != nil {
+		log.Printf("Failed to store snapshot metadata: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store snapshot metadata"})
 		return
 	}
@@ -135,6 +54,84 @@ func UploadSnapshotHandler(c *gin.Context) {
 		"image_key": s3Key,
 	})
 }
+
+// validateSnapshotUpload validates and extracts snapshot upload parameters.
+func validateSnapshotUpload(c *gin.Context) (string, time.Time, *multipart.FileHeader) {
+	spotID := c.PostForm("spot_id")
+	if spotID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "spot_id is required"})
+		return "", time.Time{}, nil
+	}
+
+	timestamp, err := parseTimestamp(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid timestamp format. Use ISO 8601/RFC3339"})
+		return "", time.Time{}, nil
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		return "", time.Time{}, nil
+	}
+
+	contentType := file.Header.Get("Content-Type")
+	if !validateImageFile(contentType) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Uploaded file must be an image"})
+		return "", time.Time{}, nil
+	}
+
+	return spotID, timestamp, file
+}
+
+// uploadSnapshotToS3 uploads a snapshot file to S3.
+func uploadSnapshotToS3(src multipart.File, s3Key, contentType, spotID string, timestamp time.Time) error {
+	_, err := S3Client.PutObject(&s3.PutObjectInput{
+		Bucket:      aws.String("treblesurf-images"),
+		Key:         aws.String(s3Key),
+		Body:        src,
+		ContentType: aws.String(contentType),
+		Metadata: map[string]*string{
+			"SpotId":    aws.String(spotID),
+			"Timestamp": aws.String(timestamp.Format(time.RFC3339)),
+		},
+	})
+	return err
+}
+
+// generateSnapshotS3Key generates a unique S3 key for a snapshot.
+func generateSnapshotS3Key(spotID, filename string) string {
+	ext := filepath.Ext(filename)
+	uniqueID := uuid.New().String()
+	return fmt.Sprintf("snapshots/%s/%s%s", spotID, uniqueID, ext)
+}
+
+// storeSnapshotMetadata stores snapshot metadata in DynamoDB.
+func storeSnapshotMetadata(spotID, s3Key string, timestamp time.Time) error {
+	snapshot := SpotSnapshot{
+		SpotID:     spotID,
+		ImageKey:   s3Key,
+		Timestamp:  timestamp,
+		UploadedAt: time.Now(),
+	}
+
+	item, err := dynamodbattribute.MarshalMap(snapshot)
+	if err != nil {
+		return fmt.Errorf("failed to marshal snapshot: %w", err)
+	}
+
+	_, err = DB.PutItem(&dynamodb.PutItemInput{
+		TableName: aws.String("SpotSnapshots"),
+		Item:      item,
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to store snapshot: %w", err)
+	}
+
+	return nil
+}
+
 
 // GetLatestSnapshotHandler retrieves the latest snapshot for a spot
 func GetLatestSnapshotHandler(c *gin.Context) {

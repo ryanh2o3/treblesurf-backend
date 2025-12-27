@@ -18,11 +18,10 @@ import (
 func SetupRouter(container *Container) *gin.Engine {
 	r := gin.Default()
 
-	isLocal := os.Getenv("GO_ENV")
+	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
 
-	setupRoutes(r, container)
-
-	if isLocal == constants.EnvDevelopment {
+	// Apply CORS middleware before registering routes
+	if isLocal {
 		// Add CORS middleware for development environment
 		r.Use(cors.New(cors.Config{
 			AllowOrigins:     []string{"http://localhost:5173"},
@@ -31,9 +30,6 @@ func SetupRouter(container *Container) *gin.Engine {
 			ExposeHeaders:    []string{"Content-Length"},
 			AllowCredentials: true,
 		}))
-		
-		apiGroup := r.Group("/api")
-		setupRoutes(apiGroup, container)
 	} else {
 		// Production CORS configuration for iOS PWA and other clients
 		r.Use(cors.New(cors.Config{
@@ -45,17 +41,34 @@ func SetupRouter(container *Container) *gin.Engine {
 			MaxAge:           12 * time.Hour, // Cache preflight for 12 hours
 		}))
 	}
-	
-	// Enhanced logging middleware
+
+	// Register routes once on the root router
+	// The middleware in setupMiddleware handles /api prefix stripping,
+	// so routes work with or without the /api prefix
+	setupRoutes(r, container)
+
 	return r
 }
 
 func setupRoutes(r gin.IRouter, container *Container) {
 	log.Print(os.Getenv("GO_ENV"))
 	
+	setupMiddleware(r)
+	setupPublicRoutes(r)
+	setupAuthRoutes(r)
+	setupLocationAndForecastRoutes(r, container)
+	setupSwellPredictionRoutes(r, container)
+	setupProtectedRoutes(r, container)
+	setupAPIKeyRoutes(r, container)
+	setupAdminRoutes(r, container)
+}
+
+// setupMiddleware configures middleware for all routes.
+func setupMiddleware(r gin.IRouter) {
 	// Apply iOS headers to all API routes
 	r.Use(iOSHeadersMiddleware())
 	
+	// Strip /api prefix if present
 	r.Use(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/api") {
@@ -64,29 +77,32 @@ func setupRoutes(r gin.IRouter, container *Container) {
 		}
 		c.Next()
 	})
+}
 
-	// Public routes
+// setupPublicRoutes configures public authentication routes.
+func setupPublicRoutes(r gin.IRouter) {
 	r.POST("/auth/google", auth.GoogleAuthHandler)
 	r.GET("/auth/validate", auth.ValidateTokenHandler)
 	r.POST("/auth/logout", auth.LogoutHandler)
+}
+
+// setupAuthRoutes configures authenticated auth-related routes.
+func setupAuthRoutes(r gin.IRouter) {
+	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
 	
 	// CSRF token refresh endpoint (requires authentication)
 	csrfRoutes := r.Group("/auth")
-	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
-		// In local dev, use mock auth
+	if isLocal {
 		csrfRoutes.Use(DevAuthMiddleware())
 	} else {
-		// In production, use real auth
 		csrfRoutes.Use(auth.AuthMiddleware())
 	}
 	csrfRoutes.GET("/csrf", func(c *gin.Context) {
-		// The CSRF token is already set in the response headers by the AuthMiddleware
-		// This endpoint just needs to return a 200 status to confirm the token is available
 		c.JSON(http.StatusOK, gin.H{"message": "CSRF token available"})
 	})
 	
 	// Development-only endpoint for iOS simulator
-	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
+	if isLocal {
 		r.POST("/auth/dev-session", func(c *gin.Context) {
 			var req struct {
 				Email string `json:"email"`
@@ -104,16 +120,25 @@ func setupRoutes(r gin.IRouter, container *Container) {
 			c.JSON(http.StatusOK, gin.H{"message": "Development session created"})
 		})
 	}
+}
 
-	// Location and forecast routes
+// setupLocationAndForecastRoutes configures location, forecast, and buoy data routes.
+func setupLocationAndForecastRoutes(r gin.IRouter, container *Container) {
+	// Location routes
 	r.GET("/regions", controller.GetRegions)
 	r.GET("/spots", controller.GetSpots)
 	r.GET("/location", controller.GetCoordinates)
+	r.GET("/locationInfo", controller.GetLocationInfo)
+	
+	// Forecast routes
 	r.GET("/listSpotsForecast", container.ForecastController.GetListSpotsForecast)
 	r.GET("/regionForecast", container.ForecastController.GetRegionForecast)
 	r.GET("/currentConditions", container.ForecastController.GetCurrentWeather)
 	r.GET("/beforeAfterTide", container.ForecastController.GetBeforeAfterTides)
 	r.GET("/tideExtremes", container.ForecastController.GetDayTides)
+	r.GET("/forecast", container.ForecastController.GetSpotForecast)
+	
+	// Buoy data routes
 	r.GET("/getLiveBuoyData", controller.GetLiveBuoyData)
 	r.GET("/getSingleBuoyData", controller.GetSingleBuoyData)
 	r.GET("/getLast24BuoyData", controller.GetLast24HoursBuoyData)
@@ -122,10 +147,10 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	r.GET("/buoyLocationInfo", controller.BuoyLocationInfo)
 	r.GET("/regionBuoys", controller.GetRegionBuoys)
 	r.GET("/individualBuoyLocation", controller.IndividualBuoyLocationInfo)
-	r.GET("/locationInfo", controller.GetLocationInfo)
-	r.GET("/forecast", container.ForecastController.GetSpotForecast)
-	
-	// Swell prediction routes
+}
+
+// setupSwellPredictionRoutes configures swell prediction routes.
+func setupSwellPredictionRoutes(r gin.IRouter, container *Container) {
 	r.GET("/swellPrediction", container.SwellPredictionController.GetSpotSwellPrediction)
 	r.GET("/listSpotsSwellPrediction", container.SwellPredictionController.GetListSpotsSwellPrediction)
 	r.GET("/regionSwellPrediction", container.SwellPredictionController.GetRegionSwellPrediction)
@@ -133,73 +158,87 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	r.GET("/recentSwellPredictions", container.SwellPredictionController.GetRecentSwellPredictions)
 	r.GET("/swellPredictionStatus", container.SwellPredictionController.GetSwellPredictionStatus)
 	r.GET("/closestAIPrediction", container.SwellPredictionController.GetClosestAIPredictionForSpot)
+}
 
+// setupProtectedRoutes configures authenticated routes that require user authentication.
+func setupProtectedRoutes(r gin.IRouter, container *Container) {
 	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
-
-	// Protected routes (auth required)
+	
+	// Create authenticated route group
 	authorized := r.Group("/")
 	if isLocal {
 		log.Print("using dev middleware")
-		// In local development, use a mock auth middleware that automatically authenticates
 		authorized.Use(DevAuthMiddleware())
 	} else {
-		// In production, use the real auth middleware
 		log.Print("using production auth middleware")
 		authorized.Use(auth.AuthMiddleware())
 	}
-
+	
+	// Routes that modify data (require CSRF in production)
 	webModifyGroup := authorized.Group("/")
 	if !isLocal {
-		// Only apply CSRF in production, skip in local dev
 		log.Print("using production CSRF middleware")
 		webModifyGroup.Use(auth.CSRFMiddleware())
 	}
 	
-	webModifyGroup.POST("/submitSurfReport", controller.SubmitCurrentSurfReport)
-	webModifyGroup.POST("/submitSurfReportWithS3Image", controller.SubmitSurfReportWithS3Image)
-	webModifyGroup.POST("/submitSurfReportWithIOSValidation", controller.SubmitSurfReportWithIOSValidation)
-	webModifyGroup.GET("/generateImageUploadURL", controller.GenerateImageUploadURL)
-	webModifyGroup.GET("/generateVideoUploadURL", controller.GenerateVideoUploadURL)
-	webModifyGroup.DELETE("/deleteUploadedMedia", controller.DeleteUploadedMedia)
-	webModifyGroup.DELETE("/deleteMyAccount", controller.DeleteMyAccount)
-	webModifyGroup.PUT("/setTheme", controller.SetUserTheme)
-	webModifyGroup.DELETE("/sessions/:sessionId", auth.TerminateSessionHandler)
+	setupReportModificationRoutes(webModifyGroup, container)
+	setupUserRoutes(authorized, container)
+}
 
-	authorized.GET("/sessions", auth.GetUserSessionsHandler)
-	authorized.GET("/getTheme", controller.GetUserTheme)
-	authorized.GET("/getTodaySpotReports", controller.RetrieveTodaysSurfReports)
-	authorized.GET("/getAllSpotReports", controller.GetAllSpotSurfReports)
-	authorized.GET("/getSurfReportsWithSimilarBuoyData", controller.GetSurfReportsWithSimilarBuoyData)
-	authorized.GET("/getSurfReportsWithMatchingConditions", controller.GetSurfReportsWithMatchingConditions)
-	authorized.GET("getReportImage", controller.GetReportImage)
-	authorized.GET("/getReportVideo", controller.GetReportVideo)
-	authorized.GET("/generateVideoViewURL", controller.GenerateVideoViewURL)
-	authorized.GET("/ws-token", auth.GetWebSocketTokenHandler)
-	authorized.GET("/streamUrl", controller.GetStreamPlaybackURL)
-	authorized.GET("/latestSnapshot", controller.GetLatestSnapshotHandler)
-	authorized.POST("/requestStream", controller.RequestStreamHandler)
+// setupReportModificationRoutes configures routes that modify surf reports.
+func setupReportModificationRoutes(g *gin.RouterGroup, container *Container) {
+	g.POST("/submitSurfReport", controller.SubmitCurrentSurfReport)
+	g.POST("/submitSurfReportWithS3Image", controller.SubmitSurfReportWithS3Image)
+	g.POST("/submitSurfReportWithIOSValidation", controller.SubmitSurfReportWithIOSValidation)
+	g.GET("/generateImageUploadURL", controller.GenerateImageUploadURL)
+	g.GET("/generateVideoUploadURL", controller.GenerateVideoUploadURL)
+	g.DELETE("/deleteUploadedMedia", controller.DeleteUploadedMedia)
+	g.DELETE("/deleteMyAccount", controller.DeleteMyAccount)
+	g.PUT("/setTheme", controller.SetUserTheme)
+	g.DELETE("/sessions/:sessionId", auth.TerminateSessionHandler)
+}
 
-	// API key routes
+// setupUserRoutes configures user-related read routes.
+func setupUserRoutes(g *gin.RouterGroup, container *Container) {
+	g.GET("/sessions", auth.GetUserSessionsHandler)
+	g.GET("/getTheme", controller.GetUserTheme)
+	g.GET("/getTodaySpotReports", controller.RetrieveTodaysSurfReports)
+	g.GET("/getAllSpotReports", controller.GetAllSpotSurfReports)
+	g.GET("/getSurfReportsWithSimilarBuoyData", controller.GetSurfReportsWithSimilarBuoyData)
+	g.GET("/getSurfReportsWithMatchingConditions", controller.GetSurfReportsWithMatchingConditions)
+	g.GET("getReportImage", controller.GetReportImage)
+	g.GET("/getReportVideo", controller.GetReportVideo)
+	g.GET("/generateVideoViewURL", controller.GenerateVideoViewURL)
+	g.GET("/ws-token", auth.GetWebSocketTokenHandler)
+	g.GET("/streamUrl", controller.GetStreamPlaybackURL)
+	g.GET("/latestSnapshot", controller.GetLatestSnapshotHandler)
+	g.POST("/requestStream", controller.RequestStreamHandler)
+}
+
+// setupAPIKeyRoutes configures routes that require API key authentication.
+func setupAPIKeyRoutes(r gin.IRouter, container *Container) {
+	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
+	
 	apiKeyRoutes := r.Group("/")
 	if isLocal {
-		// In local dev, use mock auth
 		apiKeyRoutes.Use(DevAuthMiddleware())
 	} else {
-		// In production, require API key
 		apiKeyRoutes.Use(APIKeyAuthMiddleware("stream"))
 	}
 	
 	apiKeyRoutes.POST("/streaming-credentials", controller.GetStreamingCredentials)
 	apiKeyRoutes.GET("/check-streaming-requested", controller.CheckStreamRequestHandler)
 	apiKeyRoutes.POST("/upload-snapshot", controller.UploadSnapshotHandler)
+}
 
-	// Admin routes
+// setupAdminRoutes configures admin-only routes.
+func setupAdminRoutes(r gin.IRouter, container *Container) {
+	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
+	
 	adminRoutes := r.Group("/admin")
 	if isLocal {
-		// In local dev, use mock auth that gives admin privileges
 		adminRoutes.Use(DevAdminAuthMiddleware())
 	} else {
-		// In production, use real auth with admin check
 		log.Print("using production admin middleware")
 		adminRoutes.Use(auth.AuthMiddleware(), AdminMiddleware())
 	}
