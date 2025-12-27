@@ -22,7 +22,7 @@ This API provides surf forecasting, weather conditions, buoy data, surf reports,
 The API handles:
 
 - Surf forecasts and weather predictions for specific spots
-- AI-powered swell predictions
+- AI-powered swell predictions (calculated in the buoy ingestions - a simple algorithm, not really ai lol)
 - Real-time weather and ocean conditions
 - Live ocean buoy data and historical measurements
 - Community surf reports with photos and videos
