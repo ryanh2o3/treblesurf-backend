@@ -13,6 +13,7 @@ import (
 )
 
 // getGoogleClientIDs retrieves Google OAuth client IDs from environment variables.
+//nolint:unparam // Error return maintained for API consistency
 func getGoogleClientIDs() (map[string]bool, error) {
 	clientID := os.Getenv("GOOGLE_CLIENT_ID")
 	if clientID == "" {
@@ -46,6 +47,7 @@ func validateGoogleIDToken(idToken string, clientIDs map[string]bool) (*idtoken.
 }
 
 // extractUserClaims extracts user claims from a Google ID token payload.
+//nolint:unparam // Error return maintained for API consistency
 func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyName, givenName string, err error) {
 	log.Printf("JWT claims available: %v", payload.Claims)
 

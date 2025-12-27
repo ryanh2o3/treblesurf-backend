@@ -36,7 +36,10 @@ func (h *WebSocketHandler) validateWebSocketToken(token string) (string, string,
 }
 
 // createConnectionInfo creates a ConnectionInfo from the request.
-func (h *WebSocketHandler) createConnectionInfo(connectionID, userID string, req events.APIGatewayWebsocketProxyRequest) *model.ConnectionInfo {
+func (h *WebSocketHandler) createConnectionInfo(
+	connectionID, userID string,
+	req events.APIGatewayWebsocketProxyRequest,
+) *model.ConnectionInfo {
 	return &model.ConnectionInfo{
 		ConnectionID: connectionID,
 		UserID:       userID,
@@ -60,22 +63,6 @@ func invalidTokenResponse() events.APIGatewayProxyResponse {
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusUnauthorized,
 		Body:       "Invalid token",
-	}
-}
-
-// invalidTokenFormatResponse returns an invalid token format response.
-func invalidTokenFormatResponse() events.APIGatewayProxyResponse {
-	return events.APIGatewayProxyResponse{
-		StatusCode: http.StatusInternalServerError,
-		Body:       "Invalid token format",
-	}
-}
-
-// invalidTokenPayloadResponse returns an invalid token payload response.
-func invalidTokenPayloadResponse() events.APIGatewayProxyResponse {
-	return events.APIGatewayProxyResponse{
-		StatusCode: http.StatusBadRequest,
-		Body:       "Invalid token payload",
 	}
 }
 

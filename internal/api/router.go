@@ -1,4 +1,4 @@
-package api
+package api //nolint:revive // Package name 'api' is meaningful in context
 
 import (
 	"log"
@@ -186,7 +186,7 @@ func setupProtectedRoutes(r gin.IRouter, container *Container) {
 }
 
 // setupReportModificationRoutes configures routes that modify surf reports.
-func setupReportModificationRoutes(g *gin.RouterGroup, container *Container) {
+func setupReportModificationRoutes(g *gin.RouterGroup, _ *Container) {
 	g.POST("/submitSurfReport", controller.SubmitCurrentSurfReport)
 	g.POST("/submitSurfReportWithS3Image", controller.SubmitSurfReportWithS3Image)
 	g.POST("/submitSurfReportWithIOSValidation", controller.SubmitSurfReportWithIOSValidation)
@@ -199,7 +199,7 @@ func setupReportModificationRoutes(g *gin.RouterGroup, container *Container) {
 }
 
 // setupUserRoutes configures user-related read routes.
-func setupUserRoutes(g *gin.RouterGroup, container *Container) {
+func setupUserRoutes(g *gin.RouterGroup, _ *Container) {
 	g.GET("/sessions", auth.GetUserSessionsHandler)
 	g.GET("/getTheme", controller.GetUserTheme)
 	g.GET("/getTodaySpotReports", controller.RetrieveTodaysSurfReports)
@@ -216,7 +216,7 @@ func setupUserRoutes(g *gin.RouterGroup, container *Container) {
 }
 
 // setupAPIKeyRoutes configures routes that require API key authentication.
-func setupAPIKeyRoutes(r gin.IRouter, container *Container) {
+func setupAPIKeyRoutes(r gin.IRouter, _ *Container) {
 	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
 	
 	apiKeyRoutes := r.Group("/")
@@ -232,7 +232,7 @@ func setupAPIKeyRoutes(r gin.IRouter, container *Container) {
 }
 
 // setupAdminRoutes configures admin-only routes.
-func setupAdminRoutes(r gin.IRouter, container *Container) {
+func setupAdminRoutes(r gin.IRouter, _ *Container) {
 	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
 	
 	adminRoutes := r.Group("/admin")

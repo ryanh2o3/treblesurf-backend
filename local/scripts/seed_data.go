@@ -169,6 +169,7 @@ func seedForecastData(baseTime time.Time) error {
 }
 
 // getSurfData1 returns the first set of surf forecast data.
+//nolint:dupl,funlen // Data structure, duplication and length acceptable for clarity
 func getSurfData1() []map[string]interface{} {
     return []map[string]interface{}{
     {
@@ -337,6 +338,7 @@ func getSurfData1() []map[string]interface{} {
 }
 
 // getSurfData2 returns the second set of surf forecast data.
+//nolint:dupl,funlen // Data structure, duplication and length acceptable for clarity
 func getSurfData2() []map[string]interface{} {
     return []map[string]interface{}{
     {
@@ -621,25 +623,56 @@ func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]inte
 }
 
 // buildInterpolatedDataMap builds an interpolated data map between two samples.
-func buildInterpolatedDataMap(sample, nextSample map[string]interface{}, progress float64, dateForecastedFor string) map[string]interface{} {
-    return map[string]interface{}{
-        "swellPeriod":           interpolate(sample["swellPeriod"].(float64), nextSample["swellPeriod"].(float64), progress),
-        "waterTemperature":      interpolate(sample["waterTemperature"].(float64), nextSample["waterTemperature"].(float64), progress),
-        "surfMessiness":         sample["surfMessiness"].(string),
-        "pressure":              interpolate(sample["pressure"].(float64), nextSample["pressure"].(float64), progress),
-        "waveEnergy":            interpolate(sample["waveEnergy"].(float64), nextSample["waveEnergy"].(float64), progress),
-        "precipitation":         interpolate(sample["precipitation"].(float64), nextSample["precipitation"].(float64), progress),
-        "relativeWindDirection": sample["relativeWindDirection"].(string),
-        "swellHeight":           interpolate(sample["swellHeight"].(float64), nextSample["swellHeight"].(float64), progress),
-        "swellDirection":        interpolateAngle(sample["swellDirection"].(float64), nextSample["swellDirection"].(float64), progress),
-        "temperature":           interpolate(sample["temperature"].(float64), nextSample["temperature"].(float64), progress),
-        "directionQuality":      interpolate(sample["directionQuality"].(float64), nextSample["directionQuality"].(float64), progress),
-        "humidity":              interpolate(sample["humidity"].(float64), nextSample["humidity"].(float64), progress),
-        "surfSize":              interpolate(sample["surfSize"].(float64), nextSample["surfSize"].(float64), progress),
-        "windDirection":         interpolateAngle(sample["windDirection"].(float64), nextSample["windDirection"].(float64), progress),
-        "windSpeed":             interpolate(sample["windSpeed"].(float64), nextSample["windSpeed"].(float64), progress),
-        "dateForecastedFor":     dateForecastedFor,
-    }
+func buildInterpolatedDataMap(
+	sample, nextSample map[string]interface{},
+	progress float64,
+	dateForecastedFor string,
+) map[string]interface{} {
+	samplePeriod := sample["swellPeriod"].(float64)
+	nextPeriod := nextSample["swellPeriod"].(float64)
+	sampleWaterTemp := sample["waterTemperature"].(float64)
+	nextWaterTemp := nextSample["waterTemperature"].(float64)
+	samplePressure := sample["pressure"].(float64)
+	nextPressure := nextSample["pressure"].(float64)
+	sampleWaveEnergy := sample["waveEnergy"].(float64)
+	nextWaveEnergy := nextSample["waveEnergy"].(float64)
+	samplePrecip := sample["precipitation"].(float64)
+	nextPrecip := nextSample["precipitation"].(float64)
+	sampleSwellHeight := sample["swellHeight"].(float64)
+	nextSwellHeight := nextSample["swellHeight"].(float64)
+	sampleSwellDir := sample["swellDirection"].(float64)
+	nextSwellDir := nextSample["swellDirection"].(float64)
+	sampleTemp := sample["temperature"].(float64)
+	nextTemp := nextSample["temperature"].(float64)
+	sampleDirQuality := sample["directionQuality"].(float64)
+	nextDirQuality := nextSample["directionQuality"].(float64)
+	sampleHumidity := sample["humidity"].(float64)
+	nextHumidity := nextSample["humidity"].(float64)
+	sampleSurfSize := sample["surfSize"].(float64)
+	nextSurfSize := nextSample["surfSize"].(float64)
+	sampleWindDir := sample["windDirection"].(float64)
+	nextWindDir := nextSample["windDirection"].(float64)
+	sampleWindSpeed := sample["windSpeed"].(float64)
+	nextWindSpeed := nextSample["windSpeed"].(float64)
+
+	return map[string]interface{}{
+		"swellPeriod":           interpolate(samplePeriod, nextPeriod, progress),
+		"waterTemperature":      interpolate(sampleWaterTemp, nextWaterTemp, progress),
+		"surfMessiness":         sample["surfMessiness"].(string),
+		"pressure":              interpolate(samplePressure, nextPressure, progress),
+		"waveEnergy":            interpolate(sampleWaveEnergy, nextWaveEnergy, progress),
+		"precipitation":         interpolate(samplePrecip, nextPrecip, progress),
+		"relativeWindDirection": sample["relativeWindDirection"].(string),
+		"swellHeight":           interpolate(sampleSwellHeight, nextSwellHeight, progress),
+		"swellDirection":        interpolateAngle(sampleSwellDir, nextSwellDir, progress),
+		"temperature":           interpolate(sampleTemp, nextTemp, progress),
+		"directionQuality":      interpolate(sampleDirQuality, nextDirQuality, progress),
+		"humidity":              interpolate(sampleHumidity, nextHumidity, progress),
+		"surfSize":              interpolate(sampleSurfSize, nextSurfSize, progress),
+		"windDirection":         interpolateAngle(sampleWindDir, nextWindDir, progress),
+		"windSpeed":             interpolate(sampleWindSpeed, nextWindSpeed, progress),
+		"dateForecastedFor":     dateForecastedFor,
+	}
 }
 
 // Helper function for linear interpolation
@@ -804,8 +837,9 @@ func seedBuoyMeasurements() error {
             return err
         }
         
-        log.Printf("Successfully seeded %d measurements for buoy %s (period range: %.1f-%.1fs, height range: %.1f-%.1fm)", 
-            len(buoyMeasurements), 
+        log.Printf(
+            "Successfully seeded %d measurements for buoy %s (period range: %.1f-%.1fs, height range: %.1f-%.1fm)",
+            len(buoyMeasurements),
             buoy["name"], 
             buoyMeasurements[0]["WavePeriod"].(float64),
             buoyMeasurements[len(buoyMeasurements)-1]["WavePeriod"].(float64),
@@ -1068,7 +1102,12 @@ func getBuoyDefinitions() []map[string]interface{} {
 }
 
 // generateBuoyMeasurements generates measurement data for a buoy.
-func generateBuoyMeasurements(buoy map[string]interface{}, measurementsTemplate []map[string]interface{}, now time.Time) ([]map[string]interface{}, error) {
+//nolint:unparam // Error return maintained for API consistency
+func generateBuoyMeasurements(
+	buoy map[string]interface{},
+	measurementsTemplate []map[string]interface{},
+	now time.Time,
+) ([]map[string]interface{}, error) {
     buoyMeasurements := make([]map[string]interface{}, len(measurementsTemplate))
     waveHeightFactor := buoy["wave_height_factor"].(float64)
     wavePeriodOffset := buoy["wave_period_offset"].(float64)
@@ -1101,7 +1140,10 @@ func cloneMeasurementTemplate(template map[string]interface{}) map[string]interf
 }
 
 // applyWaveVariations applies wave variations to a measurement.
-func applyWaveVariations(measurement map[string]interface{}, waveHeightFactor, wavePeriodOffset, maxHeightFactor float64) {
+func applyWaveVariations(
+	measurement map[string]interface{},
+	waveHeightFactor, wavePeriodOffset, maxHeightFactor float64,
+) {
     basePeriod := measurement["WavePeriod"].(float64)
     measurement["WavePeriod"] = math.Max(8.0, math.Min(16.0, basePeriod+wavePeriodOffset))
     

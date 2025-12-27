@@ -130,7 +130,8 @@ func (s *LocalS3Storage) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutpu
     metadataPath := filePath + ".metadata"
     // Validate metadata path is also within basePath (inherits safety from filePath validation above)
     if _, err := os.Stat(metadataPath); err == nil {
-        metadataContent, err := os.ReadFile(metadataPath) //nolint:gosec // Path validated (metadataPath derived from validated filePath)
+        //nolint:gosec // Path validated (metadataPath derived from validated filePath)
+        metadataContent, err := os.ReadFile(metadataPath)
         if err == nil {
             lines := bytes.Split(metadataContent, []byte("\n"))
             for _, line := range lines {

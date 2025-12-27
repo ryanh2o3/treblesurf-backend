@@ -77,7 +77,10 @@ func decodeBase64ImageData(base64String string) ([]byte, error) {
 }
 
 // addReportFieldsToItem adds report fields to a DynamoDB item.
-func addReportFieldsToItem(item map[string]*dynamodb.AttributeValue, surfSize, windAmount, windDirection, consistency, quality, messiness string) {
+func addReportFieldsToItem(
+	item map[string]*dynamodb.AttributeValue,
+	surfSize, windAmount, windDirection, consistency, quality, messiness string,
+) {
 	if surfSize != "" {
 		item["SurfSize"] = &dynamodb.AttributeValue{S: aws.String(surfSize)}
 	}
@@ -99,7 +102,12 @@ func addReportFieldsToItem(item map[string]*dynamodb.AttributeValue, surfSize, w
 }
 
 // buildWebSocketMessage builds a WebSocket message for broadcasting new reports.
-func buildWebSocketMessage(country, region, spot, userName, userUUID, imageKey, videoKey, mediaType string, iosValidated bool, reportFields map[string]string, currentTime time.Time) map[string]interface{} {
+func buildWebSocketMessage(
+	country, region, spot, userName, userUUID, imageKey, videoKey, mediaType string,
+	iosValidated bool,
+	reportFields map[string]string,
+	currentTime time.Time,
+) map[string]interface{} {
 	data := map[string]interface{}{
 		"country":      country,
 		"region":       region,
@@ -138,7 +146,12 @@ func (s *ReportService) broadcastReportMessage(country, region, spot string, mes
 }
 
 // createBaseReportItem creates the base DynamoDB item structure for a surf report.
-func (s *ReportService) createBaseReportItem(countryRegionSpot, dateReported, userEmail, userName, userUUID string, currentTime time.Time, mediaType string, iosValidated bool) map[string]*dynamodb.AttributeValue {
+func (s *ReportService) createBaseReportItem(
+	countryRegionSpot, dateReported, userEmail, userName, userUUID string,
+	currentTime time.Time,
+	mediaType string,
+	iosValidated bool,
+) map[string]*dynamodb.AttributeValue {
 	return map[string]*dynamodb.AttributeValue{
 		"country_region_spot": {S: aws.String(countryRegionSpot)},
 		"dateReported":        {S: aws.String(dateReported)},
@@ -167,8 +180,12 @@ func (s *ReportService) storeReport(item map[string]*dynamodb.AttributeValue) er
 	return nil
 }
 
-// processBase64Image processes base64 image data: extracts date from EXIF if needed, validates, and uploads to S3.
-func (s *ReportService) processBase64Image(imageDataStr, dateStr, countryRegionSpot, userUUID string, currentTime *time.Time) (string, error) {
+// processBase64Image processes base64 image data: extracts date from EXIF if needed,
+// validates, and uploads to S3.
+func (s *ReportService) processBase64Image(
+	imageDataStr, dateStr, countryRegionSpot, userUUID string,
+	currentTime *time.Time,
+) (string, error) {
 	if imageDataStr == "" {
 		return "", nil
 	}
@@ -221,8 +238,12 @@ func determineMediaType(hasImage, hasVideo bool) string {
 	}
 }
 
-// processS3ImageForReport processes an S3 image key: retrieves, validates with Rekognition, and adds to item.
-func (s *ReportService) processS3ImageForReport(imageKey string, item map[string]*dynamodb.AttributeValue) (string, error) {
+// processS3ImageForReport processes an S3 image key: retrieves, validates with
+// Rekognition, and adds to item.
+func (s *ReportService) processS3ImageForReport(
+	imageKey string,
+	item map[string]*dynamodb.AttributeValue,
+) (string, error) {
 	if imageKey == "" {
 		return "", nil
 	}
@@ -260,8 +281,12 @@ func (s *ReportService) storeReportWithCleanup(item map[string]*dynamodb.Attribu
 	return err
 }
 
-// processIOSMediaKeys processes iOS validated image and video keys (trusts client-side validation).
-func (s *ReportService) processIOSMediaKeys(imageKey, videoKey string, item map[string]*dynamodb.AttributeValue) (string, string) {
+// processIOSMediaKeys processes iOS validated image and video keys (trusts
+// client-side validation).
+func (s *ReportService) processIOSMediaKeys(
+	imageKey, videoKey string,
+	item map[string]*dynamodb.AttributeValue,
+) (string, string) {
 	var s3KeyReport, videoKeyReport string
 
 	if imageKey != "" {
@@ -280,7 +305,11 @@ func (s *ReportService) processIOSMediaKeys(imageKey, videoKey string, item map[
 }
 
 // buildSpotReportsQueryInput builds a DynamoDB query input for retrieving spot reports.
-func (s *ReportService) buildSpotReportsQueryInput(countryRegionSpot string, limit int, lastEvaluatedKey map[string]*dynamodb.AttributeValue) *dynamodb.QueryInput {
+func (s *ReportService) buildSpotReportsQueryInput(
+	countryRegionSpot string,
+	limit int,
+	lastEvaluatedKey map[string]*dynamodb.AttributeValue,
+) *dynamodb.QueryInput {
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String("SurfReports"),
 		KeyConditionExpression: aws.String("country_region_spot = :crs"),
@@ -301,7 +330,9 @@ func (s *ReportService) buildSpotReportsQueryInput(countryRegionSpot string, lim
 }
 
 // unmarshalSpotReports unmarshals DynamoDB items into report maps.
-func (s *ReportService) unmarshalSpotReports(items []map[string]*dynamodb.AttributeValue) ([]map[string]interface{}, error) {
+func (s *ReportService) unmarshalSpotReports(
+	items []map[string]*dynamodb.AttributeValue,
+) ([]map[string]interface{}, error) {
 	var reports []map[string]interface{}
 	err := dynamodbattribute.UnmarshalListOfMaps(items, &reports)
 	if err != nil {
@@ -360,6 +391,7 @@ func (s *ReportService) queryCurrentForecast(spotID string) (*dynamodb.QueryOutp
 }
 
 // queryHistoricalForecast queries for forecast data looking backwards up to 24 hours.
+//nolint:unparam // Error return maintained for API consistency
 func (s *ReportService) queryHistoricalForecast(spotID string) (*dynamodb.QueryOutput, error) {
 	currentEpoch := time.Now().Unix()
 

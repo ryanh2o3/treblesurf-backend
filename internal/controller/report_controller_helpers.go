@@ -449,3 +449,91 @@ func handleMediaDeletionError(c *gin.Context, err error) {
 	})
 }
 
+// handleReportSubmissionCommon handles common logic for report submission handlers.
+func handleReportSubmissionCommon(
+	c *gin.Context,
+	country, region, spot string,
+	validateFunc func(*gin.Context) bool,
+) (string, *model.User, bool) {
+	email, ok := getAuthenticatedUserEmail(c)
+	if !ok {
+		return "", nil, false
+	}
+
+	log.Printf("User email from context: %s", email)
+	user, err := getUserByEmail(email)
+	if err != nil {
+		log.Printf("Failed to fetch user information: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "User information error",
+			"message": "Unable to retrieve your user profile",
+			"help":    "Please try again in a moment. If the problem persists, contact support.",
+		})
+		return "", nil, false
+	}
+
+	if !validateReportLocation(c, country, region, spot) {
+		return "", nil, false
+	}
+
+	if !validateFunc(c) {
+		return "", nil, false
+	}
+
+	return email, user, true
+}
+
+// handleReportSubmissionSuccess handles the success response for report submissions.
+func handleReportSubmissionSuccess(c *gin.Context, email, reportType string) {
+	log.Printf("%s submitted successfully for user: %s", reportType, email)
+	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
+}
+
+// validateUploadURLParams validates upload URL generation parameters.
+func validateUploadURLParams(c *gin.Context) (country, region, spot, email string, ok bool) {
+	country = c.Query("country")
+	region = c.Query("region")
+	spot = c.Query("spot")
+
+	if country == "" || region == "" || spot == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Missing required parameters",
+			"message": "Country, region, and spot parameters are required",
+			"help":    "Please provide all required location parameters in your request.",
+		})
+		return "", "", "", "", false
+	}
+
+	emailVal, exists := c.Get("email")
+	if !exists {
+		log.Printf("No email found in context - authentication issue")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "Authentication required",
+			"message": "You must be logged in to generate an upload URL",
+			"help":    "Please log in and try again.",
+		})
+		return "", "", "", "", false
+	}
+
+	email = emailVal.(string)
+	return country, region, spot, email, true
+}
+
+// handleUploadURLError handles errors from upload URL generation.
+func handleUploadURLError(c *gin.Context, mediaType string, err error) {
+	log.Printf("Failed to generate %s upload URL: %v", mediaType, err)
+
+	if strings.Contains(err.Error(), "failed to generate presigned URL") {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to generate upload URL",
+			"message": fmt.Sprintf("Unable to create a secure upload link for your %s", mediaType),
+			"help":    "Please try again in a moment. If the problem persists, contact support.",
+		})
+		return
+	}
+
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error": fmt.Sprintf("Failed to generate %s upload URL", mediaType),
+	})
+}
+

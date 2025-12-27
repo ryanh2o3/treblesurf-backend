@@ -27,7 +27,10 @@ func (s *ForecastService) GetSpotForecast(
 }
 
 // GetListSpotsForecast returns forecast data for multiple spots.
-func (s *ForecastService) GetListSpotsForecast(spots []string, regionName, countryName string) ([][]map[string]interface{}, error) {
+func (s *ForecastService) GetListSpotsForecast(
+	spots []string,
+	regionName, countryName string,
+) ([][]map[string]interface{}, error) {
 	var spotIDs []string
 	for _, spot := range spots {
 		spotIDs = append(spotIDs, fmt.Sprintf("%s#%s#%s", countryName, regionName, spot))
@@ -73,7 +76,9 @@ func (s *ForecastService) GetRegionForecast(regionName, countryName string) ([]m
 }
 
 // GetCurrentWeather returns current weather conditions for a location.
-func (s *ForecastService) GetCurrentWeather(spotName, regionName, countryName string) ([]map[string]interface{}, error) {
+func (s *ForecastService) GetCurrentWeather(
+	spotName, regionName, countryName string,
+) ([]map[string]interface{}, error) {
 	return s.queryForecastByDateTime(spotName, regionName, countryName, aws.Int64(1))
 }
 

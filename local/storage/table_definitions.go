@@ -23,7 +23,7 @@ func getAllTableDefinitions() []tableDefinition {
 		newUsersTable(),
 		newSpotSnapshotsTable(),
 		newStreamRequestsTable(),
-		newApiKeysTable(),
+		newAPIKeysTable(),
 	}
 }
 
@@ -211,8 +211,8 @@ func newStreamRequestsTable() tableDefinition {
 	}
 }
 
-// newApiKeysTable returns the definition for the ApiKeys table.
-func newApiKeysTable() tableDefinition {
+// newAPIKeysTable returns the definition for the ApiKeys table.
+func newAPIKeysTable() tableDefinition {
 	return tableDefinition{
 		name: "ApiKeys",
 		keySchema: []*dynamodb.KeySchemaElement{

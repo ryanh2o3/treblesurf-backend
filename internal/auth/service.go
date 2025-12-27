@@ -523,7 +523,10 @@ func GoogleAuthHandler(c *gin.Context) {
 }
 
 // validateAndExtractGoogleClaims validates the ID token and extracts user claims.
-func validateAndExtractGoogleClaims(c *gin.Context, idToken string) (*idtoken.Payload, string, string, string, string, string) {
+func validateAndExtractGoogleClaims(
+	c *gin.Context,
+	idToken string,
+) (*idtoken.Payload, string, string, string, string, string) {
 	clientIDs, err := getGoogleClientIDs()
 	if err != nil || clientIDs == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Google OAuth not configured"})

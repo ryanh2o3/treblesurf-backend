@@ -28,7 +28,11 @@ func (m *MockRekognition) DetectLabels(input *rekognition.DetectLabelsInput) (*r
     
     // Check that either Bytes or S3Object is provided in Image
     if input.Image.Bytes == nil && input.Image.S3Object == nil {
-        return nil, awserr.New("InvalidParameterException", "Either Image.Bytes or Image.S3Object must be provided", errors.New("invalid image format"))
+        return nil, awserr.New(
+            "InvalidParameterException",
+            "Either Image.Bytes or Image.S3Object must be provided",
+            errors.New("invalid image format"),
+        )
     }
     confidence := float64(99.5)
     
@@ -48,7 +52,9 @@ func (m *MockRekognition) DetectLabels(input *rekognition.DetectLabelsInput) (*r
     }
     
     // Add a wave label if the image has specific patterns (simplified check)
-    if input.Image.Bytes != nil && (bytes.Contains(input.Image.Bytes, []byte("wave")) || bytes.Contains(input.Image.Bytes, []byte("surf"))) {
+    if input.Image.Bytes != nil &&
+        (bytes.Contains(input.Image.Bytes, []byte("wave")) ||
+            bytes.Contains(input.Image.Bytes, []byte("surf"))) {
         labels = append(labels, &rekognition.Label{
             Name:       aws.String("Sea Waves"),
             Confidence: &confidence,

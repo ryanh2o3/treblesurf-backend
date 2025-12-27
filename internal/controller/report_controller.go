@@ -19,47 +19,47 @@ func handleImageError(c *gin.Context, err error, logPrefix string) {
 	log.Printf("%s: %v", logPrefix, err)
 
 	// Handle ImageValidationError type
-	var imageValidationErr *model.ImageValidationError
-	if errors.As(err, &imageValidationErr) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Image validation failed",
-			"message": imageValidationErr.Error(),
+		var imageValidationErr *model.ImageValidationError
+		if errors.As(err, &imageValidationErr) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Image validation failed",
+				"message": imageValidationErr.Error(),
 			"help": "Please ensure your image clearly shows the ocean, waves, beach, or coastline. " +
 				"The image should be clear and focused on surf conditions.",
-		})
-		return
-	}
-
-	// Handle specific error types
-	switch {
-	case errors.Is(err, model.ErrImageNotSurfRelated):
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Image not surf-related",
-			"message": "The image does not appear to show surf conditions",
-			"help": "Please upload a photo that clearly shows the ocean, waves, beach, or coastline.",
-		})
-	case errors.Is(err, model.ErrInvalidImageData):
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid image data",
-			"message": "The image data provided is not in a valid format",
+			})
+			return
+		}
+		
+		// Handle specific error types
+		switch {
+		case errors.Is(err, model.ErrImageNotSurfRelated):
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Image not surf-related",
+				"message": "The image does not appear to show surf conditions",
+				"help": "Please upload a photo that clearly shows the ocean, waves, beach, or coastline.",
+			})
+		case errors.Is(err, model.ErrInvalidImageData):
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid image data",
+				"message": "The image data provided is not in a valid format",
 			"help": "Please ensure you're uploading a valid image file (JPEG, PNG, etc.) " +
 				"and that the image data is properly encoded.",
-		})
-	case errors.Is(err, model.ErrImageUploadFailed):
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Image upload failed",
-			"message": "Failed to upload the image to storage",
-			"help": "Please try again in a moment. If the problem persists, contact support.",
-		})
-	case errors.Is(err, model.ErrImageRetrievalFailed):
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Image not found",
-			"message": "The uploaded image could not be found or accessed",
-			"help": "Please try uploading your image again. If the problem persists, contact support.",
-		})
-	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit report"})
-	}
+			})
+		case errors.Is(err, model.ErrImageUploadFailed):
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Image upload failed",
+				"message": "Failed to upload the image to storage",
+				"help": "Please try again in a moment. If the problem persists, contact support.",
+			})
+		case errors.Is(err, model.ErrImageRetrievalFailed):
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Image not found",
+				"message": "The uploaded image could not be found or accessed",
+				"help": "Please try uploading your image again. If the problem persists, contact support.",
+			})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit report"})
+		}
 }
 
 // SubmitCurrentSurfReport handles surf report submission
@@ -76,28 +76,11 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 	log.Printf("Report data received: Country=%s, Region=%s, Spot=%s, SurfSize=%s",
 		report.Country, report.Region, report.Spot, report.SurfSize)
 
-	if !validateReportLocation(c, report.Country, report.Region, report.Spot) {
-		return
-	}
-
-	if !validateReportFields(c, &report) {
-		return
-	}
-
-	email, ok := getAuthenticatedUserEmail(c)
+	email, user, ok := handleReportSubmissionCommon(
+		c, report.Country, report.Region, report.Spot,
+		func(ctx *gin.Context) bool { return validateReportFields(ctx, &report) },
+	)
 	if !ok {
-		return
-	}
-
-	log.Printf("User email from context: %s", email)
-	user, err := getUserByEmail(email)
-	if err != nil {
-		log.Printf("Failed to fetch user information: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "User information error",
-			"message": "Unable to retrieve your user profile",
-			"help":    "Please try again in a moment. If the problem persists, contact support.",
-		})
 		return
 	}
 
@@ -106,8 +89,7 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Report submitted successfully for user: %s", email)
-	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
+	handleReportSubmissionSuccess(c, email, "Report")
 }
 
 // SubmitSurfReportWithS3Image handles surf report submission with pre-uploaded S3 image
@@ -124,28 +106,11 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 	log.Printf("S3 Image Report data received: Country=%s, Region=%s, Spot=%s, ImageKey=%s",
 		report.Country, report.Region, report.Spot, report.ImageKey)
 
-	if !validateReportLocation(c, report.Country, report.Region, report.Spot) {
-		return
-	}
-
-	if !validateS3ReportFields(c, &report) {
-		return
-	}
-
-	email, ok := getAuthenticatedUserEmail(c)
+	email, user, ok := handleReportSubmissionCommon(
+		c, report.Country, report.Region, report.Spot,
+		func(ctx *gin.Context) bool { return validateS3ReportFields(ctx, &report) },
+	)
 	if !ok {
-		return
-	}
-
-	log.Printf("User email from context: %s", email)
-	user, err := getUserByEmail(email)
-	if err != nil {
-		log.Printf("Failed to fetch user information: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "User information error",
-			"message": "Unable to retrieve your user profile",
-			"help":    "Please try again in a moment. If the problem persists, contact support.",
-		})
 		return
 	}
 
@@ -154,62 +119,28 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 		return
 	}
 
-	log.Printf("S3 Image Report submitted successfully for user: %s", email)
-	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
+	handleReportSubmissionSuccess(c, email, "S3 Image Report")
 }
 
 // GenerateImageUploadURL generates a presigned URL for uploading an image to S3
 func GenerateImageUploadURL(c *gin.Context) {
 	log.Printf("=== Generate Image Upload URL Request ===")
 
-	// Get query parameters
-	country := c.Query("country")
-	region := c.Query("region")
-	spot := c.Query("spot")
-
-	if country == "" || region == "" || spot == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing required parameters",
-			"message": "Country, region, and spot parameters are required",
-			"help": "Please provide all required location parameters in your request.",
-		})
-		return
-	}
-
-	email, exists := c.Get("email")
-	if !exists {
-		log.Printf("No email found in context - authentication issue")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-			"message": "You must be logged in to generate an upload URL",
-			"help": "Please log in and try again.",
-		})
+	country, region, spot, email, ok := validateUploadURLParams(c)
+	if !ok {
 		return
 	}
 
 	log.Printf("Generating upload URL for: Country=%s, Region=%s, Spot=%s, User=%s",
-		country, region, spot, email.(string))
+		country, region, spot, email)
 
-	// Generate the presigned URL
-	response, err := ReportService.GenerateImageUploadURL(country, region, spot, email.(string))
+	response, err := ReportService.GenerateImageUploadURL(country, region, spot, email)
 	if err != nil {
-		log.Printf("Failed to generate upload URL: %v", err)
-		
-		// Provide more helpful error messages for common failures
-		if strings.Contains(err.Error(), "failed to generate presigned URL") {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to generate upload URL",
-				"message": "Unable to create a secure upload link for your image",
-				"help": "Please try again in a moment. If the problem persists, contact support.",
-			})
+		handleUploadURLError(c, "image", err)
 			return
 		}
 		
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate upload URL"})
-		return
-	}
-
-	log.Printf("Upload URL generated successfully for user: %s", email.(string))
+	log.Printf("Upload URL generated successfully for user: %s", email)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -436,54 +367,21 @@ func GetReportImage(c *gin.Context) {
 func GenerateVideoUploadURL(c *gin.Context) {
 	log.Printf("=== Generate Video Upload URL Request ===")
 
-	// Get query parameters
-	country := c.Query("country")
-	region := c.Query("region")
-	spot := c.Query("spot")
-
-	if country == "" || region == "" || spot == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing required parameters",
-			"message": "Country, region, and spot parameters are required",
-			"help": "Please provide all required location parameters in your request.",
-		})
-		return
-	}
-
-	email, exists := c.Get("email")
-	if !exists {
-		log.Printf("No email found in context - authentication issue")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-			"message": "You must be logged in to generate an upload URL",
-			"help": "Please log in and try again.",
-		})
+	country, region, spot, email, ok := validateUploadURLParams(c)
+	if !ok {
 		return
 	}
 
 	log.Printf("Generating video upload URL for: Country=%s, Region=%s, Spot=%s, User=%s",
-		country, region, spot, email.(string))
+		country, region, spot, email)
 
-	// Generate the presigned URL
-	response, err := ReportService.GenerateVideoUploadURL(country, region, spot, email.(string))
+	response, err := ReportService.GenerateVideoUploadURL(country, region, spot, email)
 	if err != nil {
-		log.Printf("Failed to generate video upload URL: %v", err)
-		
-		// Provide more helpful error messages for common failures
-		if strings.Contains(err.Error(), "failed to generate presigned URL") {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to generate upload URL",
-				"message": "Unable to create a secure upload link for your video",
-				"help": "Please try again in a moment. If the problem persists, contact support.",
-			})
+		handleUploadURLError(c, "video", err)
 			return
 		}
 		
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate video upload URL"})
-		return
-	}
-
-	log.Printf("Video upload URL generated successfully for user: %s", email.(string))
+	log.Printf("Video upload URL generated successfully for user: %s", email)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -552,9 +450,9 @@ func GenerateVideoViewURL(c *gin.Context) {
 	response, err := ReportService.GenerateVideoViewURL(videoKey, email)
 	if err != nil {
 		handleVideoViewURLError(c, err)
-		return
-	}
-
+			return
+		}
+		
 	log.Printf("Video view URL generated successfully for user: %s", email)
 	c.JSON(http.StatusOK, response)
 }

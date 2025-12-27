@@ -11,6 +11,7 @@ import (
 )
 
 // AuthMiddleware returns a Gin middleware function that validates user sessions.
+//nolint:revive // Name stuttering is acceptable for clarity
 func AuthMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")

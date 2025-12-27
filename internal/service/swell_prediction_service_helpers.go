@@ -40,7 +40,12 @@ func buildFallbackPredictionQuery(spotID string, startTime time.Time) *dynamodb.
 }
 
 // findClosestPrediction finds the prediction closest to the current time.
-func findClosestPrediction(items []map[string]*dynamodb.AttributeValue, currentTimestamp int64, spotID string) (map[string]interface{}, error) {
+//nolint:unparam // Error return maintained for API consistency
+func findClosestPrediction(
+	items []map[string]*dynamodb.AttributeValue,
+	currentTimestamp int64,
+	_ string,
+) (map[string]interface{}, error) {
 	var closestPrediction map[string]interface{}
 	var closestTimeDiff int64 = 999999999999
 	validItems := 0

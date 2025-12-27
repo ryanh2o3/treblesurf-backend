@@ -1,3 +1,4 @@
+//nolint:revive // Package name 'api' is meaningful in context
 package api
 
 import (
@@ -103,7 +104,9 @@ func AdminMiddleware() gin.HandlerFunc {
     }
 }
 
-// APIKeyAuthMiddleware returns a Gin middleware function that validates API key authentication with the specified scope.
+// APIKeyAuthMiddleware returns a Gin middleware function that validates API key
+// authentication with the specified scope.
+//nolint:revive // Name stuttering is acceptable for clarity
 func APIKeyAuthMiddleware(requiredScope string) gin.HandlerFunc {
     return func(c *gin.Context) {
         authHeader := c.GetHeader("Authorization")

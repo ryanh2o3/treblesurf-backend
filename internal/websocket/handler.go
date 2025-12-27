@@ -13,6 +13,7 @@ import (
 )
 
 // WebSocketHandler handles WebSocket events from API Gateway.
+//nolint:revive // Name stuttering is acceptable for clarity
 type WebSocketHandler struct {
 	websocketService *service.WebSocketService
 }

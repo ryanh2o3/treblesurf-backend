@@ -30,7 +30,13 @@ type ReportService struct {
 }
 
 // NewReportService creates a new report service instance.
-func NewReportService(dbStorage storage.DynamoDBStorage, s3Storage storage.S3Storage, rekognitionClient *rekognition.Rekognition, bucketName string, userService *UserService) *ReportService {
+func NewReportService(
+	dbStorage storage.DynamoDBStorage,
+	s3Storage storage.S3Storage,
+	rekognitionClient *rekognition.Rekognition,
+	bucketName string,
+	userService *UserService,
+) *ReportService {
 	return &ReportService{
 		dbStorage:         dbStorage,
 		s3Storage:         s3Storage,
@@ -57,8 +63,13 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 	}
 
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
-	item := s.createBaseReportItem(countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false)
-	addReportFieldsToItem(item, report.SurfSize, report.WindAmount, report.WindDirection, report.Consistency, report.Quality, report.Messiness)
+	item := s.createBaseReportItem(
+		countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false,
+	)
+	addReportFieldsToItem(
+		item, report.SurfSize, report.WindAmount, report.WindDirection,
+		report.Consistency, report.Quality, report.Messiness,
+	)
 
 	if s3KeyReport != "" {
 		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(s3KeyReport)}
@@ -76,14 +87,21 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 		"messiness":     report.Messiness,
 		"consistency":   report.Consistency,
 	}
-	message := buildWebSocketMessage(report.Country, report.Region, report.Spot, userName, user.UUID, s3KeyReport, "", "image", false, reportFields, currentTime)
+	message := buildWebSocketMessage(
+		report.Country, report.Region, report.Spot, userName, user.UUID,
+		s3KeyReport, "", "image", false, reportFields, currentTime,
+	)
 	s.broadcastReportMessage(report.Country, report.Region, report.Spot, message)
 
 	return nil
 }
 
-// SubmitSurfReportWithS3Image submits a new surf report with a pre-uploaded S3 image
-func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Image, userEmail string, userName string) error {
+// SubmitSurfReportWithS3Image submits a new surf report with a pre-uploaded S3 image.
+func (s *ReportService) SubmitSurfReportWithS3Image(
+	report *model.ReportWithS3Image,
+	userEmail string,
+	userName string,
+) error {
 	user, err := s.getUserAndValidate(userEmail)
 	if err != nil {
 		return err
@@ -93,8 +111,13 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
 
-	item := s.createBaseReportItem(countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false)
-	addReportFieldsToItem(item, report.SurfSize, report.WindAmount, report.WindDirection, report.Consistency, report.Quality, report.Messiness)
+	item := s.createBaseReportItem(
+		countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false,
+	)
+	addReportFieldsToItem(
+		item, report.SurfSize, report.WindAmount, report.WindDirection,
+		report.Consistency, report.Quality, report.Messiness,
+	)
 
 	s3KeyReport, err := s.processS3ImageForReport(report.ImageKey, item)
 	if err != nil {
@@ -113,7 +136,10 @@ func (s *ReportService) SubmitSurfReportWithS3Image(report *model.ReportWithS3Im
 		"messiness":     report.Messiness,
 		"consistency":   report.Consistency,
 	}
-	message := buildWebSocketMessage(report.Country, report.Region, report.Spot, userName, user.UUID, s3KeyReport, "", "image", false, reportFields, currentTime)
+	message := buildWebSocketMessage(
+		report.Country, report.Region, report.Spot, userName, user.UUID,
+		s3KeyReport, "", "image", false, reportFields, currentTime,
+	)
 	s.broadcastReportMessage(report.Country, report.Region, report.Spot, message)
 
 	return nil
@@ -229,10 +255,14 @@ func (s *ReportService) GetTodaysSurfReports(
 	return s.GetSpotSurfReports(countryName, regionName, spotName, 1, nil)
 }
 
-// GetSpotSurfReports retrieves surf reports for a specific spot with pagination support
-// limit: maximum number of reports to return (0 for all)
-// lastEvaluatedKey: for pagination, provide the last key from previous query
-func (s *ReportService) GetSpotSurfReports(countryName, regionName, spotName string, limit int, lastEvaluatedKey map[string]*dynamodb.AttributeValue) ([]map[string]interface{}, error) {
+// GetSpotSurfReports retrieves surf reports for a specific spot with pagination support.
+// limit: maximum number of reports to return (0 for all).
+// lastEvaluatedKey: for pagination, provide the last key from previous query.
+func (s *ReportService) GetSpotSurfReports(
+	countryName, regionName, spotName string,
+	limit int,
+	lastEvaluatedKey map[string]*dynamodb.AttributeValue,
+) ([]map[string]interface{}, error) {
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
 
 	input := s.buildSpotReportsQueryInput(countryRegionSpot, limit, lastEvaluatedKey)
@@ -327,8 +357,13 @@ func (s *ReportService) GenerateVideoViewURL(videoKey string, userEmail string) 
 	}, nil
 }
 
-// SubmitSurfReportWithIOSValidation submits a surf report that has been validated using iOS Vision framework
-func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWithIOSValidation, userEmail string, userName string) error {
+// SubmitSurfReportWithIOSValidation submits a surf report that has been validated
+// using iOS Vision framework.
+func (s *ReportService) SubmitSurfReportWithIOSValidation(
+	report *model.ReportWithIOSValidation,
+	userEmail string,
+	userName string,
+) error {
 	user, err := s.getUserAndValidate(userEmail)
 	if err != nil {
 		return err
@@ -339,8 +374,13 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWi
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
 	mediaType := determineMediaType(report.ImageKey != "", report.VideoKey != "")
 
-	item := s.createBaseReportItem(countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, mediaType, report.IOSValidated)
-	addReportFieldsToItem(item, report.SurfSize, report.WindAmount, report.WindDirection, report.Consistency, report.Quality, report.Messiness)
+	item := s.createBaseReportItem(
+		countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, mediaType, report.IOSValidated,
+	)
+	addReportFieldsToItem(
+		item, report.SurfSize, report.WindAmount, report.WindDirection,
+		report.Consistency, report.Quality, report.Messiness,
+	)
 
 	s3KeyReport, videoKeyReport := s.processIOSMediaKeys(report.ImageKey, report.VideoKey, item)
 
@@ -356,7 +396,10 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(report *model.ReportWi
 		"messiness":     report.Messiness,
 		"consistency":   report.Consistency,
 	}
-	message := buildWebSocketMessage(report.Country, report.Region, report.Spot, userName, user.UUID, s3KeyReport, videoKeyReport, mediaType, report.IOSValidated, reportFields, currentTime)
+	message := buildWebSocketMessage(
+		report.Country, report.Region, report.Spot, userName, user.UUID,
+		s3KeyReport, videoKeyReport, mediaType, report.IOSValidated, reportFields, currentTime,
+	)
 	s.broadcastReportMessage(report.Country, report.Region, report.Spot, message)
 
 	return nil
@@ -546,9 +589,10 @@ func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 	return true
 }
 
-// GetSurfReportsWithSimilarBuoyData retrieves surf reports that had similar buoy conditions
-// It takes buoy data parameters (waveHeight, waveDirection, period), a specific buoy name, and optionally spot parameters
-// Returns a list of surf reports with similarity scores
+// GetSurfReportsWithSimilarBuoyData retrieves surf reports that had similar buoy conditions.
+// It takes buoy data parameters (waveHeight, waveDirection, period), a specific buoy name,
+// and optionally spot parameters. Returns a list of surf reports with similarity scores.
+//nolint:gocyclo,funlen // Complex business logic with multiple conditional branches
 func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 	waveHeight float64,
 	waveDirection float64,
@@ -1181,8 +1225,10 @@ func (s *ReportService) getCurrentBuoyData(buoyName string) map[string]interface
 	return nil
 }
 
-// getCurrentWindConditions retrieves current wind conditions from forecast data for a spot
-func (s *ReportService) getCurrentWindConditions(countryName, regionName, spotName string) (windSpeed float64, windDirection float64, err error) {
+// getCurrentWindConditions retrieves current wind conditions from forecast data for a spot.
+func (s *ReportService) getCurrentWindConditions(
+	countryName, regionName, spotName string,
+) (windSpeed float64, windDirection float64, err error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	result, err := s.queryCurrentForecast(spotID)
 	if err != nil {
@@ -1285,6 +1331,7 @@ func (s *ReportService) calculateWindSimilarity(
 // GetSurfReportsWithMatchingConditions retrieves surf reports for a spot where:
 // 1. Buoy data at the report time (accounting for travel time) matches current buoy data from nearest buoys
 // 2. Wind conditions from forecast data at the report time are similar to current wind conditions
+//nolint:gocyclo,funlen // Complex business logic with multiple conditional branches
 func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	countryName string,
 	regionName string,

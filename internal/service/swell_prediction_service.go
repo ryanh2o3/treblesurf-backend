@@ -280,8 +280,11 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 	return predictions, nil
 }
 
-// GetClosestAIPredictionForSpot retrieves the closest AI prediction for a spot around the current time
-func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionName, countryName string) (map[string]interface{}, error) {
+// GetClosestAIPredictionForSpot retrieves the closest AI prediction for a spot
+// around the current time.
+func (s *SwellPredictionService) GetClosestAIPredictionForSpot(
+	spotName, regionName, countryName string,
+) (map[string]interface{}, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	now := time.Now().UTC()
 	startTime := now.Add(-12 * time.Hour)
@@ -294,7 +297,8 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(spotName, regionN
 
 	if len(result.Items) == 0 {
 		fallbackStartTime := now.Add(-7 * 24 * time.Hour)
-		fmt.Printf("No predictions found in time window, trying broader search from %s\n", fallbackStartTime.Format(time.RFC3339))
+		fmt.Printf("No predictions found in time window, trying broader search from %s\n",
+			fallbackStartTime.Format(time.RFC3339))
 
 		fallbackResult, err := s.db.Query(buildFallbackPredictionQuery(spotID, fallbackStartTime))
 		if err != nil {
