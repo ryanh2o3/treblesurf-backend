@@ -38,7 +38,7 @@ type ReportWithImage struct {
 	Consistency   string `json:"consistency"`
 	Quality       string `json:"quality"`
 	Messiness     string `json:"messiness"`
-	ImageData     string `json:"imageData"` // Base64 encoded image
+	ImageData     string `json:"imageData"`
 	Date          string `json:"date"`
 }
 
@@ -52,7 +52,7 @@ type ReportWithS3Image struct {
 	Consistency   string `json:"consistency"`
 	Quality       string `json:"quality"`
 	Messiness     string `json:"messiness"`
-	ImageKey      string `json:"imageKey"` // S3 key for pre-uploaded image
+	ImageKey      string `json:"imageKey"`
 	Date          string `json:"date"`
 }
 

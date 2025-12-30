@@ -16,17 +16,14 @@ type MockRekognition struct{}
 
 // DetectLabels always returns a successful result for local development
 func (m *MockRekognition) DetectLabels(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
-    // Always return a "surf-related" label in development mode
 	if input == nil {
         return nil, awserr.New("InvalidParameterException", "Input cannot be nil", errors.New("nil input"))
     }
     
-    // Check if Image is provided
     if input.Image == nil {
         return nil, awserr.New("InvalidParameterException", "Image is required", errors.New("missing image"))
     }
     
-    // Check that either Bytes or S3Object is provided in Image
     if input.Image.Bytes == nil && input.Image.S3Object == nil {
         return nil, awserr.New(
             "InvalidParameterException",
@@ -51,7 +48,6 @@ func (m *MockRekognition) DetectLabels(input *rekognition.DetectLabelsInput) (*r
         },
     }
     
-    // Add a wave label if the image has specific patterns (simplified check)
     if input.Image.Bytes != nil &&
         (bytes.Contains(input.Image.Bytes, []byte("wave")) ||
             bytes.Contains(input.Image.Bytes, []byte("surf"))) {
@@ -73,7 +69,6 @@ type MockKinesis struct{}
 
 // GetHLSStreamingSessionURL returns a fake URL for local development
 func (m *MockKinesis) GetHLSStreamingSessionURL(_ interface{}) (interface{}, error) {
-    // Return a mock streaming URL
     return struct {
         HLSStreamingSessionURL *string
     }{
@@ -86,7 +81,6 @@ type MockSTS struct{}
 
 // AssumeRole returns mock credentials for local development
 func (m *MockSTS) AssumeRole(_ interface{}) (interface{}, error) {
-    // Return mock credentials
     expiration := time.Now().Add(1 * time.Hour)
     
     return struct {
