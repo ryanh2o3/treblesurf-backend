@@ -132,7 +132,6 @@ func storeSnapshotMetadata(spotID, s3Key string, timestamp time.Time) error {
 	return nil
 }
 
-
 // GetLatestSnapshotHandler retrieves the latest snapshot for a spot
 func GetLatestSnapshotHandler(c *gin.Context) {
 	spotID := c.Query("spot_id")
@@ -143,13 +142,13 @@ func GetLatestSnapshotHandler(c *gin.Context) {
 
 	// Query DynamoDB for the latest snapshot using Query instead of GetItem
 	result, err := DB.Query(&dynamodb.QueryInput{
-		TableName: aws.String("SpotSnapshots"),
+		TableName:              aws.String("SpotSnapshots"),
 		KeyConditionExpression: aws.String("spot_id = :spotId"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":spotId": {S: aws.String(spotID)},
 		},
 		ScanIndexForward: aws.Bool(false), // Sort in descending order (newest first)
-		Limit:            aws.Int64(1),     // Get only the most recent item
+		Limit:            aws.Int64(1),    // Get only the most recent item
 	})
 
 	if err != nil {
@@ -193,8 +192,8 @@ func GetLatestSnapshotHandler(c *gin.Context) {
 
 // SpotSnapshot represents a spot snapshot
 type SpotSnapshot struct {
-	SpotID     string    `json:"spot_id"`
-	ImageKey   string    `json:"image_key"`
 	Timestamp  time.Time `json:"timestamp"`
 	UploadedAt time.Time `json:"uploaded_at"`
+	SpotID     string    `json:"spot_id"`
+	ImageKey   string    `json:"image_key"`
 }

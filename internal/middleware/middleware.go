@@ -4,6 +4,7 @@ package middleware
 import (
 	"net/http"
 	"strings"
+	"treblesurf-backend/internal/constants"
 
 	"github.com/gin-gonic/gin"
 )
@@ -36,7 +37,13 @@ func AdminMiddleware() gin.HandlerFunc {
 			return
 		}
 		
-		if !isAdminUser(email.(string)) {
+		emailStr, ok := email.(string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+			return
+		}
+		
+		if !isAdminUser(emailStr) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -81,7 +88,7 @@ func DevAuthMiddleware() gin.HandlerFunc {
 			"name":       "Test User",
 			"GivenName":  "Test",
 			"FamilyName": "User",
-			"Theme":      "dark",
+			"Theme":      constants.DefaultUserTheme,
 			"Picture":    "https://via.placeholder.com/150",
 		})
 		
@@ -100,7 +107,7 @@ func DevAdminAuthMiddleware() gin.HandlerFunc {
 			"name":       "Admin User",
 			"GivenName":  "Admin",
 			"FamilyName": "User",
-			"Theme":      "dark",
+			"Theme":      constants.DefaultUserTheme,
 			"Picture":    "https://via.placeholder.com/150",
 			"Role":       "admin",
 		})

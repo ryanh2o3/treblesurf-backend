@@ -84,7 +84,12 @@ func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 
 	// Sort the forecasts by country, region, and spot
 	sort.Slice(forecasts, func(i, j int) bool {
-		return forecasts[i]["country_region_spot"].(string) < forecasts[j]["country_region_spot"].(string)
+		spotI, okI := forecasts[i]["country_region_spot"].(string)
+		spotJ, okJ := forecasts[j]["country_region_spot"].(string)
+		if !okI || !okJ {
+			return false
+		}
+		return spotI < spotJ
 	})
 
 	ctx.JSON(http.StatusOK, forecasts)

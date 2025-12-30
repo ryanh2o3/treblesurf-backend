@@ -28,14 +28,14 @@ type SubscriptionRequest struct {
 }
 
 type WebSocketResponse struct {
-	Action string      `json:"action"`
 	Data   interface{} `json:"data"`
+	Action string      `json:"action"`
 }
 
 type SessionJSON struct {
+	CreatedAt  time.Time `json:"created_at,omitempty"`
+	LastActive time.Time `json:"last_active,omitempty"`
 	CSRF       string    `json:"csrf"`
 	UserAgent  string    `json:"user_agent,omitempty"`
 	IPAddress  string    `json:"ip_address,omitempty"`
-	CreatedAt  time.Time `json:"created_at,omitempty"`
-	LastActive time.Time `json:"last_active,omitempty"`
 }

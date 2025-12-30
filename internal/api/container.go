@@ -308,7 +308,12 @@ func (l *localDynamoDBWrapper) PutItem(input *dynamodb.PutItemInput) (*dynamodb.
 		return nil, err
 	}
 	
-	return req.Data.(*dynamodb.PutItemOutput), nil
+	output, ok := req.Data.(*dynamodb.PutItemOutput)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type from PutItem")
+	}
+	
+	return output, nil
 }
 
 func (l *localDynamoDBWrapper) UpdateItem(input *dynamodb.UpdateItemInput) (*dynamodb.UpdateItemOutput, error) {

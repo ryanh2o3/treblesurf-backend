@@ -129,7 +129,10 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(
 			continue
 		}
 		
-		spotID := prediction["spot_id"].(string)
+		spotID, ok := prediction["spot_id"].(string)
+		if !ok {
+			continue
+		}
 		
 		// Extract the data field and properly unmarshal it
 		if dataAttr, exists := item["data"]; exists {
@@ -244,7 +247,10 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 			continue
 		}
 		
-		spotID := prediction["spot_id"].(string)
+		spotID, ok := prediction["spot_id"].(string)
+		if !ok {
+			continue
+		}
 		
 		// Extract the data field and properly unmarshal it
 		if dataAttr, exists := item["data"]; exists {
@@ -291,9 +297,9 @@ func (s *SwellPredictionService) GetClosestAIPredictionForSpot(
 		fmt.Printf("No predictions found in time window, trying broader search from %s\n",
 			fallbackStartTime.Format(time.RFC3339))
 
-		fallbackResult, err := s.db.Query(buildFallbackPredictionQuery(spotID, fallbackStartTime))
-		if err != nil {
-			return nil, fmt.Errorf("failed to query fallback AI prediction: %w", err)
+		fallbackResult, queryErr := s.db.Query(buildFallbackPredictionQuery(spotID, fallbackStartTime))
+		if queryErr != nil {
+			return nil, fmt.Errorf("failed to query fallback AI prediction: %w", queryErr)
 		}
 
 		if len(fallbackResult.Items) == 0 {
