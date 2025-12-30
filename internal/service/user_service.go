@@ -8,17 +8,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
-// UserService provides user-related operations.
 type UserService struct {
 	db *dynamodb.DynamoDB
 }
 
-// NewUserService creates a new user service instance.
 func NewUserService(db *dynamodb.DynamoDB) *UserService {
 	return &UserService{db: db}
 }
 
-// GetUserByEmail retrieves a user by email
 func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String("Users"),
@@ -47,7 +44,6 @@ func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
 	return &user, nil
 }
 
-// GetUserByUUID retrieves a user by UUID
 func (s *UserService) GetUserByUUID(uuid string) (*model.User, error) {
 	// Since UUID is not the primary key, we need to scan the table
 	// In production, you might want to create a GSI on UUID
@@ -82,7 +78,6 @@ func (s *UserService) GetUserByUUID(uuid string) (*model.User, error) {
 	return &user, nil
 }
 
-// UpdateUserTheme updates a user's theme preference
 func (s *UserService) UpdateUserTheme(email, theme string) error {
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String("Users"),
@@ -103,7 +98,6 @@ func (s *UserService) UpdateUserTheme(email, theme string) error {
 	return err
 }
 
-// DeleteUser deletes a user account
 func (s *UserService) DeleteUser(email string) error {
 	input := &dynamodb.DeleteItemInput{
 		TableName: aws.String("Users"),

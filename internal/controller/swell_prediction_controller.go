@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SwellPredictionController provides HTTP handlers for swell prediction endpoints.
 type SwellPredictionController struct {
 	swellPredictionService *service.SwellPredictionService
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
-// DynamoDBStorage defines the interface for DynamoDB operations.
 type DynamoDBStorage interface {
 	Scan(input *dynamodb.ScanInput) (*dynamodb.ScanOutput, error)
 	Query(input *dynamodb.QueryInput) (*dynamodb.QueryOutput, error)
@@ -18,7 +17,6 @@ type DynamoDBStorage interface {
 	DeleteItem(input *dynamodb.DeleteItemInput) (*dynamodb.DeleteItemOutput, error)
 }
 
-// DynamoDBClient provides DynamoDB operations using the AWS SDK.
 type DynamoDBClient struct {
 	client *dynamodb.DynamoDB
 }

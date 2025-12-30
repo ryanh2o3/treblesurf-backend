@@ -4,17 +4,14 @@ import (
 	"time"
 )
 
-// TideService provides tide information operations.
 type TideService struct {
 	// Add any dependencies here if needed
 }
 
-// NewTideService creates a new tide service instance.
 func NewTideService() *TideService {
 	return &TideService{}
 }
 
-// GetCurrentTides returns current tide information for the specified location.
 func (s *TideService) GetCurrentTides(locationName string) []map[string]interface{} {
 	today := time.Now().Format("2006-01-02")
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
@@ -51,7 +48,6 @@ func (s *TideService) GetCurrentTides(locationName string) []map[string]interfac
 	return result
 }
 
-// GetBeforeAfterTides returns the previous and next tide information for the specified location.
 func (s *TideService) GetBeforeAfterTides(locationName string) (map[string]interface{}, map[string]interface{}) {
 	tides := s.GetCurrentTides(locationName)
 	now := time.Now()
@@ -107,7 +103,6 @@ func (s *TideService) GetBeforeAfterTides(locationName string) (map[string]inter
 	return prevTide, nextTide
 }
 
-// GetDayTides returns tide information for a specific day at the specified location.
 func (s *TideService) GetDayTides(locationName, startDay string) map[string]interface{} {
 	start, _ := time.Parse("2006-01-02", startDay)
 	end := start.AddDate(0, 0, 10)

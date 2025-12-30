@@ -11,7 +11,6 @@ import (
 // Note: Session handlers (TerminateSessionHandler, GetUserSessionsHandler, GetWebSocketTokenHandler)
 // are implemented in internal/auth/service.go and routed from there
 
-// SetUserTheme updates user theme preference
 func SetUserTheme(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {
@@ -46,7 +45,6 @@ func SetUserTheme(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Theme updated successfully"})
 }
 
-// DeleteMyAccount deletes user account
 func DeleteMyAccount(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {
@@ -82,7 +80,6 @@ func DeleteMyAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
 }
 
-// GetUserTheme retrieves user theme preference
 func GetUserTheme(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {

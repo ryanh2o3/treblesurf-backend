@@ -2,7 +2,6 @@ package model
 
 import "time"
 
-// Stream represents a streaming session
 type Stream struct {
 	ID              string    `json:"id" dynamodbav:"id"`
 	UserEmail      string    `json:"user_email" dynamodbav:"user_email"`
@@ -19,7 +18,6 @@ type Stream struct {
 	UpdatedAt      time.Time `json:"updated_at" dynamodbav:"updated_at"`
 }
 
-// StreamCredentials represents streaming credentials
 type StreamCredentials struct {
 	AccessKeyID     string `json:"access_key_id"`
 	SecretAccessKey string `json:"secret_access_key"`
@@ -28,7 +26,6 @@ type StreamCredentials struct {
 	StreamName      string `json:"stream_name"`
 }
 
-// Snapshot represents a snapshot taken during streaming
 type Snapshot struct {
 	ID         string    `json:"id" dynamodbav:"id"`
 	StreamID   string    `json:"stream_id" dynamodbav:"stream_id"`

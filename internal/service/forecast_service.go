@@ -9,24 +9,20 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
-// ForecastService provides forecast data operations.
 type ForecastService struct {
 	db *dynamodb.DynamoDB
 }
 
-// NewForecastService creates a new forecast service instance.
 func NewForecastService(db *dynamodb.DynamoDB) *ForecastService {
 	return &ForecastService{db: db}
 }
 
-// GetSpotForecast returns forecast data for a specific spot.
 func (s *ForecastService) GetSpotForecast(
 	spotName, regionName, countryName string,
 ) ([]map[string]interface{}, error) {
 	return s.queryForecastByDateTime(spotName, regionName, countryName, nil)
 }
 
-// GetListSpotsForecast returns forecast data for multiple spots.
 func (s *ForecastService) GetListSpotsForecast(
 	spots []string,
 	regionName, countryName string,
@@ -39,7 +35,6 @@ func (s *ForecastService) GetListSpotsForecast(
 	return s.queryMultipleSpotForecasts(spotIDs, aws.Int64(72))
 }
 
-// GetRegionForecast returns forecast data for all spots in a region.
 func (s *ForecastService) GetRegionForecast(regionName, countryName string) ([]map[string]interface{}, error) {
 	forecastDate := time.Now().Format("2006-01-02")
 
@@ -75,7 +70,6 @@ func (s *ForecastService) GetRegionForecast(regionName, countryName string) ([]m
 	return forecasts, nil
 }
 
-// GetCurrentWeather returns current weather conditions for a location.
 func (s *ForecastService) GetCurrentWeather(
 	spotName, regionName, countryName string,
 ) ([]map[string]interface{}, error) {

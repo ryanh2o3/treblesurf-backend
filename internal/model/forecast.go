@@ -2,7 +2,6 @@ package model
 
 import "time"
 
-// Forecast represents weather forecast data
 type Forecast struct {
 	Location      string    `json:"location" dynamodbav:"location"`
 	Country       string    `json:"country" dynamodbav:"country"`

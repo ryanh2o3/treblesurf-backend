@@ -11,13 +11,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ForecastController provides HTTP handlers for forecast-related endpoints.
 type ForecastController struct {
 	forecastService *service.ForecastService
 	tideService     *service.TideService
 }
 
-// NewForecastController creates a new forecast controller instance.
 func NewForecastController(
 	forecastService *service.ForecastService,
 	tideService *service.TideService,
@@ -28,7 +26,6 @@ func NewForecastController(
 	}
 }
 
-// GetSpotForecast returns forecast data for a specific spot.
 func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
 	spotName := ctx.Query("spot")
 	regionName := ctx.Query("region")
@@ -48,7 +45,6 @@ func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
 	ctx.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
 }
 
-// GetListSpotsForecast returns forecast data for multiple spots.
 func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
 	spotsStr := ctx.Query("spots")
 	spots := strings.Split(spotsStr, ",")
@@ -71,7 +67,6 @@ func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, forecasts)
 }
 
-// GetRegionForecast returns forecast data for all spots in a region.
 func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
@@ -95,7 +90,6 @@ func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, forecasts)
 }
 
-// GetCurrentWeather returns current weather conditions for a location.
 func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
 	spotName := ctx.Query("spot")
 	regionName := ctx.Query("region")
@@ -115,7 +109,6 @@ func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
 	ctx.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
 }
 
-// GetBeforeAfterTides returns previous and next tide information for a location.
 func (c *ForecastController) GetBeforeAfterTides(ctx *gin.Context) {
 	locationName := ctx.Query("locationName")
 
@@ -124,7 +117,6 @@ func (c *ForecastController) GetBeforeAfterTides(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"prevTide": prevTide, "nextTide": nextTide})
 }
 
-// GetDayTides returns tide information for a specific day at a location.
 func (c *ForecastController) GetDayTides(ctx *gin.Context) {
 	locationName := ctx.Query("locationName")
 	startDay := ctx.Param("startDay")

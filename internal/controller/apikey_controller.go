@@ -45,7 +45,7 @@ func CreateAPIKeyHandler(c *gin.Context) {
 		return
 	}
 
-	// Return the API key (this is the only time the client will see the full key)
+	// This is the only time the client will see the full key
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "API key created successfully",
 		"key": gin.H{

@@ -23,7 +23,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-// Container holds all the dependencies for the API (storage, services, controllers).
 type Container struct {
 	// Storage
 	DynamoDBStorage storagepkg.DynamoDBStorage
@@ -43,14 +42,12 @@ type Container struct {
 	SwellPredictionController *controller.SwellPredictionController
 }
 
-// containerConfig holds configuration needed for container initialization.
 type containerConfig struct {
 	region     string
 	bucketName string
 	isLocal    bool
 }
 
-// containerStorage holds initialized storage clients.
 type containerStorage struct {
 	dynamoDBClient   *dynamodb.DynamoDB
 	rekognitionClient *rekognition.Rekognition
@@ -58,7 +55,6 @@ type containerStorage struct {
 	s3Storage        storagepkg.S3Storage
 }
 
-// containerServices holds all service instances.
 type containerServices struct {
 	forecastService        *service.ForecastService
 	tideService            *service.TideService
@@ -70,13 +66,11 @@ type containerServices struct {
 	websocketService       *service.WebSocketService
 }
 
-// containerControllers holds all controller instances.
 type containerControllers struct {
 	forecastController        *controller.ForecastController
 	swellPredictionController *controller.SwellPredictionController
 }
 
-// NewContainer creates and initializes a new API container with all dependencies.
 func NewContainer() (*Container, error) {
 	cfg := loadContainerConfig()
 	
@@ -97,7 +91,6 @@ func NewContainer() (*Container, error) {
 	return buildContainer(storage, services, controllers), nil
 }
 
-// loadContainerConfig loads configuration from environment variables.
 func loadContainerConfig() containerConfig {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
@@ -118,7 +111,6 @@ func loadContainerConfig() containerConfig {
 	}
 }
 
-// initializeStorage initializes storage clients based on environment.
 func initializeStorage(cfg containerConfig) (*containerStorage, error) {
 	storage := &containerStorage{}
 	
@@ -129,7 +121,6 @@ func initializeStorage(cfg containerConfig) (*containerStorage, error) {
 	return initializeProductionStorage(storage, cfg.region)
 }
 
-// initializeLocalStorage initializes storage clients for local development.
 func initializeLocalStorage(storage *containerStorage) (*containerStorage, error) {
 	log.Println("Using local development storage clients")
 	
@@ -155,7 +146,6 @@ func initializeLocalStorage(storage *containerStorage) (*containerStorage, error
 	return storage, nil
 }
 
-// initializeProductionStorage initializes storage clients for production.
 func initializeProductionStorage(storage *containerStorage, region string) (*containerStorage, error) {
 	sess := session.Must(session.NewSession(&aws.Config{
 		Region: aws.String(region),
@@ -178,7 +168,6 @@ func initializeProductionStorage(storage *containerStorage, region string) (*con
 	return storage, nil
 }
 
-// initializeServices initializes all service instances.
 func initializeServices(storage *containerStorage, cfg containerConfig) (*containerServices, error) {
 	services := &containerServices{
 		forecastService:        service.NewForecastService(storage.dynamoDBClient),
@@ -206,7 +195,6 @@ func initializeServices(storage *containerStorage, cfg containerConfig) (*contai
 	return services, nil
 }
 
-// getJWTSecret retrieves or generates JWT secret for WebSocket service.
 func getJWTSecret(isLocal bool) (string, error) {
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
@@ -223,7 +211,6 @@ func getJWTSecret(isLocal bool) (string, error) {
 	return jwtSecret, nil
 }
 
-// initializeControllers initializes all controller instances.
 func initializeControllers(services *containerServices) *containerControllers {
 	return &containerControllers{
 		forecastController:        controller.NewForecastController(services.forecastService, services.tideService),
@@ -231,7 +218,6 @@ func initializeControllers(services *containerServices) *containerControllers {
 	}
 }
 
-// setupGlobalDependencies configures global dependencies and registries.
 func setupGlobalDependencies(storage *containerStorage, services *containerServices, cfg containerConfig) {
 	auth.InitJWTSecret()
 	auth.SetDynamoDB(storage.dynamoDBClient)
@@ -250,7 +236,6 @@ func setupGlobalDependencies(storage *containerStorage, services *containerServi
 	controller.SetWebSocketService(services.websocketService)
 }
 
-// getS3ClientForControllers gets the S3 client to use for controllers.
 func getS3ClientForControllers(cfg containerConfig) *s3.S3 {
 	if cfg.isLocal {
 		return getLocalS3Client()
@@ -262,7 +247,6 @@ func getS3ClientForControllers(cfg containerConfig) *s3.S3 {
 	return s3.New(sess)
 }
 
-// buildContainer constructs the final Container from its components.
 func buildContainer(
 	storage *containerStorage,
 	services *containerServices,
@@ -283,7 +267,6 @@ func buildContainer(
 	}
 }
 
-// Helper functions to access local storage clients
 func getLocalDynamoDB() *dynamodb.DynamoDB {
 	return localstorage.DB
 }
@@ -296,7 +279,6 @@ func getLocalRekognitionClient() *rekognition.Rekognition {
 	return localstorage.RekognitionClient
 }
 
-// Local storage wrappers that implement the storage interfaces
 type localDynamoDBWrapper struct {
 	client *dynamodb.DynamoDB
 }
@@ -318,7 +300,6 @@ func (l *localDynamoDBWrapper) PutItem(input *dynamodb.PutItemInput) (*dynamodb.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	
-	// Create a request with context
 	req, _ := l.client.PutItemRequest(input)
 	req.SetContext(ctx)
 	

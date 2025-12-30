@@ -2,7 +2,6 @@ package model
 
 import "time"
 
-// SurfReport represents a surf report submitted by a user
 type SurfReport struct {
 	ID              string    `json:"id" dynamodbav:"id"`
 	UserEmail      string    `json:"user_email" dynamodbav:"user_email"`
@@ -21,7 +20,6 @@ type SurfReport struct {
 	UpdatedAt      time.Time `json:"updated_at" dynamodbav:"updated_at"`
 }
 
-// ReportImage represents an image associated with a surf report
 type ReportImage struct {
 	Key         string    `json:"key" dynamodbav:"key"`
 	ReportID    string    `json:"report_id" dynamodbav:"report_id"`
@@ -30,7 +28,6 @@ type ReportImage struct {
 	UploadedAt  time.Time `json:"uploaded_at" dynamodbav:"uploaded_at"`
 }
 
-// ReportWithImage represents a surf report with image data
 type ReportWithImage struct {
 	Country       string `json:"country"`
 	Region        string `json:"region"`
@@ -45,7 +42,6 @@ type ReportWithImage struct {
 	Date 		string `json:"date"`
 }
 
-// ReportWithS3Image represents a surf report with a pre-uploaded S3 image key
 type ReportWithS3Image struct {
 	Country       string `json:"country"`
 	Region        string `json:"region"`
@@ -60,7 +56,6 @@ type ReportWithS3Image struct {
 	Date          string `json:"date"`
 }
 
-// ReportWithIOSValidation represents a surf report validated using iOS Vision framework
 type ReportWithIOSValidation struct {
 	Country       string `json:"country"`
 	Region        string `json:"region"`
@@ -77,27 +72,23 @@ type ReportWithIOSValidation struct {
 	Date          string `json:"date"`
 }
 
-// PresignedUploadResponse represents the response for generating a presigned upload URL
 type PresignedUploadResponse struct {
 	UploadURL string `json:"uploadUrl"`
 	ImageKey  string `json:"imageKey"`
 	ExpiresAt string `json:"expiresAt"`
 }
 
-// VideoUploadResponse represents the response for generating a video upload URL
 type VideoUploadResponse struct {
 	UploadURL string `json:"uploadUrl"`
 	VideoKey  string `json:"videoKey"`
 	ExpiresAt string `json:"expiresAt"`
 }
 
-// VideoResponse represents the response for retrieving a video
 type VideoResponse struct {
 	VideoData   string `json:"videoData"`
 	ContentType string `json:"contentType"`
 }
 
-// VideoViewURLResponse represents the response for generating a video view URL
 type VideoViewURLResponse struct {
 	ViewURL   string `json:"viewURL"`
 	ExpiresAt string `json:"expiresAt"`

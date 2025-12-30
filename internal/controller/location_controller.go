@@ -8,7 +8,6 @@ import (
 
 // This controller uses the shared service registry
 
-// GetRegions returns a list of regions for the specified country.
 func GetRegions(c *gin.Context) {
 	countryName := c.Query("country")
 	if countryName == "" {
@@ -25,7 +24,6 @@ func GetRegions(c *gin.Context) {
 	c.JSON(http.StatusOK, regions)
 }
 
-// GetSpots returns a list of spots for the specified country and region.
 func GetSpots(c *gin.Context) {
 	regionName := c.Query("region")
 	countryName := c.Query("country")
@@ -44,7 +42,6 @@ func GetSpots(c *gin.Context) {
 	c.JSON(http.StatusOK, spots)
 }
 
-// GetLocationInfo retrieves detailed information for a specific location.
 func GetLocationInfo(c *gin.Context) {
 	spotName := c.Query("spot")
 	regionName := c.Query("region")
@@ -64,7 +61,6 @@ func GetLocationInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, location)
 }
 
-// GetCoordinates retrieves latitude and longitude coordinates for a specific location.
 func GetCoordinates(c *gin.Context) {
 	spotName := c.Query("spot")
 	regionName := c.Query("region")

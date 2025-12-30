@@ -9,18 +9,15 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
-// SwellPredictionService provides swell prediction operations using AI forecast data.
 type SwellPredictionService struct {
 	db *dynamodb.DynamoDB
 }
 
-// NewSwellPredictionService creates a new swell prediction service instance.
 func NewSwellPredictionService(db *dynamodb.DynamoDB) *SwellPredictionService {
 	return &SwellPredictionService{db: db}
 }
 
 
-// GetSpotSwellPrediction retrieves swell predictions for a specific spot.
 func (s *SwellPredictionService) GetSpotSwellPrediction(
 	spotName, regionName, countryName string,
 ) ([]map[string]interface{}, error) {
@@ -78,7 +75,6 @@ func (s *SwellPredictionService) GetSpotSwellPrediction(
 	return predictions, nil
 }
 
-// GetListSpotsSwellPrediction retrieves swell predictions for multiple spots.
 func (s *SwellPredictionService) GetListSpotsSwellPrediction(
 	spots []string, regionName, countryName string,
 ) ([][]map[string]interface{}, error) {
@@ -95,7 +91,6 @@ func (s *SwellPredictionService) GetListSpotsSwellPrediction(
 	return allPredictions, nil
 }
 
-// GetRegionSwellPrediction retrieves swell predictions for all spots in a region.
 func (s *SwellPredictionService) GetRegionSwellPrediction(
 	regionName, countryName string,
 ) ([]map[string]interface{}, error) {
@@ -163,7 +158,6 @@ func (s *SwellPredictionService) GetRegionSwellPrediction(
 	return predictions, nil
 }
 
-// GetSpotSwellPredictionRange retrieves swell predictions for a spot within a time range.
 func (s *SwellPredictionService) GetSpotSwellPredictionRange(
 	spotName, regionName, countryName string,
 	startTime, endTime time.Time,
@@ -220,7 +214,6 @@ func (s *SwellPredictionService) GetSpotSwellPredictionRange(
 	return predictions, nil
 }
 
-// GetRecentSwellPredictions retrieves recent swell predictions from the specified number of hours ago.
 func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map[string]interface{}, error) {
 	cutoffTime := time.Now().Add(-time.Duration(hoursBack) * time.Hour)
 	cutoffTimestamp := fmt.Sprintf("%d", cutoffTime.Unix())
@@ -280,8 +273,6 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(hoursBack int) ([]map
 	return predictions, nil
 }
 
-// GetClosestAIPredictionForSpot retrieves the closest AI prediction for a spot
-// around the current time.
 func (s *SwellPredictionService) GetClosestAIPredictionForSpot(
 	spotName, regionName, countryName string,
 ) (map[string]interface{}, error) {

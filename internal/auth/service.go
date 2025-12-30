@@ -26,18 +26,15 @@ import (
 	"google.golang.org/api/idtoken"
 )
 
-// TokenClaims represents JWT token claims containing user email.
 type TokenClaims struct {
 	Email string `json:"email"`
 	jwt.RegisteredClaims
 }
 
-// TokenRequest represents a request to validate a Google ID token.
 type TokenRequest struct {
 	IDToken string `json:"id_token"`
 }
 
-// User represents user information for authentication.
 type User struct {
 	UUID       string `json:"uuid"`
 	Email      string `json:"email"`
@@ -50,7 +47,6 @@ type User struct {
 	Theme      string `json:"theme"`
 }
 
-// SessionJSON represents session data stored as JSON.
 type SessionJSON struct {
 	CSRF       string    `json:"csrf"`
 	UserAgent  string    `json:"user_agent"`
@@ -59,7 +55,6 @@ type SessionJSON struct {
 	LastActive time.Time `json:"last_active"`
 }
 
-// SessionInfo represents session information returned to clients.
 type SessionInfo struct {
 	SessionID  string    `json:"session_id"`
 	ExpiresAt  time.Time `json:"expires_at"`
@@ -75,7 +70,6 @@ type DynamoDBStore struct {
 	tableName string
 }
 
-// NewDynamoDBStore creates a new DynamoDB session store
 func NewDynamoDBStore(db *dynamodb.DynamoDB, tableName string) *DynamoDBStore {
 	return &DynamoDBStore{
 		db:        db,
@@ -83,7 +77,6 @@ func NewDynamoDBStore(db *dynamodb.DynamoDB, tableName string) *DynamoDBStore {
 	}
 }
 
-// SessionItem represents a session stored in DynamoDB
 type SessionItem struct {
 	SessionID string    `json:"session_id"`
 	UserID    string    `json:"user_id"` // Will store email as UserID
@@ -92,7 +85,6 @@ type SessionItem struct {
 	TTL       int64     `json:"ttl"`
 }
 
-// SaveUserSession saves a user session to DynamoDB
 func (s *DynamoDBStore) SaveUserSession(userSession *user.Session) error {
 	sessionItem := SessionItem{
 		SessionID: userSession.ID,
@@ -116,7 +108,6 @@ func (s *DynamoDBStore) SaveUserSession(userSession *user.Session) error {
 	return err
 }
 
-// DeleteUserSession deletes a session from DynamoDB
 func (s *DynamoDBStore) DeleteUserSession(sessionID string) error {
 	input := &dynamodb.DeleteItemInput{
 		TableName: aws.String(s.tableName),
@@ -131,7 +122,6 @@ func (s *DynamoDBStore) DeleteUserSession(sessionID string) error {
 	return err
 }
 
-// FetchValidUserSession fetches a valid session from DynamoDB
 func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, error) {
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String(s.tableName),
@@ -170,7 +160,6 @@ func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, 
 	}, nil
 }
 
-// EnableTTL enables TTL on the Sessions table
 func (s *DynamoDBStore) EnableTTL() error {
 	input := &dynamodb.UpdateTimeToLiveInput{
 		TableName: aws.String(s.tableName),
@@ -184,7 +173,6 @@ func (s *DynamoDBStore) EnableTTL() error {
 	return err
 }
 
-// GetSessionsByUserID retrieves all sessions for a specific user
 func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, error) {
 	// Create a query input that filters by UserID
 	input := &dynamodb.ScanInput{
@@ -230,7 +218,6 @@ func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, err
 	return sessions, nil
 }
 
-// EnsureSessionsTable ensures the Sessions table exists
 func (s *DynamoDBStore) EnsureSessionsTable() error {
 	// Check if table exists
 	tables, err := s.db.ListTables(&dynamodb.ListTablesInput{})
@@ -275,7 +262,6 @@ var db *dynamodb.DynamoDB
 var sessionService *sessions.Service
 var sessionStoreDB *DynamoDBStore
 
-// InitJWTSecret initializes the JWT secret
 func InitJWTSecret() {
 	secretKey := os.Getenv("JWT_SECRET")
 	if secretKey == "" {
@@ -284,12 +270,10 @@ func InitJWTSecret() {
 	jwtSecret = []byte(secretKey)
 }
 
-// SetDynamoDB sets the DynamoDB client for the auth service
 func SetDynamoDB(dynamoDB *dynamodb.DynamoDB) {
 	db = dynamoDB
 }
 
-// InitSessionService initializes the session service with DynamoDB store
 func InitSessionService() error {
 	if db == nil {
 		return fmt.Errorf("DynamoDB client not initialized")
@@ -422,7 +406,6 @@ func updateUserLastLogin(email string) error {
 	return err
 }
 
-// ensureUserHasUUID ensures a user has a UUID, generating one if it doesn't exist
 func ensureUserHasUUID(email string) error {
 	if db == nil {
 		return fmt.Errorf("DynamoDB client not initialized")
@@ -477,7 +460,6 @@ func ensureUserHasUUID(email string) error {
 	return nil
 }
 
-// GenerateCSRFToken creates a secure random token for CSRF protection
 func GenerateCSRFToken() (string, error) {
 	bytes := make([]byte, 32)
 	_, err := rand.Read(bytes)
@@ -498,7 +480,6 @@ func getClientIP(c *gin.Context) string {
 	return c.ClientIP()
 }
 
-// GoogleAuthHandler handles Google OAuth authentication requests.
 func GoogleAuthHandler(c *gin.Context) {
 	var req TokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -522,7 +503,6 @@ func GoogleAuthHandler(c *gin.Context) {
 	})
 }
 
-// validateAndExtractGoogleClaims validates the ID token and extracts user claims.
 func validateAndExtractGoogleClaims(
 	c *gin.Context,
 	idToken string,
@@ -550,7 +530,6 @@ func validateAndExtractGoogleClaims(
 	return payload, email, name, picture, familyName, givenName
 }
 
-// processGoogleAuthUser processes user creation/login and returns user and theme.
 func processGoogleAuthUser(email, name, picture, familyName, givenName string, c *gin.Context) (*User, string) {
 	existingUser, err := getUserByEmail(email)
 	if err != nil {
@@ -582,14 +561,12 @@ func processGoogleAuthUser(email, name, picture, familyName, givenName string, c
 	return finalUser, theme
 }
 
-// setupAuthSession sets up CSRF token, session, and auth cookie.
 func setupAuthSession(email string, c *gin.Context) {
 	csrfToken := setupCSRFToken(c)
 	createSession(email, csrfToken, c)
 	setAuthCookie(c)
 }
 
-// ValidateTokenHandler validates a JWT token and returns the user information.
 func ValidateTokenHandler(c *gin.Context) {
 	setCacheControlHeaders(c)
 
@@ -641,7 +618,6 @@ func ValidateTokenHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, buildValidateTokenResponse(user, "session"))
 }
 
-// LogoutHandler handles user logout requests.
 func LogoutHandler(c *gin.Context) {
 	// Clear auth cookie
 	c.SetCookie(
@@ -675,7 +651,6 @@ func LogoutHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
 
-// GetUserSessionsHandler returns a list of active sessions for the authenticated user.
 func GetUserSessionsHandler(c *gin.Context) {
 	// Get current user's email from the context
 	email, exists := c.Get("email")
@@ -736,7 +711,6 @@ func GetUserSessionsHandler(c *gin.Context) {
 	})
 }
 
-// TerminateSessionHandler terminates a specific user session.
 func TerminateSessionHandler(c *gin.Context) {
 	// Get current user's email from context
 	email, exists := c.Get("email")
@@ -791,7 +765,6 @@ func TerminateSessionHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Session terminated successfully"})
 }
 
-// GetWebSocketTokenHandler generates a JWT token for WebSocket authentication.
 func GetWebSocketTokenHandler(c *gin.Context) {
 	// Get current user's email from context
 	email, exists := c.Get("email")
@@ -816,7 +789,6 @@ func GetWebSocketTokenHandler(c *gin.Context) {
 	})
 }
 
-// CreateDevSession creates a development session for testing purposes
 func CreateDevSession(email string, c *gin.Context) error {
 	if sessionService == nil {
 		return fmt.Errorf("session service not initialized")
@@ -858,7 +830,6 @@ func CreateDevSession(email string, c *gin.Context) error {
 	return nil
 }
 
-// SessionMiddleware attaches user session to the context if present
 func SessionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userSession, err := sessionService.GetUserSession(c.Request)
