@@ -26,6 +26,7 @@ func NewWebSocketHandler(websocketService *service.WebSocketService) *WebSocketH
 }
 
 // HandleWebSocketEvent handles WebSocket events from API Gateway
+//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func (h *WebSocketHandler) HandleWebSocketEvent(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -43,6 +44,7 @@ func (h *WebSocketHandler) HandleWebSocketEvent(
 	}
 }
 
+//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func (h *WebSocketHandler) handleConnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -68,6 +70,7 @@ func (h *WebSocketHandler) handleConnect(
 	return successResponse("Connected"), nil
 }
 
+//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func (h *WebSocketHandler) handleDisconnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -85,6 +88,7 @@ func (h *WebSocketHandler) handleDisconnect(
 	}, nil
 }
 
+//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func (h *WebSocketHandler) handleDefault(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -114,6 +118,7 @@ func (h *WebSocketHandler) handleDefault(
 }
 
 // handleCustomRoute processes custom WebSocket messages
+//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func (h *WebSocketHandler) handleCustomRoute(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -144,6 +149,7 @@ func (h *WebSocketHandler) handleCustomRoute(
 }
 
 // handleSubscribeAction processes WebSocket subscription requests
+//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func (h *WebSocketHandler) handleSubscribeAction(
 	req events.APIGatewayWebsocketProxyRequest, data json.RawMessage,
 ) (events.APIGatewayProxyResponse, error) {
@@ -173,8 +179,8 @@ func (h *WebSocketHandler) handleSubscribeAction(
 	spotIdentifier := fmt.Sprintf("%s/%s/%s", subRequest.Country, subRequest.Region, subRequest.Spot)
 
 	// Store the subscription in DynamoDB
-	if err := h.websocketService.SaveSubscription(spotIdentifier, userID, connectionID); err != nil {
-		log.Printf("Failed to save subscription: %v", err)
+	if saveErr := h.websocketService.SaveSubscription(spotIdentifier, userID, connectionID); saveErr != nil {
+		log.Printf("Failed to save subscription: %v", saveErr)
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 			Body:       "Failed to subscribe",
@@ -182,8 +188,8 @@ func (h *WebSocketHandler) handleSubscribeAction(
 	}
 
 	// Update connection metadata with current spot
-	if err := h.websocketService.UpdateConnectionSpot(connectionID, spotIdentifier); err != nil {
-		log.Printf("Warning: Failed to update connection spot: %v", err)
+	if updateErr := h.websocketService.UpdateConnectionSpot(connectionID, spotIdentifier); updateErr != nil {
+		log.Printf("Warning: Failed to update connection spot: %v", updateErr)
 	}
 
 	// Send confirmation back to client
@@ -208,6 +214,7 @@ func (h *WebSocketHandler) handleSubscribeAction(
 }
 
 // handlePingAction responds to ping messages to keep the connection alive
+//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func (h *WebSocketHandler) handlePingAction(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {

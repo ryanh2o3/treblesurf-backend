@@ -47,7 +47,7 @@ func validateGoogleIDToken(idToken string, clientIDs map[string]bool) (*idtoken.
 }
 
 // extractUserClaims extracts user claims from a Google ID token payload.
-//nolint:unparam // Error return maintained for API consistency
+//nolint:unparam,gocritic // Error return maintained for API consistency; multiple return values needed for all claims
 func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyName, givenName string, err error) {
 	log.Printf("JWT claims available: %v", payload.Claims)
 
@@ -56,10 +56,18 @@ func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyNa
 		return "", "", "", "", "", nil // Will be handled by caller
 	}
 
-	name, _ = payload.Claims["name"].(string)
-	picture, _ = payload.Claims["picture"].(string)
-	familyName, _ = payload.Claims["family_name"].(string)
-	givenName, _ = payload.Claims["given_name"].(string)
+	if nameVal, ok := payload.Claims["name"].(string); ok {
+		name = nameVal
+	}
+	if pictureVal, ok := payload.Claims["picture"].(string); ok {
+		picture = pictureVal
+	}
+	if familyNameVal, ok := payload.Claims["family_name"].(string); ok {
+		familyName = familyNameVal
+	}
+	if givenNameVal, ok := payload.Claims["given_name"].(string); ok {
+		givenName = givenNameVal
+	}
 	// Note: Type assertions above are safe - these are optional fields
 
 	return email, name, picture, familyName, givenName, nil
@@ -93,13 +101,13 @@ func handleExistingUser(email string) (*User, error) {
 		log.Printf("Error ensuring user has UUID: %v", err)
 	}
 
-	user, err := getUserByEmail(email)
+	userData, err := getUserByEmail(email)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Printf("User logged in: %s", email)
-	return user, nil
+	return userData, nil
 }
 
 // setupCSRFToken sets CSRF token cookie and header.
@@ -162,10 +170,10 @@ func setAuthCookie(c *gin.Context) {
 }
 
 // buildUserResponse builds the user response object.
-func buildUserResponse(user *User, email, name, picture, familyName, givenName, theme string) gin.H {
+func buildUserResponse(userData *User, email, name, picture, familyName, givenName, theme string) gin.H {
 	var userUUID string
-	if user != nil && user.UUID != "" {
-		userUUID = user.UUID
+	if userData != nil && userData.UUID != "" {
+		userUUID = userData.UUID
 	}
 
 	return gin.H{
@@ -187,9 +195,9 @@ func setCacheControlHeaders(c *gin.Context) {
 }
 
 // ensureUserUUID ensures a user has a UUID and refreshes user data if needed.
-func ensureUserUUID(user *User, email string) *User {
-	if user.UUID != "" {
-		return user
+func ensureUserUUID(userData *User, email string) *User {
+	if userData.UUID != "" {
+		return userData
 	}
 
 	if err := ensureUserHasUUID(email); err != nil {
@@ -199,7 +207,7 @@ func ensureUserUUID(user *User, email string) *User {
 	updatedUser, err := getUserByEmail(email)
 	if err != nil {
 		log.Printf("Error getting updated user data: %v", err)
-		return user
+		return userData
 	}
 
 	return updatedUser
@@ -226,18 +234,18 @@ func updateSessionLastActive(userSession *user.Session, c *gin.Context) {
 }
 
 // buildValidateTokenResponse builds the response for token validation.
-func buildValidateTokenResponse(user *User, authType string) gin.H {
+func buildValidateTokenResponse(userData *User, authType string) gin.H {
 	return gin.H{
 		"valid":     true,
 		"auth_type": authType,
 		"user": gin.H{
-			"email":      user.Email,
-			"name":       user.Name,
-			"picture":    user.Picture,
-			"family_name": user.FamilyName,
-			"given_name":  user.GivenName,
-			"theme":       user.Theme,
-			"uuid":        user.UUID,
+			"email":      userData.Email,
+			"name":       userData.Name,
+			"picture":    userData.Picture,
+			"family_name": userData.FamilyName,
+			"given_name":  userData.GivenName,
+			"theme":       userData.Theme,
+			"uuid":        userData.UUID,
 		},
 	}
 }

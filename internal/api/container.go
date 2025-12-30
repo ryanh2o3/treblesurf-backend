@@ -1,5 +1,5 @@
-// Package api provides the API container for dependency injection and route setup.
-package api
+// Package httphandler provides the API container for dependency injection and route setup.
+package httphandler
 
 import (
 	"bytes"

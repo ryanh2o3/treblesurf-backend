@@ -190,7 +190,7 @@ func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, err
 		return nil, err
 	}
 
-	sessions := make([]*user.Session, 0)
+	userSessions := make([]*user.Session, 0)
 	now := time.Now()
 
 	for _, item := range result.Items {
@@ -212,10 +212,10 @@ func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, err
 			JSON:      sessionItem.JSON,
 		}
 
-		sessions = append(sessions, userSession)
+		userSessions = append(userSessions, userSession)
 	}
 
-	return sessions, nil
+	return userSessions, nil
 }
 
 func (s *DynamoDBStore) EnsureSessionsTable() error {
@@ -341,25 +341,26 @@ func getUserByEmail(email string) (*User, error) {
 		return nil, nil // User not found
 	}
 
-	user := &User{}
-	err = dynamodbattribute.UnmarshalMap(result.Item, user)
+	userData := &User{}
+	err = dynamodbattribute.UnmarshalMap(result.Item, userData)
 	if err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	return userData, nil
 }
 
+//nolint:gocritic // User struct is small (144 bytes), passing by value is acceptable for this use case
 func createUser(user User) error {
 	if db == nil {
 		return fmt.Errorf("DynamoDB client not initialized")
 	}
 
-	uuid, err := uuid.NewRandom()
+	userUUID, err := uuid.NewRandom()
 	if err != nil {
 		return fmt.Errorf("failed to generate UUID: %w", err)
 	}
-	user.UUID = uuid.String()
+	user.UUID = userUUID.String()
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	user.CreatedAt = now
@@ -412,17 +413,17 @@ func ensureUserHasUUID(email string) error {
 	}
 
 	// Get the current user to check if they have a UUID
-	user, err := getUserByEmail(email)
+	userData, err := getUserByEmail(email)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
-	if user == nil {
+	if userData == nil {
 		return fmt.Errorf("user not found")
 	}
 
 	// If user already has a UUID, no need to update
-	if user.UUID != "" {
+	if userData.UUID != "" {
 		return nil
 	}
 
@@ -503,6 +504,7 @@ func GoogleAuthHandler(c *gin.Context) {
 	})
 }
 
+//nolint:gocritic // Multiple return values needed to extract all Google OAuth claims
 func validateAndExtractGoogleClaims(
 	c *gin.Context,
 	idToken string,
@@ -530,7 +532,7 @@ func validateAndExtractGoogleClaims(
 	return payload, email, name, picture, familyName, givenName
 }
 
-func processGoogleAuthUser(email, name, picture, familyName, givenName string, c *gin.Context) (*User, string) {
+func processGoogleAuthUser(email, name, picture, familyName, givenName string, c *gin.Context) (authUser *User, authType string) {
 	existingUser, err := getUserByEmail(email)
 	if err != nil {
 		log.Printf("Error checking user: %v", err)
@@ -538,7 +540,7 @@ func processGoogleAuthUser(email, name, picture, familyName, givenName string, c
 		return nil, ""
 	}
 
-	theme := constants.DefaultUserTheme
+	authType = constants.DefaultUserTheme
 	var finalUser *User
 
 	if existingUser == nil {
@@ -554,11 +556,12 @@ func processGoogleAuthUser(email, name, picture, familyName, givenName string, c
 			log.Printf("Error handling existing user: %v", err)
 		}
 		if finalUser != nil {
-			theme = finalUser.Theme
+			authType = finalUser.Theme
 		}
 	}
 
-	return finalUser, theme
+	authUser = finalUser
+	return authUser, authType
 }
 
 func setupAuthSession(email string, c *gin.Context) {
@@ -600,24 +603,24 @@ func ValidateTokenHandler(c *gin.Context) {
 	}
 
 	email := userSession.UserID
-	user, err := getUserByEmail(email)
+	userData, err := getUserByEmail(email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
 		return
 	}
 
-	if user == nil {
+	if userData == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 		return
 	}
 
-	user = ensureUserUUID(user, email)
+	userData = ensureUserUUID(userData, email)
 	updateSessionLastActive(userSession, c)
 	if err := sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
 		log.Printf("Failed to extend user session: %v", err)
 	}
 
-	c.JSON(http.StatusOK, buildValidateTokenResponse(user, "session"))
+	c.JSON(http.StatusOK, buildValidateTokenResponse(userData, "session"))
 }
 
 func LogoutHandler(c *gin.Context) {

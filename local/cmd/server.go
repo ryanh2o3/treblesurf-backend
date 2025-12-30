@@ -4,7 +4,7 @@ package main
 import (
 	"log"
 	"os"
-	"treblesurf-backend/internal/api"
+	httphandler "treblesurf-backend/internal/api"
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/local/config"
@@ -51,7 +51,7 @@ func main() {
 	}
 
 	// Initialize the new container
-	container, err := api.NewContainer()
+	container, err := httphandler.NewContainer()
 	if err != nil {
 		log.Fatalf("Failed to create container: %v", err)
 	}
@@ -61,7 +61,7 @@ func main() {
 		log.Printf("Failed to initialize session service: %v", err)
 	}
 
-	r := api.SetupRouter(container)
+	r := httphandler.SetupRouter(container)
 
 	// Start server
 	port := cfg.Port

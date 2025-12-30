@@ -1,4 +1,5 @@
-package api
+// Package httphandler provides HTTP API middleware for authentication, CORS, and request handling.
+package httphandler
 
 import (
 	"log"
@@ -198,7 +199,7 @@ func isAdminUser(email string) bool {
 	return adminUsers[email]
 }
 
-func validateAPIKey(keyValue string, requiredScope string) (*model.APIKey, bool) {
+func validateAPIKey(keyValue, requiredScope string) (*model.APIKey, bool) {
 	// Use the APIKeyService from the service registry
 	if controller.APIKeyService == nil {
 		log.Printf("APIKeyService is not initialized")

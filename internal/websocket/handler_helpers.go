@@ -11,7 +11,7 @@ import (
 )
 
 // validateWebSocketToken validates the WebSocket token and extracts user information.
-func (h *WebSocketHandler) validateWebSocketToken(token string) (string, string, error) {
+func (h *WebSocketHandler) validateWebSocketToken(token string) (userID, sessionID string, err error) {
 	if token == "" {
 		return "", "", nil
 	}
@@ -26,17 +26,21 @@ func (h *WebSocketHandler) validateWebSocketToken(token string) (string, string,
 		return "", "", nil
 	}
 
-	userID, ok := claims["user_id"].(string)
-	if !ok {
+	var ok2 bool
+	userID, ok2 = claims["user_id"].(string)
+	if !ok2 {
 		return "", "", nil
 	}
 
-	sessionID, _ := claims["session_id"].(string)
+	if sessionIDVal, ok2 := claims["session_id"].(string); ok2 {
+		sessionID = sessionIDVal
+	}
 	// Note: sessionID is optional, empty string is acceptable
 	return userID, sessionID, nil
 }
 
 // createConnectionInfo creates a ConnectionInfo from the request.
+//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func (h *WebSocketHandler) createConnectionInfo(
 	connectionID, userID string,
 	req events.APIGatewayWebsocketProxyRequest,

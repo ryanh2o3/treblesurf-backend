@@ -131,7 +131,6 @@ func GetBuoyDataRange(c *gin.Context) {
 
 // GetSingleBuoyData returns the most recent data for a specific buoy.
 func GetSingleBuoyData(c *gin.Context) {
-	// buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")
 	var data map[string]interface{}
 	// Start from current time rounded down to the nearest hour
 	now := time.Now()
@@ -186,7 +185,6 @@ func GetMultipleBuoyData(c *gin.Context) {
 		for i := 0; i < 12; i++ {
 			searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
 			dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-			// buoyName := strings.ReplaceAll(buoy, " ", "")
 			data = getBuoyData(buoy, dateStr)
 			if data != nil {
 				break
@@ -244,7 +242,7 @@ func getBuoyDataRange(buoyName string, startTime, endTime time.Time) ([]map[stri
 	return allItems, nil
 }
 
-func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
+func getBuoyData(buoyName, dateStr string) map[string]interface{} {
 	var buoyData map[string]interface{}
 
 	input := &dynamodb.QueryInput{

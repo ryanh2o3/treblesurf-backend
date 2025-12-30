@@ -123,7 +123,7 @@ func (s *WebSocketService) GetConnection(connectionID string) (*model.Connection
 	return &connection, nil
 }
 
-func (s *WebSocketService) UpdateConnectionSpot(connectionID string, spotIdentifier string) error {
+func (s *WebSocketService) UpdateConnectionSpot(connectionID, spotIdentifier string) error {
 	newTTL := time.Now().Add(24 * time.Hour).Unix()
 
 	input := &dynamodb.UpdateItemInput{

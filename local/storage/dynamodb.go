@@ -67,7 +67,6 @@ func InitLocal(cfg *config.Config) error {
 
 	// Create required tables
 	return createLocalTables()
-
 }
 
 // applyOverrides replaces the AWS clients in the api package with our local implementations

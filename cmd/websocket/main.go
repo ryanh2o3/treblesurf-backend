@@ -44,6 +44,7 @@ func initialize() error {
 	return nil
 }
 
+//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func Handler(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	return websocketHandler.HandleWebSocketEvent(req)
 }

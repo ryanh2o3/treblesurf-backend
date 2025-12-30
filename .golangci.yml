@@ -58,7 +58,8 @@ linters:
     # Alternatives: 'lax' (more permissive), 'disable' (no exclusion)
     generated: strict
     # Warn about unused exclusion rules to keep config clean
-    warn-unused: true
+    # Set to false to suppress warnings for standard exclusions (vendor, test files, etc.)
+    warn-unused: false
     # Predefined exclusion rule presets (recommended best practices)
     presets:
       - comments # Excludes issues related to comments
@@ -81,11 +82,9 @@ linters:
         linters:
           - errcheck
     # Which file paths to exclude: they will be analyzed, but issues from them won't be reported
+    # Note: vendor/.* is kept as standard practice even if vendor directory doesn't exist
     paths:
-      - ".*\\.pb\\.go$"
-      - ".*\\.gen\\.go$"
       - "vendor/.*"
-      - "local/data/.*"
   # All available settings of specific linters
   settings:
     errcheck:

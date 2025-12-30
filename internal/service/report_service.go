@@ -44,7 +44,7 @@ func NewReportService(
 	}
 }
 
-func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmail string, userName string) error {
+func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmail, userName string) error {
 	user, err := s.getUserAndValidate(userEmail)
 	if err != nil {
 		return err
@@ -273,33 +273,33 @@ func (s *ReportService) GetSpotSurfReports(
 	return reports, nil
 }
 
-func (s *ReportService) GetReportImage(imageKey string) ([]byte, string, error) {
-	imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
+func (s *ReportService) GetReportImage(imageKey string) (imageData []byte, contentType string, err error) {
+	imageData, err = s.s3Storage.GetObject(s.bucketName, imageKey)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read image data: %v", err)
 	}
 
 	// For now, assume JPEG content type
 	// TODO: Implement proper content type detection
-	contentType := "image/jpeg"
+	contentType = "image/jpeg"
 
 	return imageData, contentType, nil
 }
 
-func (s *ReportService) GetReportVideo(videoKey string) ([]byte, string, error) {
-	videoData, err := s.s3Storage.GetObject(s.bucketName, videoKey)
+func (s *ReportService) GetReportVideo(videoKey string) (videoData []byte, contentType string, err error) {
+	videoData, err = s.s3Storage.GetObject(s.bucketName, videoKey)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read video data: %v", err)
 	}
 
 	// For now, assume MP4 content type
 	// TODO: Implement proper content type detection
-	contentType := "video/mp4"
+	contentType = "video/mp4"
 
 	return videoData, contentType, nil
 }
 
-func (s *ReportService) GenerateVideoViewURL(videoKey string, userEmail string) (*model.VideoViewURLResponse, error) {
+func (s *ReportService) GenerateVideoViewURL(videoKey, userEmail string) (*model.VideoViewURLResponse, error) {
 	if videoKey == "" {
 		return nil, fmt.Errorf("video key is required")
 	}
@@ -472,7 +472,7 @@ func (s *ReportService) IsValidMessiness(messiness string) bool {
 	return validation.IsValidMessiness(messiness)
 }
 
-func (s *ReportService) getSpotSubscribers(_ string, _ string, _ string) ([]string, error) {
+func (s *ReportService) getSpotSubscribers(_, _, _ string) ([]string, error) {
 	// TODO: Implement spot subscribers retrieval
 	// For now, return empty list
 	return []string{}, nil
@@ -904,26 +904,29 @@ func (s *ReportService) calculateBuoyConditionSimilarity(
 	buoyDirection := 0.0
 	buoyPeriod := 0.0
 
-	if h, ok := buoyData["WaveHeight"].(float64); ok {
-		buoyHeight = h
-	} else if hStr, ok := buoyData["WaveHeight"].(string); ok {
-		if h, err := strconv.ParseFloat(hStr, 64); err == nil {
+	switch v := buoyData["WaveHeight"].(type) {
+	case float64:
+		buoyHeight = v
+	case string:
+		if h, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
 			buoyHeight = h
 		}
 	}
 
-	if d, ok := buoyData["MeanWaveDirection"].(float64); ok {
-		buoyDirection = d
-	} else if dStr, ok := buoyData["MeanWaveDirection"].(string); ok {
-		if d, err := strconv.ParseFloat(dStr, 64); err == nil {
+	switch v := buoyData["MeanWaveDirection"].(type) {
+	case float64:
+		buoyDirection = v
+	case string:
+		if d, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
 			buoyDirection = d
 		}
 	}
 
-	if p, ok := buoyData["MaxPeriod"].(float64); ok {
-		buoyPeriod = p
-	} else if pStr, ok := buoyData["MaxPeriod"].(string); ok {
-		if p, err := strconv.ParseFloat(pStr, 64); err == nil {
+	switch v := buoyData["MaxPeriod"].(type) {
+	case float64:
+		buoyPeriod = v
+	case string:
+		if p, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
 			buoyPeriod = p
 		}
 	}
@@ -1194,7 +1197,7 @@ func (s *ReportService) getCurrentBuoyData(buoyName string) map[string]interface
 
 func (s *ReportService) getCurrentWindConditions(
 	countryName, regionName, spotName string,
-) (windSpeed float64, windDirection float64, err error) {
+) (windSpeed, windDirection float64, err error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	result, err := s.queryCurrentForecast(spotID)
 	if err != nil {
@@ -1361,26 +1364,29 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		waveDirection := 0.0
 		period := 0.0
 
-		if h, ok := currentBuoyData["WaveHeight"].(float64); ok {
-			waveHeight = h
-		} else if hStr, ok := currentBuoyData["WaveHeight"].(string); ok {
-			if h, parseErr := strconv.ParseFloat(hStr, 64); parseErr == nil {
+		switch v := currentBuoyData["WaveHeight"].(type) {
+		case float64:
+			waveHeight = v
+		case string:
+			if h, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
 				waveHeight = h
 			}
 		}
 
-		if d, ok := currentBuoyData["MeanWaveDirection"].(float64); ok {
-			waveDirection = d
-		} else if dStr, ok := currentBuoyData["MeanWaveDirection"].(string); ok {
-			if d, parseErr := strconv.ParseFloat(dStr, 64); parseErr == nil {
+		switch v := currentBuoyData["MeanWaveDirection"].(type) {
+		case float64:
+			waveDirection = v
+		case string:
+			if d, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
 				waveDirection = d
 			}
 		}
 
-		if p, ok := currentBuoyData["MaxPeriod"].(float64); ok {
-			period = p
-		} else if pStr, ok := currentBuoyData["MaxPeriod"].(string); ok {
-			if p, parseErr := strconv.ParseFloat(pStr, 64); parseErr == nil {
+		switch v := currentBuoyData["MaxPeriod"].(type) {
+		case float64:
+			period = v
+		case string:
+			if p, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
 				period = p
 			}
 		}
@@ -1568,18 +1574,20 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		historicalWindSpeed := 0.0
 		historicalWindDirection := 0.0
 
-		if ws, ok := data["windSpeed"].(float64); ok {
-			historicalWindSpeed = ws
-		} else if wsStr, ok := data["windSpeed"].(string); ok {
-			if ws, err := strconv.ParseFloat(wsStr, 64); err == nil {
+		switch v := data["windSpeed"].(type) {
+		case float64:
+			historicalWindSpeed = v
+		case string:
+			if ws, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
 				historicalWindSpeed = ws
 			}
 		}
 
-		if wd, ok := data["windDirection"].(float64); ok {
-			historicalWindDirection = wd
-		} else if wdStr, ok := data["windDirection"].(string); ok {
-			if wd, err := strconv.ParseFloat(wdStr, 64); err == nil {
+		switch v := data["windDirection"].(type) {
+		case float64:
+			historicalWindDirection = v
+		case string:
+			if wd, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
 				historicalWindDirection = wd
 			}
 		}
