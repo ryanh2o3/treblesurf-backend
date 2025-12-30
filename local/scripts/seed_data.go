@@ -46,6 +46,45 @@ func main() {
 	log.Println("Data seeding completed successfully")
 }
 
+// Helper functions for safe type assertions
+
+func getString(m map[string]interface{}, key string) (string, error) {
+	val, ok := m[key]
+	if !ok {
+		return "", fmt.Errorf("key %s not found", key)
+	}
+	str, ok := val.(string)
+	if !ok {
+		return "", fmt.Errorf("key %s is not a string", key)
+	}
+	return str, nil
+}
+
+//nolint:unparam // key parameter is needed for error messages
+func getInt(m map[string]interface{}, key string) (int, error) {
+	val, ok := m[key]
+	if !ok {
+		return 0, fmt.Errorf("key %s not found", key)
+	}
+	i, ok := val.(int)
+	if !ok {
+		return 0, fmt.Errorf("key %s is not an int", key)
+	}
+	return i, nil
+}
+
+func getFloat64(m map[string]interface{}, key string) (float64, error) {
+	val, ok := m[key]
+	if !ok {
+		return 0, fmt.Errorf("key %s not found", key)
+	}
+	f, ok := val.(float64)
+	if !ok {
+		return 0, fmt.Errorf("key %s is not a float64", key)
+	}
+	return f, nil
+}
+
 func seedRealForecastData() error {
 	log.Println("Seeding realistic forecast data for Donegal locations...")
 
@@ -108,7 +147,10 @@ func getLocationDefinitions() map[string]map[string]interface{} {
 // seedLocationData seeds location data entries with base64 encoded images.
 func seedLocationData(locations map[string]map[string]interface{}) error {
 	for spotID, metadata := range locations {
-		imagePath := metadata["ImagePath"].(string)
+		imagePath, err := getString(metadata, "ImagePath")
+		if err != nil {
+			return fmt.Errorf("failed to get ImagePath for %s: %w", spotID, err)
+		}
 		base64Image, err := encodeImageToBase64(imagePath)
 		if err != nil {
 			log.Printf("Warning: Failed to encode image for %s: %v", spotID, err)
@@ -517,7 +559,10 @@ func seedSpotForecasts(spotID string, forecastSamples []map[string]interface{}, 
 		}
 
 		if !isLastSample(forecastSamples, sample) {
-			nextSample := findNextSample(forecastSamples, sample)
+			nextSample, err := findNextSample(forecastSamples, sample)
+			if err != nil {
+				return fmt.Errorf("failed to find next sample: %w", err)
+			}
 			if err := seedInterpolatedForecasts(spotID, sample, nextSample, baseTime); err != nil {
 				return err
 			}
@@ -528,14 +573,21 @@ func seedSpotForecasts(spotID string, forecastSamples []map[string]interface{}, 
 
 // seedForecastSample seeds a single forecast sample.
 func seedForecastSample(spotID string, sample map[string]interface{}, baseTime time.Time) error {
-	forecastTime := baseTime.Add(time.Duration(sample["hourOffset"].(int)) * time.Hour)
+	hourOffset, err := getInt(sample, "hourOffset")
+	if err != nil {
+		return fmt.Errorf("failed to get hourOffset: %w", err)
+	}
+	forecastTime := baseTime.Add(time.Duration(hourOffset) * time.Hour)
 	currentTime := time.Now()
 	generatedAtTimestampStr := fmt.Sprintf("%d", currentTime.Unix())
 	nearestHour := time.Now().Truncate(time.Hour)
 	forecastTimestampStr := fmt.Sprintf("%d", nearestHour.Unix())
 	dateForecastedFor := forecastTime.Format("2006-01-02 15:04:05")
 
-	dataMap := buildForecastDataMap(sample, dateForecastedFor)
+	dataMap, err := buildForecastDataMap(sample, dateForecastedFor)
+	if err != nil {
+		return fmt.Errorf("failed to build forecast data map: %w", err)
+	}
 	forecast := map[string]interface{}{
 		"spot_id":            spotID,
 		"forecast_timestamp": forecastTimestampStr,
@@ -560,30 +612,99 @@ func seedForecastSample(spotID string, sample map[string]interface{}, baseTime t
 }
 
 // buildForecastDataMap builds the data map for a forecast sample.
-func buildForecastDataMap(sample map[string]interface{}, dateForecastedFor string) map[string]interface{} {
-	return map[string]interface{}{
-		"swellPeriod":           sample["swellPeriod"].(float64),
-		"waterTemperature":      sample["waterTemperature"].(float64),
-		"surfMessiness":         sample["surfMessiness"].(string),
-		"pressure":              sample["pressure"].(float64),
-		"waveEnergy":            sample["waveEnergy"].(float64),
-		"precipitation":         sample["precipitation"].(float64),
-		"relativeWindDirection": sample["relativeWindDirection"].(string),
-		"swellHeight":           sample["swellHeight"].(float64),
-		"swellDirection":        sample["swellDirection"].(float64),
-		"temperature":           sample["temperature"].(float64),
-		"directionQuality":      sample["directionQuality"].(float64),
-		"humidity":              sample["humidity"].(float64),
-		"surfSize":              sample["surfSize"].(float64),
-		"windDirection":         sample["windDirection"].(float64),
-		"windSpeed":             sample["windSpeed"].(float64),
-		"dateForecastedFor":     dateForecastedFor,
+//nolint:gocyclo,funlen // High complexity and length due to multiple type assertions needed
+func buildForecastDataMap(sample map[string]interface{}, dateForecastedFor string) (map[string]interface{}, error) {
+	swellPeriod, err := getFloat64(sample, "swellPeriod")
+	if err != nil {
+		return nil, err
 	}
+	waterTemperature, err := getFloat64(sample, "waterTemperature")
+	if err != nil {
+		return nil, err
+	}
+	surfMessiness, err := getString(sample, "surfMessiness")
+	if err != nil {
+		return nil, err
+	}
+	pressure, err := getFloat64(sample, "pressure")
+	if err != nil {
+		return nil, err
+	}
+	waveEnergy, err := getFloat64(sample, "waveEnergy")
+	if err != nil {
+		return nil, err
+	}
+	precipitation, err := getFloat64(sample, "precipitation")
+	if err != nil {
+		return nil, err
+	}
+	relativeWindDirection, err := getString(sample, "relativeWindDirection")
+	if err != nil {
+		return nil, err
+	}
+	swellHeight, err := getFloat64(sample, "swellHeight")
+	if err != nil {
+		return nil, err
+	}
+	swellDirection, err := getFloat64(sample, "swellDirection")
+	if err != nil {
+		return nil, err
+	}
+	temperature, err := getFloat64(sample, "temperature")
+	if err != nil {
+		return nil, err
+	}
+	directionQuality, err := getFloat64(sample, "directionQuality")
+	if err != nil {
+		return nil, err
+	}
+	humidity, err := getFloat64(sample, "humidity")
+	if err != nil {
+		return nil, err
+	}
+	surfSize, err := getFloat64(sample, "surfSize")
+	if err != nil {
+		return nil, err
+	}
+	windDirection, err := getFloat64(sample, "windDirection")
+	if err != nil {
+		return nil, err
+	}
+	windSpeed, err := getFloat64(sample, "windSpeed")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"swellPeriod":           swellPeriod,
+		"waterTemperature":      waterTemperature,
+		"surfMessiness":         surfMessiness,
+		"pressure":              pressure,
+		"waveEnergy":            waveEnergy,
+		"precipitation":         precipitation,
+		"relativeWindDirection": relativeWindDirection,
+		"swellHeight":           swellHeight,
+		"swellDirection":        swellDirection,
+		"temperature":           temperature,
+		"directionQuality":      directionQuality,
+		"humidity":              humidity,
+		"surfSize":              surfSize,
+		"windDirection":         windDirection,
+		"windSpeed":             windSpeed,
+		"dateForecastedFor":     dateForecastedFor,
+	}, nil
 }
 
 // seedInterpolatedForecasts seeds interpolated forecasts between two samples.
 func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]interface{}, baseTime time.Time) error {
-	hourDiff := nextSample["hourOffset"].(int) - sample["hourOffset"].(int)
+	sampleOffset, err := getInt(sample, "hourOffset")
+	if err != nil {
+		return fmt.Errorf("failed to get sample hourOffset: %w", err)
+	}
+	nextOffset, err := getInt(nextSample, "hourOffset")
+	if err != nil {
+		return fmt.Errorf("failed to get nextSample hourOffset: %w", err)
+	}
+	hourDiff := nextOffset - sampleOffset
 	if hourDiff <= 3 {
 		return nil
 	}
@@ -594,12 +715,15 @@ func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]inte
 
 	for step := 1; step <= steps; step++ {
 		progress := float64(step*3) / float64(hourDiff)
-		stepHours := sample["hourOffset"].(int) + step*3
+		stepHours := sampleOffset + step*3
 		stepTime := baseTime.Add(time.Duration(stepHours) * time.Hour)
 		stepTimestampStr := fmt.Sprintf("%d", stepTime.Unix())
 		stepDateForecastedFor := stepTime.Format("2006-01-02 15:04:05")
 
-		interpDataMap := buildInterpolatedDataMap(sample, nextSample, progress, stepDateForecastedFor)
+		interpDataMap, err := buildInterpolatedDataMap(sample, nextSample, progress, stepDateForecastedFor)
+		if err != nil {
+			return fmt.Errorf("failed to build interpolated data map: %w", err)
+		}
 		interpolatedForecast := map[string]interface{}{
 			"spot_id":            spotID,
 			"forecast_timestamp": stepTimestampStr,
@@ -625,46 +749,134 @@ func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]inte
 }
 
 // buildInterpolatedDataMap builds an interpolated data map between two samples.
+//
+//nolint:gocyclo,funlen // High complexity and length due to multiple type assertions needed
 func buildInterpolatedDataMap(
 	sample, nextSample map[string]interface{},
 	progress float64,
 	dateForecastedFor string,
-) map[string]interface{} {
-	samplePeriod := sample["swellPeriod"].(float64)
-	nextPeriod := nextSample["swellPeriod"].(float64)
-	sampleWaterTemp := sample["waterTemperature"].(float64)
-	nextWaterTemp := nextSample["waterTemperature"].(float64)
-	samplePressure := sample["pressure"].(float64)
-	nextPressure := nextSample["pressure"].(float64)
-	sampleWaveEnergy := sample["waveEnergy"].(float64)
-	nextWaveEnergy := nextSample["waveEnergy"].(float64)
-	samplePrecip := sample["precipitation"].(float64)
-	nextPrecip := nextSample["precipitation"].(float64)
-	sampleSwellHeight := sample["swellHeight"].(float64)
-	nextSwellHeight := nextSample["swellHeight"].(float64)
-	sampleSwellDir := sample["swellDirection"].(float64)
-	nextSwellDir := nextSample["swellDirection"].(float64)
-	sampleTemp := sample["temperature"].(float64)
-	nextTemp := nextSample["temperature"].(float64)
-	sampleDirQuality := sample["directionQuality"].(float64)
-	nextDirQuality := nextSample["directionQuality"].(float64)
-	sampleHumidity := sample["humidity"].(float64)
-	nextHumidity := nextSample["humidity"].(float64)
-	sampleSurfSize := sample["surfSize"].(float64)
-	nextSurfSize := nextSample["surfSize"].(float64)
-	sampleWindDir := sample["windDirection"].(float64)
-	nextWindDir := nextSample["windDirection"].(float64)
-	sampleWindSpeed := sample["windSpeed"].(float64)
-	nextWindSpeed := nextSample["windSpeed"].(float64)
+) (map[string]interface{}, error) {
+	samplePeriod, err := getFloat64(sample, "swellPeriod")
+	if err != nil {
+		return nil, err
+	}
+	nextPeriod, err := getFloat64(nextSample, "swellPeriod")
+	if err != nil {
+		return nil, err
+	}
+	sampleWaterTemp, err := getFloat64(sample, "waterTemperature")
+	if err != nil {
+		return nil, err
+	}
+	nextWaterTemp, err := getFloat64(nextSample, "waterTemperature")
+	if err != nil {
+		return nil, err
+	}
+	samplePressure, err := getFloat64(sample, "pressure")
+	if err != nil {
+		return nil, err
+	}
+	nextPressure, err := getFloat64(nextSample, "pressure")
+	if err != nil {
+		return nil, err
+	}
+	sampleWaveEnergy, err := getFloat64(sample, "waveEnergy")
+	if err != nil {
+		return nil, err
+	}
+	nextWaveEnergy, err := getFloat64(nextSample, "waveEnergy")
+	if err != nil {
+		return nil, err
+	}
+	samplePrecip, err := getFloat64(sample, "precipitation")
+	if err != nil {
+		return nil, err
+	}
+	nextPrecip, err := getFloat64(nextSample, "precipitation")
+	if err != nil {
+		return nil, err
+	}
+	sampleSwellHeight, err := getFloat64(sample, "swellHeight")
+	if err != nil {
+		return nil, err
+	}
+	nextSwellHeight, err := getFloat64(nextSample, "swellHeight")
+	if err != nil {
+		return nil, err
+	}
+	sampleSwellDir, err := getFloat64(sample, "swellDirection")
+	if err != nil {
+		return nil, err
+	}
+	nextSwellDir, err := getFloat64(nextSample, "swellDirection")
+	if err != nil {
+		return nil, err
+	}
+	sampleTemp, err := getFloat64(sample, "temperature")
+	if err != nil {
+		return nil, err
+	}
+	nextTemp, err := getFloat64(nextSample, "temperature")
+	if err != nil {
+		return nil, err
+	}
+	sampleDirQuality, err := getFloat64(sample, "directionQuality")
+	if err != nil {
+		return nil, err
+	}
+	nextDirQuality, err := getFloat64(nextSample, "directionQuality")
+	if err != nil {
+		return nil, err
+	}
+	sampleHumidity, err := getFloat64(sample, "humidity")
+	if err != nil {
+		return nil, err
+	}
+	nextHumidity, err := getFloat64(nextSample, "humidity")
+	if err != nil {
+		return nil, err
+	}
+	sampleSurfSize, err := getFloat64(sample, "surfSize")
+	if err != nil {
+		return nil, err
+	}
+	nextSurfSize, err := getFloat64(nextSample, "surfSize")
+	if err != nil {
+		return nil, err
+	}
+	sampleWindDir, err := getFloat64(sample, "windDirection")
+	if err != nil {
+		return nil, err
+	}
+	nextWindDir, err := getFloat64(nextSample, "windDirection")
+	if err != nil {
+		return nil, err
+	}
+	sampleWindSpeed, err := getFloat64(sample, "windSpeed")
+	if err != nil {
+		return nil, err
+	}
+	nextWindSpeed, err := getFloat64(nextSample, "windSpeed")
+	if err != nil {
+		return nil, err
+	}
+	surfMessiness, err := getString(sample, "surfMessiness")
+	if err != nil {
+		return nil, err
+	}
+	relativeWindDirection, err := getString(sample, "relativeWindDirection")
+	if err != nil {
+		return nil, err
+	}
 
 	return map[string]interface{}{
 		"swellPeriod":           interpolate(samplePeriod, nextPeriod, progress),
 		"waterTemperature":      interpolate(sampleWaterTemp, nextWaterTemp, progress),
-		"surfMessiness":         sample["surfMessiness"].(string),
+		"surfMessiness":         surfMessiness,
 		"pressure":              interpolate(samplePressure, nextPressure, progress),
 		"waveEnergy":            interpolate(sampleWaveEnergy, nextWaveEnergy, progress),
 		"precipitation":         interpolate(samplePrecip, nextPrecip, progress),
-		"relativeWindDirection": sample["relativeWindDirection"].(string),
+		"relativeWindDirection": relativeWindDirection,
 		"swellHeight":           interpolate(sampleSwellHeight, nextSwellHeight, progress),
 		"swellDirection":        interpolateAngle(sampleSwellDir, nextSwellDir, progress),
 		"temperature":           interpolate(sampleTemp, nextTemp, progress),
@@ -674,7 +886,7 @@ func buildInterpolatedDataMap(
 		"windDirection":         interpolateAngle(sampleWindDir, nextWindDir, progress),
 		"windSpeed":             interpolate(sampleWindSpeed, nextWindSpeed, progress),
 		"dateForecastedFor":     dateForecastedFor,
-	}
+	}, nil
 }
 
 // Helper function for linear interpolation
@@ -835,18 +1047,34 @@ func seedBuoyMeasurements() error {
 			return err
 		}
 
-		if err := storeBuoyMeasurements(buoyMeasurements); err != nil {
-			return err
+		if storeErr := storeBuoyMeasurements(buoyMeasurements); storeErr != nil {
+			return storeErr
 		}
 
+		firstPeriod, err := getFloat64(buoyMeasurements[0], "WavePeriod")
+		if err != nil {
+			return fmt.Errorf("failed to get first WavePeriod: %w", err)
+		}
+		lastPeriod, err := getFloat64(buoyMeasurements[len(buoyMeasurements)-1], "WavePeriod")
+		if err != nil {
+			return fmt.Errorf("failed to get last WavePeriod: %w", err)
+		}
+		firstHeight, err := getFloat64(buoyMeasurements[0], "WaveHeight")
+		if err != nil {
+			return fmt.Errorf("failed to get first WaveHeight: %w", err)
+		}
+		lastHeight, err := getFloat64(buoyMeasurements[len(buoyMeasurements)-1], "WaveHeight")
+		if err != nil {
+			return fmt.Errorf("failed to get last WaveHeight: %w", err)
+		}
 		log.Printf(
 			"Successfully seeded %d measurements for buoy %s (period range: %.1f-%.1fs, height range: %.1f-%.1fm)",
 			len(buoyMeasurements),
 			buoy["name"],
-			buoyMeasurements[0]["WavePeriod"].(float64),
-			buoyMeasurements[len(buoyMeasurements)-1]["WavePeriod"].(float64),
-			buoyMeasurements[0]["WaveHeight"].(float64),
-			buoyMeasurements[len(buoyMeasurements)-1]["WaveHeight"].(float64))
+			firstPeriod,
+			lastPeriod,
+			firstHeight,
+			lastHeight)
 
 		totalCount += len(buoyMeasurements)
 	}
@@ -1106,23 +1334,34 @@ func getBuoyDefinitions() []map[string]interface{} {
 
 // generateBuoyMeasurements generates measurement data for a buoy.
 //
-//nolint:unparam // Error return maintained for API consistency
+
 func generateBuoyMeasurements(
 	buoy map[string]interface{},
 	measurementsTemplate []map[string]interface{},
 	now time.Time,
 ) ([]map[string]interface{}, error) {
 	buoyMeasurements := make([]map[string]interface{}, len(measurementsTemplate))
-	waveHeightFactor := buoy["wave_height_factor"].(float64)
-	wavePeriodOffset := buoy["wave_period_offset"].(float64)
-	maxHeightFactor := buoy["max_height_factor"].(float64)
+	waveHeightFactor, err := getFloat64(buoy, "wave_height_factor")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get wave_height_factor: %w", err)
+	}
+	wavePeriodOffset, err := getFloat64(buoy, "wave_period_offset")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get wave_period_offset: %w", err)
+	}
+	maxHeightFactor, err := getFloat64(buoy, "max_height_factor")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get max_height_factor: %w", err)
+	}
 
 	for i, template := range measurementsTemplate {
 		measurement := cloneMeasurementTemplate(template)
 		measurement["region_buoy"] = buoy["region_buoy"]
 		measurement["name"] = buoy["name"]
 
-		applyWaveVariations(measurement, waveHeightFactor, wavePeriodOffset, maxHeightFactor)
+		if err := applyWaveVariations(measurement, waveHeightFactor, wavePeriodOffset, maxHeightFactor); err != nil {
+			return nil, fmt.Errorf("failed to apply wave variations: %w", err)
+		}
 
 		hourOffset := len(measurementsTemplate) - 1 - i
 		timestamp := now.Add(time.Duration(-hourOffset) * time.Hour)
@@ -1147,18 +1386,31 @@ func cloneMeasurementTemplate(template map[string]interface{}) map[string]interf
 func applyWaveVariations(
 	measurement map[string]interface{},
 	waveHeightFactor, wavePeriodOffset, maxHeightFactor float64,
-) {
-	basePeriod := measurement["WavePeriod"].(float64)
+) error {
+	basePeriod, err := getFloat64(measurement, "WavePeriod")
+	if err != nil {
+		return err
+	}
 	measurement["WavePeriod"] = math.Max(8.0, math.Min(16.0, basePeriod+wavePeriodOffset))
 
-	baseMaxPeriod := measurement["MaxPeriod"].(float64)
+	baseMaxPeriod, err := getFloat64(measurement, "MaxPeriod")
+	if err != nil {
+		return err
+	}
 	measurement["MaxPeriod"] = math.Max(10.0, math.Min(18.0, baseMaxPeriod+wavePeriodOffset))
 
-	baseHeight := measurement["WaveHeight"].(float64)
+	baseHeight, err := getFloat64(measurement, "WaveHeight")
+	if err != nil {
+		return err
+	}
 	measurement["WaveHeight"] = math.Max(0.2, math.Min(5.0, baseHeight*waveHeightFactor))
 
-	baseMaxHeight := measurement["MaxHeight"].(float64)
+	baseMaxHeight, err := getFloat64(measurement, "MaxHeight")
+	if err != nil {
+		return err
+	}
 	measurement["MaxHeight"] = math.Max(0.5, math.Min(8.0, baseMaxHeight*maxHeightFactor))
+	return nil
 }
 
 // storeBuoyMeasurements stores buoy measurements in DynamoDB.
@@ -1188,14 +1440,20 @@ func isLastSample(samples []map[string]interface{}, current map[string]interface
 }
 
 // Helper function to find the next sample after the current one
-func findNextSample(samples []map[string]interface{}, current map[string]interface{}) map[string]interface{} {
-	currentOffset := current["hourOffset"].(int)
+func findNextSample(samples []map[string]interface{}, current map[string]interface{}) (map[string]interface{}, error) {
+	currentOffset, err := getInt(current, "hourOffset")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current hourOffset: %w", err)
+	}
 	var nextSample map[string]interface{}
 	minOffsetDiff := math.MaxInt32
 
 	// Find the sample with the smallest hour offset greater than the current sample
 	for _, sample := range samples {
-		sampleOffset := sample["hourOffset"].(int)
+		sampleOffset, err := getInt(sample, "hourOffset")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get sample hourOffset: %w", err)
+		}
 		if sampleOffset > currentOffset && sampleOffset-currentOffset < minOffsetDiff {
 			minOffsetDiff = sampleOffset - currentOffset
 			nextSample = sample
@@ -1204,10 +1462,10 @@ func findNextSample(samples []map[string]interface{}, current map[string]interfa
 
 	// If no next sample found (should not happen in normal operation), return the first sample
 	if nextSample == nil {
-		return samples[0]
+		return samples[0], nil
 	}
 
-	return nextSample
+	return nextSample, nil
 }
 
 // Helper function to encode an image file to a base64 string
