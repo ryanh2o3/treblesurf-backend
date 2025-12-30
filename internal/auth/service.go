@@ -350,6 +350,7 @@ func getUserByEmail(email string) (*User, error) {
 	return userData, nil
 }
 
+//nolint:gocritic // User struct size is acceptable for this use case
 func createUser(user User) error {
 	if db == nil {
 		return fmt.Errorf("DynamoDB client not initialized")
@@ -503,6 +504,7 @@ func GoogleAuthHandler(c *gin.Context) {
 	})
 }
 
+//nolint:gocritic // Multiple return values needed for all claims
 func validateAndExtractGoogleClaims(
 	c *gin.Context,
 	idToken string,

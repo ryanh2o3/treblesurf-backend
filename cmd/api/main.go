@@ -23,6 +23,7 @@ func initialize() error {
 	return nil
 }
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	// Debug logging for API Gateway request
 

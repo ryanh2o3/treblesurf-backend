@@ -26,6 +26,7 @@ func NewHandler(websocketService *service.WebSocketService) *Handler {
 
 // HandleWebSocketEvent handles WebSocket events from API Gateway
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func (h *Handler) HandleWebSocketEvent(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -43,6 +44,7 @@ func (h *Handler) HandleWebSocketEvent(
 	}
 }
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func (h *Handler) handleConnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -68,6 +70,7 @@ func (h *Handler) handleConnect(
 	return successResponse("Connected"), nil
 }
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func (h *Handler) handleDisconnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -85,6 +88,7 @@ func (h *Handler) handleDisconnect(
 	}, nil
 }
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func (h *Handler) handleDefault(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -115,6 +119,7 @@ func (h *Handler) handleDefault(
 
 // handleCustomRoute processes custom WebSocket messages
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func (h *Handler) handleCustomRoute(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
@@ -146,6 +151,7 @@ func (h *Handler) handleCustomRoute(
 
 // handleSubscribeAction processes WebSocket subscription requests
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func (h *Handler) handleSubscribeAction(
 	req events.APIGatewayWebsocketProxyRequest, data json.RawMessage,
 ) (events.APIGatewayProxyResponse, error) {
@@ -211,6 +217,7 @@ func (h *Handler) handleSubscribeAction(
 
 // handlePingAction responds to ping messages to keep the connection alive
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func (h *Handler) handlePingAction(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {

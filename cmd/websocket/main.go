@@ -44,6 +44,7 @@ func initialize() error {
 	return nil
 }
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func Handler(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	return websocketHandler.HandleWebSocketEvent(req)
 }

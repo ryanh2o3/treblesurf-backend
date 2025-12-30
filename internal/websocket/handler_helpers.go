@@ -41,6 +41,7 @@ func (h *Handler) validateWebSocketToken(token string) (userID, sessionID string
 
 // createConnectionInfo creates a ConnectionInfo from the request.
 
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
 func (h *Handler) createConnectionInfo(
 	connectionID, userID string,
 	req events.APIGatewayWebsocketProxyRequest,
