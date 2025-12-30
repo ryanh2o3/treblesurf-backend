@@ -97,7 +97,7 @@ func setupAuthRoutes(r gin.IRouter) {
 	if isLocal {
 		csrfRoutes.Use(DevAuthMiddleware())
 	} else {
-		csrfRoutes.Use(auth.AuthMiddleware())
+		csrfRoutes.Use(auth.Middleware())
 	}
 	csrfRoutes.GET("/csrf", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "CSRF token available"})
@@ -173,7 +173,7 @@ func setupProtectedRoutes(r gin.IRouter, container *Container) {
 		authorized.Use(DevAuthMiddleware())
 	} else {
 		log.Print("using production auth middleware")
-		authorized.Use(auth.AuthMiddleware())
+		authorized.Use(auth.Middleware())
 	}
 
 	// Routes that modify data (require CSRF in production)
@@ -242,7 +242,7 @@ func setupAdminRoutes(r gin.IRouter, _ *Container) {
 		adminRoutes.Use(DevAdminAuthMiddleware())
 	} else {
 		log.Print("using production admin middleware")
-		adminRoutes.Use(auth.AuthMiddleware(), AdminMiddleware())
+		adminRoutes.Use(auth.Middleware(), AdminMiddleware())
 	}
 
 	adminRoutes.POST("/api-keys", controller.CreateAPIKeyHandler)

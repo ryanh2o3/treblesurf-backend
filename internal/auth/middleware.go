@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AuthMiddleware returns a Gin middleware function that validates user sessions.
-func AuthMiddleware() gin.HandlerFunc {
+// Middleware returns a Gin middleware function that validates user sessions.
+func Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		setCacheHeaders(c)
 		logRequestDetails(c)

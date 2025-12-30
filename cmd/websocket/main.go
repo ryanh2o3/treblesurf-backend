@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-var websocketHandler *websocket.WebSocketHandler
+var websocketHandler *websocket.Handler
 
 func initialize() error {
 	// Get configuration from environment
@@ -38,13 +38,12 @@ func initialize() error {
 	websocketService := service.NewWebSocketService(dbStorage, []byte(jwtSecret))
 
 	// Initialize WebSocket handler
-	websocketHandler = websocket.NewWebSocketHandler(websocketService)
+	websocketHandler = websocket.NewHandler(websocketService)
 
 	log.Println("WebSocket handler initialized successfully")
 	return nil
 }
 
-//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
 func Handler(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	return websocketHandler.HandleWebSocketEvent(req)
 }

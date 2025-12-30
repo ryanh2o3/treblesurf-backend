@@ -12,22 +12,21 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 )
 
-// WebSocketHandler handles WebSocket events from API Gateway.
-
-type WebSocketHandler struct {
+// Handler handles WebSocket events from API Gateway.
+type Handler struct {
 	websocketService *service.WebSocketService
 }
 
-// NewWebSocketHandler creates a new WebSocket handler instance.
-func NewWebSocketHandler(websocketService *service.WebSocketService) *WebSocketHandler {
-	return &WebSocketHandler{
+// NewHandler creates a new WebSocket handler instance.
+func NewHandler(websocketService *service.WebSocketService) *Handler {
+	return &Handler{
 		websocketService: websocketService,
 	}
 }
 
 // HandleWebSocketEvent handles WebSocket events from API Gateway
-//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
-func (h *WebSocketHandler) HandleWebSocketEvent(
+
+func (h *Handler) HandleWebSocketEvent(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	log.Printf("WebSocket event: %s, ConnectionID: %s", req.RequestContext.RouteKey, req.RequestContext.ConnectionID)
@@ -44,8 +43,7 @@ func (h *WebSocketHandler) HandleWebSocketEvent(
 	}
 }
 
-//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
-func (h *WebSocketHandler) handleConnect(
+func (h *Handler) handleConnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
@@ -70,8 +68,7 @@ func (h *WebSocketHandler) handleConnect(
 	return successResponse("Connected"), nil
 }
 
-//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
-func (h *WebSocketHandler) handleDisconnect(
+func (h *Handler) handleDisconnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
@@ -88,8 +85,7 @@ func (h *WebSocketHandler) handleDisconnect(
 	}, nil
 }
 
-//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
-func (h *WebSocketHandler) handleDefault(
+func (h *Handler) handleDefault(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	var message model.WebSocketMessage
@@ -118,8 +114,8 @@ func (h *WebSocketHandler) handleDefault(
 }
 
 // handleCustomRoute processes custom WebSocket messages
-//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
-func (h *WebSocketHandler) handleCustomRoute(
+
+func (h *Handler) handleCustomRoute(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	var message model.WebSocketMessage
@@ -149,8 +145,8 @@ func (h *WebSocketHandler) handleCustomRoute(
 }
 
 // handleSubscribeAction processes WebSocket subscription requests
-//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
-func (h *WebSocketHandler) handleSubscribeAction(
+
+func (h *Handler) handleSubscribeAction(
 	req events.APIGatewayWebsocketProxyRequest, data json.RawMessage,
 ) (events.APIGatewayProxyResponse, error) {
 	// Parse the subscription data
@@ -214,8 +210,8 @@ func (h *WebSocketHandler) handleSubscribeAction(
 }
 
 // handlePingAction responds to ping messages to keep the connection alive
-//nolint:gocritic // AWS Lambda handler signature is fixed by AWS SDK
-func (h *WebSocketHandler) handlePingAction(
+
+func (h *Handler) handlePingAction(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID

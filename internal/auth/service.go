@@ -350,7 +350,6 @@ func getUserByEmail(email string) (*User, error) {
 	return userData, nil
 }
 
-//nolint:gocritic // User struct is small (144 bytes), passing by value is acceptable for this use case
 func createUser(user User) error {
 	if db == nil {
 		return fmt.Errorf("DynamoDB client not initialized")
@@ -504,7 +503,6 @@ func GoogleAuthHandler(c *gin.Context) {
 	})
 }
 
-//nolint:gocritic // Multiple return values needed to extract all Google OAuth claims
 func validateAndExtractGoogleClaims(
 	c *gin.Context,
 	idToken string,
@@ -532,7 +530,10 @@ func validateAndExtractGoogleClaims(
 	return payload, email, name, picture, familyName, givenName
 }
 
-func processGoogleAuthUser(email, name, picture, familyName, givenName string, c *gin.Context) (authUser *User, authType string) {
+func processGoogleAuthUser(
+	email, name, picture, familyName, givenName string,
+	c *gin.Context,
+) (authUser *User, authType string) {
 	existingUser, err := getUserByEmail(email)
 	if err != nil {
 		log.Printf("Error checking user: %v", err)
