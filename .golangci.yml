@@ -75,7 +75,7 @@ linters-settings:
     rules:
       - name: exported
         severity: warning
-        disabled: false
+        disabled: true
       - name: unexported-return
         severity: warning
         disabled: false

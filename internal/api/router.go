@@ -1,4 +1,4 @@
-package api //nolint:revive // Package name 'api' is meaningful in context
+package api
 
 import (
 	"log"
@@ -52,7 +52,7 @@ func SetupRouter(container *Container) *gin.Engine {
 
 func setupRoutes(r gin.IRouter, container *Container) {
 	log.Print(os.Getenv("GO_ENV"))
-	
+
 	setupMiddleware(r)
 	setupPublicRoutes(r)
 	setupAuthRoutes(r)
@@ -67,7 +67,7 @@ func setupRoutes(r gin.IRouter, container *Container) {
 func setupMiddleware(r gin.IRouter) {
 	// Apply iOS headers to all API routes
 	r.Use(iOSHeadersMiddleware())
-	
+
 	// Strip /api prefix if present
 	r.Use(func(c *gin.Context) {
 		path := c.Request.URL.Path
@@ -89,7 +89,7 @@ func setupPublicRoutes(r gin.IRouter) {
 // setupAuthRoutes configures authenticated auth-related routes.
 func setupAuthRoutes(r gin.IRouter) {
 	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
-	
+
 	// CSRF token refresh endpoint (requires authentication)
 	csrfRoutes := r.Group("/auth")
 	if isLocal {
@@ -100,7 +100,7 @@ func setupAuthRoutes(r gin.IRouter) {
 	csrfRoutes.GET("/csrf", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "CSRF token available"})
 	})
-	
+
 	// Development-only endpoint for iOS simulator
 	if isLocal {
 		r.POST("/auth/dev-session", func(c *gin.Context) {
@@ -111,12 +111,12 @@ func setupAuthRoutes(r gin.IRouter) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 				return
 			}
-			
+
 			if err := auth.CreateDevSession(req.Email, c); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
 				return
 			}
-			
+
 			c.JSON(http.StatusOK, gin.H{"message": "Development session created"})
 		})
 	}
@@ -129,7 +129,7 @@ func setupLocationAndForecastRoutes(r gin.IRouter, container *Container) {
 	r.GET("/spots", controller.GetSpots)
 	r.GET("/location", controller.GetCoordinates)
 	r.GET("/locationInfo", controller.GetLocationInfo)
-	
+
 	// Forecast routes
 	r.GET("/listSpotsForecast", container.ForecastController.GetListSpotsForecast)
 	r.GET("/regionForecast", container.ForecastController.GetRegionForecast)
@@ -137,7 +137,7 @@ func setupLocationAndForecastRoutes(r gin.IRouter, container *Container) {
 	r.GET("/beforeAfterTide", container.ForecastController.GetBeforeAfterTides)
 	r.GET("/tideExtremes", container.ForecastController.GetDayTides)
 	r.GET("/forecast", container.ForecastController.GetSpotForecast)
-	
+
 	// Buoy data routes
 	r.GET("/getLiveBuoyData", controller.GetLiveBuoyData)
 	r.GET("/getSingleBuoyData", controller.GetSingleBuoyData)
@@ -163,7 +163,7 @@ func setupSwellPredictionRoutes(r gin.IRouter, container *Container) {
 // setupProtectedRoutes configures authenticated routes that require user authentication.
 func setupProtectedRoutes(r gin.IRouter, container *Container) {
 	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
-	
+
 	// Create authenticated route group
 	authorized := r.Group("/")
 	if isLocal {
@@ -173,14 +173,14 @@ func setupProtectedRoutes(r gin.IRouter, container *Container) {
 		log.Print("using production auth middleware")
 		authorized.Use(auth.AuthMiddleware())
 	}
-	
+
 	// Routes that modify data (require CSRF in production)
 	webModifyGroup := authorized.Group("/")
 	if !isLocal {
 		log.Print("using production CSRF middleware")
 		webModifyGroup.Use(auth.CSRFMiddleware())
 	}
-	
+
 	setupReportModificationRoutes(webModifyGroup, container)
 	setupUserRoutes(authorized, container)
 }
@@ -218,14 +218,14 @@ func setupUserRoutes(g *gin.RouterGroup, _ *Container) {
 // setupAPIKeyRoutes configures routes that require API key authentication.
 func setupAPIKeyRoutes(r gin.IRouter, _ *Container) {
 	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
-	
+
 	apiKeyRoutes := r.Group("/")
 	if isLocal {
 		apiKeyRoutes.Use(DevAuthMiddleware())
 	} else {
 		apiKeyRoutes.Use(APIKeyAuthMiddleware("stream"))
 	}
-	
+
 	apiKeyRoutes.POST("/streaming-credentials", controller.GetStreamingCredentials)
 	apiKeyRoutes.GET("/check-streaming-requested", controller.CheckStreamRequestHandler)
 	apiKeyRoutes.POST("/upload-snapshot", controller.UploadSnapshotHandler)
@@ -234,7 +234,7 @@ func setupAPIKeyRoutes(r gin.IRouter, _ *Container) {
 // setupAdminRoutes configures admin-only routes.
 func setupAdminRoutes(r gin.IRouter, _ *Container) {
 	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
-	
+
 	adminRoutes := r.Group("/admin")
 	if isLocal {
 		adminRoutes.Use(DevAdminAuthMiddleware())
@@ -242,7 +242,7 @@ func setupAdminRoutes(r gin.IRouter, _ *Container) {
 		log.Print("using production admin middleware")
 		adminRoutes.Use(auth.AuthMiddleware(), AdminMiddleware())
 	}
-	
+
 	adminRoutes.POST("/api-keys", controller.CreateAPIKeyHandler)
 	adminRoutes.GET("/api-keys", controller.ListAPIKeysHandler)
 	adminRoutes.DELETE("/api-keys/:keyID", controller.RevokeAPIKeyHandler)
