@@ -22,6 +22,8 @@ jobs:
 
     env:
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
       GO_ENV: production
       AWS_REGION: eu-west-1
 
@@ -101,7 +103,7 @@ jobs:
           # Update Lambda environment variables
           aws lambda update-function-configuration \
             --function-name $FUNCTION_NAME \
-            --environment "Variables={JWT_SECRET='$JWT_SECRET',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID',GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
 
       - name: Deploy WebSocket Lambda
         run: |
@@ -119,7 +121,7 @@ jobs:
           # Update WebSocket Lambda environment variables
           aws lambda update-function-configuration \
             --function-name $WS_FUNCTION_NAME \
-            --environment "Variables={JWT_SECRET='$JWT_SECRET',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID',GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
 
           # Configure permissions for WebSocket API Gateway
           WEBSOCKET_API_ID="9q47dtf5qe"
