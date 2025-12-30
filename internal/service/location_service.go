@@ -17,7 +17,11 @@ type LocationService struct {
 	bucketName string
 }
 
-func NewLocationService(dbStorage storage.DynamoDBStorage, s3Storage storage.S3Storage, bucketName string) *LocationService {
+func NewLocationService(
+	dbStorage storage.DynamoDBStorage,
+	s3Storage storage.S3Storage,
+	bucketName string,
+) *LocationService {
 	return &LocationService{
 		dbStorage:  dbStorage,
 		s3Storage:  s3Storage,
@@ -43,7 +47,11 @@ func (s *LocationService) GetRegions(countryName string) ([]string, error) {
 
 	var regions []string
 	for _, location := range locations {
-		parts := strings.Split(location["country_region_spot"].(string), "/")
+		countryRegionSpot, ok := location["country_region_spot"].(string)
+		if !ok {
+			continue
+		}
+		parts := strings.Split(countryRegionSpot, "/")
 		if parts[0] == countryName && len(parts) > 1 {
 			region := parts[1]
 			if !contains(regions, region) {
@@ -183,10 +191,13 @@ func (s *LocationService) GetCoordinates(countryName, regionName, spotName strin
 		return nil, fmt.Errorf("failed to unmarshal coordinates: %v", err)
 	}
 
-	coordinates := []float64{
-		location["Latitude"].(float64),
-		location["Longitude"].(float64),
+	lat, ok1 := location["Latitude"].(float64)
+	lon, ok2 := location["Longitude"].(float64)
+	if !ok1 || !ok2 {
+		return nil, fmt.Errorf("invalid coordinate types")
 	}
+	
+	coordinates := []float64{lat, lon}
 
 	return coordinates, nil
 }

@@ -30,7 +30,6 @@ func NewWebSocketService(dbStorage storage.DynamoDBStorage, jwtSecret []byte) *W
 	}
 }
 
-// ValidateWebSocketToken validates a JWT token for WebSocket authentication
 func (s *WebSocketService) ValidateWebSocketToken(token string) (*jwt.Token, error) {
 	return jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -40,7 +39,6 @@ func (s *WebSocketService) ValidateWebSocketToken(token string) (*jwt.Token, err
 	})
 }
 
-// SaveConnection stores connection info in DynamoDB
 func (s *WebSocketService) SaveConnection(conn *model.ConnectionInfo) error {
 	conn.TTL = time.Now().Add(24 * time.Hour).Unix()
 
@@ -58,7 +56,6 @@ func (s *WebSocketService) SaveConnection(conn *model.ConnectionInfo) error {
 	return err
 }
 
-// DeleteConnection removes a connection from DynamoDB
 func (s *WebSocketService) DeleteConnection(connectionID string) error {
 	input := &dynamodb.DeleteItemInput{
 		TableName: aws.String("WebSocketConnections"),
@@ -73,7 +70,6 @@ func (s *WebSocketService) DeleteConnection(connectionID string) error {
 	return err
 }
 
-// UpdateConnectionLastActive updates the LastActive timestamp for a connection
 func (s *WebSocketService) UpdateConnectionLastActive(connectionID string) error {
 	newTTL := time.Now().Add(24 * time.Hour).Unix()
 
@@ -99,7 +95,6 @@ func (s *WebSocketService) UpdateConnectionLastActive(connectionID string) error
 	return err
 }
 
-// GetConnection retrieves connection info from DynamoDB
 func (s *WebSocketService) GetConnection(connectionID string) (*model.ConnectionInfo, error) {
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String("WebSocketConnections"),
@@ -128,8 +123,7 @@ func (s *WebSocketService) GetConnection(connectionID string) (*model.Connection
 	return &connection, nil
 }
 
-// UpdateConnectionSpot updates the current spot for a connection
-func (s *WebSocketService) UpdateConnectionSpot(connectionID string, spotIdentifier string) error {
+func (s *WebSocketService) UpdateConnectionSpot(connectionID, spotIdentifier string) error {
 	newTTL := time.Now().Add(24 * time.Hour).Unix()
 
 	input := &dynamodb.UpdateItemInput{
@@ -157,7 +151,6 @@ func (s *WebSocketService) UpdateConnectionSpot(connectionID string, spotIdentif
 	return err
 }
 
-// SaveSubscription stores a spot subscription in DynamoDB
 func (s *WebSocketService) SaveSubscription(spotIdentifier, userID, connectionID string) error {
 	input := &dynamodb.PutItemInput{
 		TableName: aws.String("SpotSubscriptions"),
@@ -208,7 +201,6 @@ func (s *WebSocketService) SendToConnection(connectionID, message string) error 
 	return err
 }
 
-// GetSourceIP extracts the source IP from the request headers
 func (s *WebSocketService) GetSourceIP(headers map[string]string) string {
 	// Try CloudFront-specific header first
 	if ip, ok := headers["CloudFront-Viewer-Address"]; ok && ip != "" {
@@ -230,7 +222,6 @@ func (s *WebSocketService) GetSourceIP(headers map[string]string) string {
 	return "unknown"
 }
 
-// CreateSubscriptionResponse creates a subscription confirmation response
 func (s *WebSocketService) CreateSubscriptionResponse(spotIdentifier string) *model.WebSocketResponse {
 	return &model.WebSocketResponse{
 		Action: "subscribed",
@@ -241,7 +232,6 @@ func (s *WebSocketService) CreateSubscriptionResponse(spotIdentifier string) *mo
 	}
 }
 
-// CreatePongResponse creates a pong response for ping messages
 func (s *WebSocketService) CreatePongResponse() *model.WebSocketResponse {
 	return &model.WebSocketResponse{
 		Action: "pong",
@@ -275,7 +265,6 @@ func (s *WebSocketService) BroadcastToUsers(userIDs []string, message interface{
 	return nil
 }
 
-// GetConnectionsByUserIDs retrieves all connections for a list of user IDs
 func (s *WebSocketService) GetConnectionsByUserIDs(userIDs []string) ([]*model.ConnectionInfo, error) {
 	var allConnections []*model.ConnectionInfo
 

@@ -1,0 +1,195 @@
+version: "2"
+
+run:
+  timeout: 5m
+  # Use gomod relative path mode for consistency with go.mod location
+  relative-path-mode: gomod
+  # Enable readonly mode to catch missing dependencies in CI/CD
+  modules-download-mode: readonly
+  # Set Go version to match go.mod
+  go: "1.24"
+  tests: true
+
+output:
+  formats:
+    text:
+      print-issued-lines: true
+      print-linter-name: true
+  # Sort output by linter, then severity, then file for better organization
+  sort-order:
+    - linter
+    - severity
+    - file
+
+linters:
+  # Explicitly enable specific linters
+  default: none
+
+  enable:
+    - bodyclose
+    - dogsled
+    - dupl
+    - errcheck
+    - copyloopvar
+    - exhaustive
+    - funlen
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - revive
+    - rowserrcheck
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+  exclusions:
+    # Use strict mode for generated files (follows Go convention)
+    # Alternatives: 'lax' (more permissive), 'disable' (no exclusion)
+    generated: strict
+    # Warn about unused exclusion rules to keep config clean
+    # Set to false to suppress warnings for standard exclusions (vendor, test files, etc.)
+    warn-unused: false
+
+    # Predefined exclusion rule presets (recommended best practices)
+    presets:
+      - comments # Excludes issues related to comments
+      - std-error-handling # Excludes standard error handling false positives
+      - common-false-positives # Excludes known common false positives
+    # Excluding configuration per-path, per-linter, per-text and per-source
+    rules:
+      # Exclude some linters from running on tests files.
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - errcheck
+          - dupl
+          - gosec
+          - funlen
+          - gomnd
+      # Exclude known linter issues for common patterns
+      - text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
+        linters:
+          - errcheck
+    # Which file paths to exclude: they will be analyzed, but issues from them won't be reported
+    # Note: vendor/.* is kept as standard practice even if vendor directory doesn't exist
+    paths:
+      - "vendor/.*"
+  # All available settings of specific linters
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      disabled-checks:
+        - dupImport
+        - ifElseChain
+        - octalLiteral
+        - whyNoLint
+        - wrapperFunc
+
+    gocyclo:
+      min-complexity: 15
+
+    govet:
+      enable-all: true
+
+    lll:
+      line-length: 140
+
+    misspell:
+      locale: US
+
+    nakedret:
+      max-func-lines: 30
+
+    nolintlint:
+      allow-unused: false
+      require-explanation: false
+      require-specific: false
+
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+          disabled: true
+        - name: unexported-return
+          severity: warning
+          disabled: false
+        - name: error-return
+          severity: warning
+          disabled: false
+        - name: error-naming
+          severity: warning
+          disabled: false
+        - name: var-naming
+          severity: warning
+          disabled: false
+        - name: if-return
+          severity: warning
+          disabled: false
+        - name: increment-decrement
+          severity: warning
+          disabled: false
+        - name: var-declaration
+          severity: warning
+          disabled: false
+        - name: range
+          severity: warning
+          disabled: false
+        - name: string-of-int
+          severity: warning
+          disabled: false
+        - name: superfluous-else
+          severity: warning
+          disabled: false
+        - name: unused-parameter
+          severity: warning
+          disabled: false
+        - name: unhandled-error
+          severity: warning
+          disabled: false
+
+    staticcheck:
+      checks: ["all"]
+
+    unparam:
+      check-exported: false
+
+    whitespace:
+      multi-if: false
+      multi-func: false
+
+issues:
+  # Exclusion rules are now in linters.exclusions.rules (best practice)
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # For large codebases: only show new issues (uncomment to enable)
+  # This is useful when integrating golangci-lint into existing codebases
+  # new: true
+  # new-from-merge-base: main
+
+severity:
+  # Set default severity for all issues
+  default: error

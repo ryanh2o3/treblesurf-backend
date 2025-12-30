@@ -11,7 +11,6 @@ import (
 // Note: Session handlers (TerminateSessionHandler, GetUserSessionsHandler, GetWebSocketTokenHandler)
 // are implemented in internal/auth/service.go and routed from there
 
-// SetUserTheme updates user theme preference
 func SetUserTheme(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {
@@ -19,15 +18,21 @@ func SetUserTheme(c *gin.Context) {
 		return
 	}
 
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+		return
+	}
+
 	// First check if the user exists
-	user, err := UserService.GetUserByEmail(email.(string))
+	user, err := UserService.GetUserByEmail(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return
 	}
 
 	if user == nil {
-		log.Print("email address", email)
+		log.Print("email address", emailStr)
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
@@ -37,7 +42,7 @@ func SetUserTheme(c *gin.Context) {
 		return
 	}
 
-	err = UserService.UpdateUserTheme(email.(string), theme)
+	err = UserService.UpdateUserTheme(emailStr, theme)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update theme"})
 		return
@@ -46,7 +51,6 @@ func SetUserTheme(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Theme updated successfully"})
 }
 
-// DeleteMyAccount deletes user account
 func DeleteMyAccount(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {
@@ -54,8 +58,14 @@ func DeleteMyAccount(c *gin.Context) {
 		return
 	}
 
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+		return
+	}
+
 	// First check if the user exists
-	user, err := UserService.GetUserByEmail(email.(string))
+	user, err := UserService.GetUserByEmail(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return
@@ -67,7 +77,7 @@ func DeleteMyAccount(c *gin.Context) {
 	}
 
 	// Delete the user account
-	err = UserService.DeleteUser(email.(string))
+	err = UserService.DeleteUser(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete account"})
 		return
@@ -82,7 +92,6 @@ func DeleteMyAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
 }
 
-// GetUserTheme retrieves user theme preference
 func GetUserTheme(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {
@@ -90,8 +99,14 @@ func GetUserTheme(c *gin.Context) {
 		return
 	}
 
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+		return
+	}
+
 	// First check if the user exists
-	user, err := UserService.GetUserByEmail(email.(string))
+	user, err := UserService.GetUserByEmail(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return

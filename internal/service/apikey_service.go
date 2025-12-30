@@ -1,3 +1,4 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
@@ -17,6 +18,7 @@ type APIKeyService struct {
 	dbStorage storage.DynamoDBStorage
 }
 
+// NewAPIKeyService creates a new API key service instance.
 func NewAPIKeyService(dbStorage storage.DynamoDBStorage) *APIKeyService {
 	return &APIKeyService{
 		dbStorage: dbStorage,
@@ -24,7 +26,12 @@ func NewAPIKeyService(dbStorage storage.DynamoDBStorage) *APIKeyService {
 }
 
 // GenerateAPIKey creates a new API key with specified parameters
-func (s *APIKeyService) GenerateAPIKey(description string, createdBy string, durationDays int, scopes []string) (*model.APIKey, error) {
+func (s *APIKeyService) GenerateAPIKey(
+	description string,
+	createdBy string,
+	durationDays int,
+	scopes []string,
+) (*model.APIKey, error) {
 	// Generate a random key
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -78,7 +85,7 @@ func (s *APIKeyService) StoreAPIKey(apiKey *model.APIKey) error {
 }
 
 // ValidateAPIKey validates an API key against DynamoDB
-func (s *APIKeyService) ValidateAPIKey(keyValue string, requiredScope string) (*model.APIKey, bool) {
+func (s *APIKeyService) ValidateAPIKey(keyValue, requiredScope string) (*model.APIKey, bool) {
 	// Query by key value
 	input := &dynamodb.ScanInput{
 		TableName:        aws.String("ApiKeys"),

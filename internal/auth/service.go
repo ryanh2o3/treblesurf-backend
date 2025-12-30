@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -11,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"treblesurf-backend/internal/constants"
 
 	"github.com/adam-hanna/sessions"
 	"github.com/adam-hanna/sessions/auth"
@@ -25,7 +26,6 @@ import (
 	"google.golang.org/api/idtoken"
 )
 
-// Types
 type TokenClaims struct {
 	Email string `json:"email"`
 	jwt.RegisteredClaims
@@ -48,20 +48,20 @@ type User struct {
 }
 
 type SessionJSON struct {
+	CreatedAt  time.Time `json:"created_at"`
+	LastActive time.Time `json:"last_active"`
 	CSRF       string    `json:"csrf"`
 	UserAgent  string    `json:"user_agent"`
 	IPAddress  string    `json:"ip_address"`
-	CreatedAt  time.Time `json:"created_at"`
-	LastActive time.Time `json:"last_active"`
 }
 
 type SessionInfo struct {
-	SessionID  string    `json:"session_id"`
 	ExpiresAt  time.Time `json:"expires_at"`
-	Current    bool      `json:"current"`
 	LastActive time.Time `json:"last_active,omitempty"`
+	SessionID  string    `json:"session_id"`
 	UserAgent  string    `json:"user_agent,omitempty"`
 	IPAddress  string    `json:"ip_address,omitempty"`
+	Current    bool      `json:"current"`
 }
 
 // DynamoDBStore implements the session store interface using DynamoDB
@@ -70,7 +70,6 @@ type DynamoDBStore struct {
 	tableName string
 }
 
-// NewDynamoDBStore creates a new DynamoDB session store
 func NewDynamoDBStore(db *dynamodb.DynamoDB, tableName string) *DynamoDBStore {
 	return &DynamoDBStore{
 		db:        db,
@@ -78,16 +77,14 @@ func NewDynamoDBStore(db *dynamodb.DynamoDB, tableName string) *DynamoDBStore {
 	}
 }
 
-// SessionItem represents a session stored in DynamoDB
 type SessionItem struct {
 	SessionID string    `json:"session_id"`
-	UserID    string    `json:"user_id"` // Will store email as UserID
+	UserID    string    `json:"user_id"`
 	ExpiresAt time.Time `json:"expires_at"`
 	JSON      string    `json:"json_data"`
 	TTL       int64     `json:"ttl"`
 }
 
-// SaveUserSession saves a user session to DynamoDB
 func (s *DynamoDBStore) SaveUserSession(userSession *user.Session) error {
 	sessionItem := SessionItem{
 		SessionID: userSession.ID,
@@ -111,7 +108,6 @@ func (s *DynamoDBStore) SaveUserSession(userSession *user.Session) error {
 	return err
 }
 
-// DeleteUserSession deletes a session from DynamoDB
 func (s *DynamoDBStore) DeleteUserSession(sessionID string) error {
 	input := &dynamodb.DeleteItemInput{
 		TableName: aws.String(s.tableName),
@@ -126,7 +122,6 @@ func (s *DynamoDBStore) DeleteUserSession(sessionID string) error {
 	return err
 }
 
-// FetchValidUserSession fetches a valid session from DynamoDB
 func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, error) {
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String(s.tableName),
@@ -152,7 +147,6 @@ func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, 
 		return nil, err
 	}
 
-	// Check if session is expired
 	if time.Now().After(sessionItem.ExpiresAt) {
 		return nil, nil
 	}
@@ -165,7 +159,6 @@ func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, 
 	}, nil
 }
 
-// EnableTTL enables TTL on the Sessions table
 func (s *DynamoDBStore) EnableTTL() error {
 	input := &dynamodb.UpdateTimeToLiveInput{
 		TableName: aws.String(s.tableName),
@@ -179,9 +172,7 @@ func (s *DynamoDBStore) EnableTTL() error {
 	return err
 }
 
-// GetSessionsByUserID retrieves all sessions for a specific user
 func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, error) {
-	// Create a query input that filters by UserID
 	input := &dynamodb.ScanInput{
 		TableName:        aws.String(s.tableName),
 		FilterExpression: aws.String("user_id = :uid"),
@@ -197,7 +188,7 @@ func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, err
 		return nil, err
 	}
 
-	sessions := make([]*user.Session, 0)
+	userSessions := make([]*user.Session, 0)
 	now := time.Now()
 
 	for _, item := range result.Items {
@@ -206,12 +197,10 @@ func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, err
 			continue
 		}
 
-		// Skip expired sessions
 		if now.After(sessionItem.ExpiresAt) {
 			continue
 		}
 
-		// Convert to user.Session
 		userSession := &user.Session{
 			ID:        sessionItem.SessionID,
 			UserID:    sessionItem.UserID,
@@ -219,15 +208,13 @@ func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, err
 			JSON:      sessionItem.JSON,
 		}
 
-		sessions = append(sessions, userSession)
+		userSessions = append(userSessions, userSession)
 	}
 
-	return sessions, nil
+	return userSessions, nil
 }
 
-// EnsureSessionsTable ensures the Sessions table exists
 func (s *DynamoDBStore) EnsureSessionsTable() error {
-	// Check if table exists
 	tables, err := s.db.ListTables(&dynamodb.ListTablesInput{})
 	if err != nil {
 		return err
@@ -235,11 +222,10 @@ func (s *DynamoDBStore) EnsureSessionsTable() error {
 
 	for _, tableName := range tables.TableNames {
 		if *tableName == s.tableName {
-			return nil // Table already exists
+			return nil
 		}
 	}
 
-	// Table doesn't exist, create it
 	input := &dynamodb.CreateTableInput{
 		AttributeDefinitions: []*dynamodb.AttributeDefinition{
 			{
@@ -264,13 +250,11 @@ func (s *DynamoDBStore) EnsureSessionsTable() error {
 	return err
 }
 
-// Global variables
 var jwtSecret []byte
 var db *dynamodb.DynamoDB
 var sessionService *sessions.Service
 var sessionStoreDB *DynamoDBStore
 
-// InitJWTSecret initializes the JWT secret
 func InitJWTSecret() {
 	secretKey := os.Getenv("JWT_SECRET")
 	if secretKey == "" {
@@ -279,32 +263,26 @@ func InitJWTSecret() {
 	jwtSecret = []byte(secretKey)
 }
 
-// SetDynamoDB sets the DynamoDB client for the auth service
 func SetDynamoDB(dynamoDB *dynamodb.DynamoDB) {
 	db = dynamoDB
 }
 
-// InitSessionService initializes the session service with DynamoDB store
 func InitSessionService() error {
 	if db == nil {
 		return fmt.Errorf("DynamoDB client not initialized")
 	}
 
-	// Create DynamoDB store
 	sessionStore := NewDynamoDBStore(db, "Sessions")
 	sessionStoreDB = sessionStore
 
-	// Ensure the Sessions table exists
 	if err := sessionStore.EnsureSessionsTable(); err != nil {
 		return fmt.Errorf("failed to ensure Sessions table: %w", err)
 	}
 
-	// Enable TTL on the Sessions table
 	if err := sessionStore.EnableTTL(); err != nil {
 		log.Printf("Warning: Failed to enable TTL on Sessions table: %v", err)
 	}
 
-	// Create auth service with your JWT secret
 	authService, err := auth.New(auth.Options{
 		Key: jwtSecret,
 	})
@@ -312,7 +290,6 @@ func InitSessionService() error {
 		return err
 	}
 
-	// Create transport service (cookies)
 	transportService := transport.New(transport.Options{
 		HTTPOnly:   true,
 		Secure:     true,
@@ -320,7 +297,6 @@ func InitSessionService() error {
 		CookieName: "session_id",
 	})
 
-	// Initialize the session service
 	sessionService = sessions.New(sessionStore, authService, transportService, sessions.Options{
 		ExpirationDuration: 30 * 24 * time.Hour, // Match your JWT token expiration
 	})
@@ -328,7 +304,6 @@ func InitSessionService() error {
 	return nil
 }
 
-// Helper functions
 func getUserByEmail(email string) (*User, error) {
 	if db == nil {
 		return nil, fmt.Errorf("DynamoDB client not initialized")
@@ -349,33 +324,34 @@ func getUserByEmail(email string) (*User, error) {
 	}
 
 	if result.Item == nil {
-		return nil, nil // User not found
+		return nil, nil
 	}
 
-	user := &User{}
-	err = dynamodbattribute.UnmarshalMap(result.Item, user)
+	userData := &User{}
+	err = dynamodbattribute.UnmarshalMap(result.Item, userData)
 	if err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	return userData, nil
 }
 
+//nolint:gocritic // User struct size is acceptable for this use case
 func createUser(user User) error {
 	if db == nil {
 		return fmt.Errorf("DynamoDB client not initialized")
 	}
 
-	uuid, err := uuid.NewRandom()
+	userUUID, err := uuid.NewRandom()
 	if err != nil {
 		return fmt.Errorf("failed to generate UUID: %w", err)
 	}
-	user.UUID = uuid.String()
+	user.UUID = userUUID.String()
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	user.CreatedAt = now
 	user.LastLogin = now
-	user.Theme = "dark" // Default theme
+	user.Theme = constants.DefaultUserTheme
 
 	item, err := dynamodbattribute.MarshalMap(user)
 	if err != nil {
@@ -417,34 +393,30 @@ func updateUserLastLogin(email string) error {
 	return err
 }
 
-// ensureUserHasUUID ensures a user has a UUID, generating one if it doesn't exist
 func ensureUserHasUUID(email string) error {
 	if db == nil {
 		return fmt.Errorf("DynamoDB client not initialized")
 	}
 
 	// Get the current user to check if they have a UUID
-	user, err := getUserByEmail(email)
+	userData, err := getUserByEmail(email)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
-	if user == nil {
+	if userData == nil {
 		return fmt.Errorf("user not found")
 	}
 
-	// If user already has a UUID, no need to update
-	if user.UUID != "" {
+	if userData.UUID != "" {
 		return nil
 	}
 
-	// Generate a new UUID for the user
 	newUUID, err := uuid.NewRandom()
 	if err != nil {
 		return fmt.Errorf("failed to generate UUID: %w", err)
 	}
 
-	// Update the user with the new UUID using expression attribute names for reserved keywords
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String("Users"),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -472,7 +444,6 @@ func ensureUserHasUUID(email string) error {
 	return nil
 }
 
-// GenerateCSRFToken creates a secure random token for CSRF protection
 func GenerateCSRFToken() (string, error) {
 	bytes := make([]byte, 32)
 	_, err := rand.Read(bytes)
@@ -493,7 +464,6 @@ func getClientIP(c *gin.Context) string {
 	return c.ClientIP()
 }
 
-// Main handler functions
 func GoogleAuthHandler(c *gin.Context) {
 	var req TokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -501,205 +471,107 @@ func GoogleAuthHandler(c *gin.Context) {
 		return
 	}
 
-	// Replace with your actual Google Client ID
-	clientID := "667754725634-pmth2mlieh3jfebl8ujkjji7nqqih3tf.apps.googleusercontent.com"
-	iosClientID := "667754725634-9tck0kii14dm6d1e0u05preefmfppp5b.apps.googleusercontent.com"
-
-	clientIDs := map[string]bool{
-		clientID:    true,
-		iosClientID: true,
+	payload, email, name, picture, familyName, givenName := validateAndExtractGoogleClaims(c, req.IDToken)
+	if payload == nil {
+		return
 	}
 
-	var payload *idtoken.Payload
-	var err error
-
-	for id := range clientIDs {
-		payload, err = idtoken.Validate(context.Background(), req.IDToken, id)
-		if err == nil {
-			break
-		}
+	finalUser, theme := processGoogleAuthUser(email, name, picture, familyName, givenName, c)
+	if finalUser == nil {
+		return
 	}
 
+	setupAuthSession(email, c)
+	c.JSON(http.StatusOK, gin.H{
+		"user": buildUserResponse(finalUser, email, name, picture, familyName, givenName, theme),
+	})
+}
+
+//nolint:gocritic // Multiple return values needed for all claims
+func validateAndExtractGoogleClaims(
+	c *gin.Context,
+	idToken string,
+) (*idtoken.Payload, string, string, string, string, string) {
+	clientIDs, err := getGoogleClientIDs()
+	if err != nil || clientIDs == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Google OAuth not configured"})
+		return nil, "", "", "", "", ""
+	}
+
+	payload, err := validateGoogleIDToken(idToken, clientIDs)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-		return
+		return nil, "", "", "", "", ""
 	}
 
-	// Log available claims for debugging
-	log.Printf("JWT claims available: %v", payload.Claims)
-
-	// Safely extract claims with validation
-	email, ok := payload.Claims["email"].(string)
-	if !ok || email == "" {
+	email, name, picture, familyName, givenName, err := extractUserClaims(payload)
+	if err != nil || email == "" {
 		log.Printf("Missing or invalid email claim in JWT")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token: missing email"})
-		return
+		return nil, "", "", "", "", ""
 	}
 
-	name, ok := payload.Claims["name"].(string)
-	if !ok {
-		name = "" // Default to empty string if not present
-	}
-
-	picture, ok := payload.Claims["picture"].(string)
-	if !ok {
-		picture = "" // Default to empty string if not present
-	}
-
-	familyName, ok := payload.Claims["family_name"].(string)
-	if !ok {
-		familyName = "" // Default to empty string if not present
-	}
-
-	givenName, ok := payload.Claims["given_name"].(string)
-	if !ok {
-		givenName = "" // Default to empty string if not present
-	}
 	log.Printf("User email: %s", email)
-	theme := "dark"
+	return payload, email, name, picture, familyName, givenName
+}
 
-	// Check if user exists in database
+func processGoogleAuthUser(
+	email, name, picture, familyName, givenName string,
+	c *gin.Context,
+) (authUser *User, authType string) {
 	existingUser, err := getUserByEmail(email)
 	if err != nil {
 		log.Printf("Error checking user: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
+		return nil, ""
 	}
+
+	authType = constants.DefaultUserTheme
+	var finalUser *User
 
 	if existingUser == nil {
-		// Create new user
-		newUser := User{
-			Email:      email,
-			Name:       name,
-			Picture:    picture,
-			FamilyName: familyName,
-			GivenName:  givenName,
-		}
-
-		if err := createUser(newUser); err != nil {
+		finalUser, err = handleNewUser(email, name, picture, familyName, givenName)
+		if err != nil {
 			log.Printf("Error creating user: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-			return
+			return nil, ""
 		}
-
-		log.Printf("Created new user: %s", email)
 	} else {
-		// Update last login time
-		if err := updateUserLastLogin(email); err != nil {
-			log.Printf("Error updating last login: %v", err)
-			// Continue anyway, not a critical error
-		}
-		
-		// Ensure the user has a UUID
-		if err := ensureUserHasUUID(email); err != nil {
-			log.Printf("Error ensuring user has UUID: %v", err)
-			// Continue anyway, not a critical error
-		}
-		
-		// Get the updated user to get the UUID
-		existingUser, err = getUserByEmail(email)
+		finalUser, err = handleExistingUser(email)
 		if err != nil {
-			log.Printf("Error getting updated user: %v", err)
-			// Continue anyway, not a critical error
+			log.Printf("Error handling existing user: %v", err)
 		}
-		
-		theme = existingUser.Theme
-
-		log.Printf("User logged in: %s", email)
-	}
-
-	// Generate CSRF token
-	csrfToken, err := GenerateCSRFToken()
-	if err == nil {
-		c.SetCookie(
-			"csrf_token",
-			csrfToken,
-			int(24*time.Hour.Seconds()),
-			"/",
-			"",
-			true,  // Secure
-			false, // Not HTTP-only (JS needs to access it)
-		)
-		// Include it in response for SPA to use
-		c.Header("X-CSRF-Token", csrfToken)
-	}
-
-	// Create session if session service is available
-	if sessionService != nil {
-		// Generate a session with CSRF token
-		sessionData := SessionJSON{
-			CSRF:       csrfToken,
-			UserAgent:  c.Request.UserAgent(),
-			IPAddress:  getClientIP(c),
-			CreatedAt:  time.Now(),
-			LastActive: time.Now(),
-		}
-		jsonBytes, err := json.Marshal(sessionData)
-		if err == nil {
-			_, err = sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
-			if err != nil {
-				// Just log the error, don't fail the request
-				log.Printf("Error creating session: %v", err)
-			}
+		if finalUser != nil {
+			authType = finalUser.Theme
 		}
 	}
 
-	// Set auth cookie
-	c.SetCookie(
-		"auth_token",
-		"authenticated", // Simple flag for now
-		int(24*time.Hour.Seconds()),
-		"/",
-		"",
-		true, // Secure (HTTPS only)
-		true, // HTTP-only
-	)
+	authUser = finalUser
+	return authUser, authType
+}
 
-	// Get the user data to include UUID in response
-	var userUUID string
-	if existingUser != nil {
-		userUUID = existingUser.UUID
-	} else {
-		// For new users, we need to get the user data to get the generated UUID
-		newUserData, err := getUserByEmail(email)
-		if err == nil && newUserData != nil {
-			userUUID = newUserData.UUID
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"user": gin.H{
-			"uuid":         userUUID,
-			"email":        email,
-			"name":         name,
-			"picture":      picture,
-			"family_name":  familyName,
-			"given_name":   givenName,
-			"theme":        theme,
-		},
-	})
+func setupAuthSession(email string, c *gin.Context) {
+	csrfToken := setupCSRFToken(c)
+	createSession(email, csrfToken, c)
+	setAuthCookie(c)
 }
 
 func ValidateTokenHandler(c *gin.Context) {
-	// Add cache control headers to prevent browser caching
-	c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-	c.Header("Pragma", "no-cache")
-	c.Header("Expires", "0")
+	setCacheControlHeaders(c)
 
-	if os.Getenv("GO_ENV") == "development" {
-		// In development mode, always return valid mock user without checking for email
+	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
 		log.Println("Development mode: returning mock user for validation")
 		c.JSON(http.StatusOK, gin.H{
 			"valid":     true,
 			"auth_type": "development",
 			"user": gin.H{
-				"uuid":         "dev-uuid-12345",
-				"email":        "testuser@example.com",
-				"name":         "Test User",
-				"picture":      "https://via.placeholder.com/150",
-				"family_name":  "User",
-				"given_name":   "Test",
-				"theme":        "dark",
+				"uuid":        "dev-uuid-12345",
+				"email":       "testuser@example.com",
+				"name":        "Test User",
+				"picture":     "https://via.placeholder.com/150",
+				"family_name": "User",
+				"given_name":  "Test",
+				"theme":       constants.DefaultUserTheme,
 			},
 		})
 		return
@@ -716,67 +588,28 @@ func ValidateTokenHandler(c *gin.Context) {
 		return
 	}
 
-	// Session is valid, get user data
 	email := userSession.UserID
-	user, err := getUserByEmail(email)
+	userData, err := getUserByEmail(email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
 		return
 	}
 
-	if user == nil {
+	if userData == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 		return
 	}
 
-	// Ensure the user has a UUID
-	if err := ensureUserHasUUID(email); err != nil {
-		log.Printf("Error ensuring user has UUID: %v", err)
-		// Continue anyway, not a critical error
-	}
-	
-	// Get the updated user data to ensure we have the UUID
-	if user.UUID == "" {
-		user, err = getUserByEmail(email)
-		if err != nil {
-			log.Printf("Error getting updated user data: %v", err)
-			// Continue anyway, not a critical error
-		}
+	userData = ensureUserUUID(userData, email)
+	updateSessionLastActive(userSession, c)
+	if err := sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
+		log.Printf("Failed to extend user session: %v", err)
 	}
 
-	// Get CSRF token from session and update last active time
-	var sessionData SessionJSON
-	if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
-		sessionData.LastActive = time.Now()
-		updatedJSON, _ := json.Marshal(sessionData)
-		userSession.JSON = string(updatedJSON)
-
-		if sessionData.CSRF != "" {
-			c.Header("X-CSRF-Token", sessionData.CSRF)
-		}
-	}
-
-	// Extend session validity
-	_ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
-
-	// Return user data for web client
-	c.JSON(http.StatusOK, gin.H{
-		"valid":     true,
-		"auth_type": "session",
-		"user": gin.H{
-			"email":       user.Email,
-			"name":        user.Name,
-			"picture":     user.Picture,
-			"family_name": user.FamilyName,
-			"given_name":  user.GivenName,
-			"theme":       user.Theme,
-			"uuid":        user.UUID, // Include UUID in the response
-		},
-	})
+	c.JSON(http.StatusOK, buildValidateTokenResponse(userData, "session"))
 }
 
 func LogoutHandler(c *gin.Context) {
-	// Clear auth cookie
 	c.SetCookie(
 		"auth_token",
 		"",
@@ -787,7 +620,6 @@ func LogoutHandler(c *gin.Context) {
 		true,
 	)
 
-	// Clear CSRF cookie
 	c.SetCookie(
 		"csrf_token",
 		"",
@@ -801,7 +633,9 @@ func LogoutHandler(c *gin.Context) {
 	if sessionService != nil {
 		userSession, err := sessionService.GetUserSession(c.Request)
 		if err == nil && userSession != nil {
-			_ = sessionService.ClearUserSession(userSession, c.Writer)
+			if err := sessionService.ClearUserSession(userSession, c.Writer); err != nil {
+				log.Printf("Failed to clear user session: %v", err)
+			}
 		}
 	}
 
@@ -809,14 +643,12 @@ func LogoutHandler(c *gin.Context) {
 }
 
 func GetUserSessionsHandler(c *gin.Context) {
-	// Get current user's email from the context
 	email, exists := c.Get("email")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
 
-	// Get the current session ID (if any)
 	var currentSessionID string
 	if session, exists := c.Get("session"); exists {
 		if userSession, ok := session.(*user.Session); ok {
@@ -824,7 +656,6 @@ func GetUserSessionsHandler(c *gin.Context) {
 		}
 	}
 
-	// Get all sessions for this user from DynamoDB
 	if sessionStoreDB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Session store unavailable"})
 		return
@@ -835,21 +666,19 @@ func GetUserSessionsHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
-	
+
 	userSessions, err := sessionStoreDB.GetSessionsByUserID(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve sessions"})
 		return
 	}
 
-	// Create a list of session info objects (with only the data we want to expose)
 	sessionInfos := make([]SessionInfo, 0, len(userSessions))
 	for _, session := range userSessions {
-		// Parse JSON to get additional session metadata
 		sessionInfo := SessionInfo{
-			SessionID:  session.ID,
-			ExpiresAt:  session.ExpiresAt,
-			Current:    session.ID == currentSessionID,
+			SessionID: session.ID,
+			ExpiresAt: session.ExpiresAt,
+			Current:   session.ID == currentSessionID,
 		}
 
 		var sessionData SessionJSON
@@ -869,14 +698,12 @@ func GetUserSessionsHandler(c *gin.Context) {
 }
 
 func TerminateSessionHandler(c *gin.Context) {
-	// Get current user's email from context
 	email, exists := c.Get("email")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
 
-	// Get the session ID to terminate
 	sessionID := c.Param("sessionId")
 	if sessionID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Session ID required"})
@@ -888,7 +715,6 @@ func TerminateSessionHandler(c *gin.Context) {
 		return
 	}
 
-	// Get the session first to verify it belongs to this user
 	session, err := sessionStoreDB.FetchValidUserSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve session"})
@@ -900,19 +726,17 @@ func TerminateSessionHandler(c *gin.Context) {
 		return
 	}
 
-	// Verify the session belongs to the current user
 	emailStr, ok := email.(string)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
-	
+
 	if session.UserID != emailStr {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot terminate another user's session"})
 		return
 	}
 
-	// Delete the session
 	err = sessionStoreDB.DeleteUserSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to terminate session"})
@@ -923,42 +747,36 @@ func TerminateSessionHandler(c *gin.Context) {
 }
 
 func GetWebSocketTokenHandler(c *gin.Context) {
-	// Get current user's email from context
 	email, exists := c.Get("email")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
 
-	// Generate a simple token for WebSocket authentication
-	// In production, you might want to use JWT or a more secure method
 	emailStr, ok := email.(string)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
-	
+
 	token := fmt.Sprintf("ws_%s_%d", emailStr, time.Now().Unix())
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
+		"token":      token,
 		"expires_at": time.Now().Add(time.Hour).Format(time.RFC3339),
 	})
 }
 
-// CreateDevSession creates a development session for testing purposes
 func CreateDevSession(email string, c *gin.Context) error {
 	if sessionService == nil {
 		return fmt.Errorf("session service not initialized")
 	}
 
-	// Generate CSRF token
 	csrfToken, err := GenerateCSRFToken()
 	if err != nil {
 		return fmt.Errorf("failed to generate CSRF token: %w", err)
 	}
 
-	// Create session data
 	sessionData := SessionJSON{
 		CSRF:       csrfToken,
 		UserAgent:  c.Request.UserAgent(),
@@ -967,44 +785,36 @@ func CreateDevSession(email string, c *gin.Context) error {
 		LastActive: time.Now(),
 	}
 
-	// Marshal the session data to JSON
 	jsonBytes, err := json.Marshal(sessionData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal session data: %w", err)
 	}
 
-	// Create a session and attach it to the response
 	userSession, err := sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
 
-	// Set the session in the context so ValidateTokenHandler can find it
 	c.Set("session", userSession)
-
-	// Set the CSRF token in the header
 	c.Header("X-CSRF-Token", csrfToken)
 
 	return nil
 }
 
-// SessionMiddleware attaches user session to the context if present
 func SessionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userSession, err := sessionService.GetUserSession(c.Request)
 		if err != nil {
-			// Log the error but continue
 			fmt.Printf("Error fetching session: %v\n", err)
 		}
 
 		if userSession != nil {
-			// Store the session in the context
 			c.Set("session", userSession)
 
-			// Extend the session if needed
-			_ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
+			if err := sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
+				log.Printf("Failed to extend user session: %v", err)
+			}
 
-			// Parse session JSON to get CSRF token
 			var sessionData SessionJSON
 			if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err == nil {
 				if sessionData.CSRF != "" {
@@ -1012,7 +822,6 @@ func SessionMiddleware() gin.HandlerFunc {
 				}
 			}
 
-			// Set email in context for compatibility with existing code
 			c.Set("email", userSession.UserID)
 		}
 

@@ -19,8 +19,8 @@ var (
 )
 
 // SetGlobalDependencies sets the shared dependencies for all controllers
-func SetGlobalDependencies(db *dynamodb.DynamoDB, s3 *s3.S3, rekognition *rekognition.Rekognition) {
+func SetGlobalDependencies(db *dynamodb.DynamoDB, s3Client *s3.S3, rekognitionClient *rekognition.Rekognition) {
 	DB = db
-	S3Client = s3
-	RekognitionClient = rekognition
+	S3Client = s3Client
+	RekognitionClient = rekognitionClient
 }

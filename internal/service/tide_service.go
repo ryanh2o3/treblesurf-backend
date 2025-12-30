@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -48,11 +49,9 @@ func (s *TideService) GetCurrentTides(locationName string) []map[string]interfac
 	return result
 }
 
-func (s *TideService) GetBeforeAfterTides(locationName string) (map[string]interface{}, map[string]interface{}) {
+func (s *TideService) GetBeforeAfterTides(locationName string) (prevTide, nextTide map[string]interface{}) {
 	tides := s.GetCurrentTides(locationName)
 	now := time.Now()
-
-	var prevTide, nextTide map[string]interface{}
 	for _, tide := range tides {
 		// Parse the tide time string
 		tideTimeStr, ok := tide["time"].(string)
@@ -104,7 +103,10 @@ func (s *TideService) GetBeforeAfterTides(locationName string) (map[string]inter
 }
 
 func (s *TideService) GetDayTides(locationName, startDay string) map[string]interface{} {
-	start, _ := time.Parse("2006-01-02", startDay)
+	start, err := time.Parse("2006-01-02", startDay)
+	if err != nil {
+		return map[string]interface{}{"error": fmt.Sprintf("invalid date format: %v", err)}
+	}
 	end := start.AddDate(0, 0, 10)
 
 	tideData := make(map[string]interface{})

@@ -16,19 +16,20 @@ type MockRekognition struct{}
 
 // DetectLabels always returns a successful result for local development
 func (m *MockRekognition) DetectLabels(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
-    // Always return a "surf-related" label in development mode
 	if input == nil {
         return nil, awserr.New("InvalidParameterException", "Input cannot be nil", errors.New("nil input"))
     }
     
-    // Check if Image is provided
     if input.Image == nil {
         return nil, awserr.New("InvalidParameterException", "Image is required", errors.New("missing image"))
     }
     
-    // Check that either Bytes or S3Object is provided in Image
     if input.Image.Bytes == nil && input.Image.S3Object == nil {
-        return nil, awserr.New("InvalidParameterException", "Either Image.Bytes or Image.S3Object must be provided", errors.New("invalid image format"))
+        return nil, awserr.New(
+            "InvalidParameterException",
+            "Either Image.Bytes or Image.S3Object must be provided",
+            errors.New("invalid image format"),
+        )
     }
     confidence := float64(99.5)
     
@@ -47,8 +48,9 @@ func (m *MockRekognition) DetectLabels(input *rekognition.DetectLabelsInput) (*r
         },
     }
     
-    // Add a wave label if the image has specific patterns (simplified check)
-    if input.Image.Bytes != nil && (bytes.Contains(input.Image.Bytes, []byte("wave")) || bytes.Contains(input.Image.Bytes, []byte("surf"))) {
+    if input.Image.Bytes != nil &&
+        (bytes.Contains(input.Image.Bytes, []byte("wave")) ||
+            bytes.Contains(input.Image.Bytes, []byte("surf"))) {
         labels = append(labels, &rekognition.Label{
             Name:       aws.String("Sea Waves"),
             Confidence: &confidence,
@@ -66,8 +68,7 @@ func (m *MockRekognition) DetectLabels(input *rekognition.DetectLabelsInput) (*r
 type MockKinesis struct{}
 
 // GetHLSStreamingSessionURL returns a fake URL for local development
-func (m *MockKinesis) GetHLSStreamingSessionURL(input interface{}) (interface{}, error) {
-    // Return a mock streaming URL
+func (m *MockKinesis) GetHLSStreamingSessionURL(_ interface{}) (interface{}, error) {
     return struct {
         HLSStreamingSessionURL *string
     }{
@@ -79,25 +80,24 @@ func (m *MockKinesis) GetHLSStreamingSessionURL(input interface{}) (interface{},
 type MockSTS struct{}
 
 // AssumeRole returns mock credentials for local development
-func (m *MockSTS) AssumeRole(input interface{}) (interface{}, error) {
-    // Return mock credentials
+func (m *MockSTS) AssumeRole(_ interface{}) (interface{}, error) {
     expiration := time.Now().Add(1 * time.Hour)
     
     return struct {
         Credentials struct {
-            AccessKeyId     *string
+            AccessKeyID     *string
             SecretAccessKey *string
             SessionToken    *string
             Expiration      *time.Time
         }
     }{
         Credentials: struct {
-            AccessKeyId     *string
+            AccessKeyID     *string
             SecretAccessKey *string
             SessionToken    *string
             Expiration      *time.Time
         }{
-            AccessKeyId:     aws.String("MOCK-ACCESS-KEY"),
+            AccessKeyID:     aws.String("MOCK-ACCESS-KEY"),
             SecretAccessKey: aws.String("mock-secret-key"),
             SessionToken:    aws.String("mock-session-token"),
             Expiration:      &expiration,

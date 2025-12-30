@@ -1,3 +1,4 @@
+// Package websocket provides WebSocket handlers for API Gateway WebSocket connections.
 package websocket
 
 import (
@@ -5,26 +6,30 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/service"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/golang-jwt/jwt"
 )
 
-type WebSocketHandler struct {
+// Handler handles WebSocket events from API Gateway.
+type Handler struct {
 	websocketService *service.WebSocketService
 }
 
-func NewWebSocketHandler(websocketService *service.WebSocketService) *WebSocketHandler {
-	return &WebSocketHandler{
+// NewHandler creates a new WebSocket handler instance.
+func NewHandler(websocketService *service.WebSocketService) *Handler {
+	return &Handler{
 		websocketService: websocketService,
 	}
 }
 
 // HandleWebSocketEvent handles WebSocket events from API Gateway
-func (h *WebSocketHandler) HandleWebSocketEvent(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
+func (h *Handler) HandleWebSocketEvent(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	log.Printf("WebSocket event: %s, ConnectionID: %s", req.RequestContext.RouteKey, req.RequestContext.ConnectionID)
 
 	switch req.RequestContext.RouteKey {
@@ -39,78 +44,38 @@ func (h *WebSocketHandler) HandleWebSocketEvent(req events.APIGatewayWebsocketPr
 	}
 }
 
-func (h *WebSocketHandler) handleConnect(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
+func (h *Handler) handleConnect(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
-
-	// Parse token from query parameters
 	token := req.QueryStringParameters["token"]
-	if token == "" {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusUnauthorized,
-			Body:       "Authentication required",
-		}, nil
-	}
 
-	// Parse the temporary token
-	wsToken, err := h.websocketService.ValidateWebSocketToken(token)
-	if err != nil || !wsToken.Valid {
+	userID, sessionID, err := h.validateWebSocketToken(token)
+	if err != nil || userID == "" {
+		if token == "" {
+			return unauthorizedResponse(), nil
+		}
 		log.Printf("Invalid WebSocket token: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusUnauthorized,
-			Body:       "Invalid token",
-		}, nil
+		return invalidTokenResponse(), nil
 	}
 
-	// Extract claims
-	claims, ok := wsToken.Claims.(jwt.MapClaims)
-	if !ok {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-			Body:       "Invalid token format",
-		}, nil
-	}
-
-	// Get user ID from claims
-	userID, ok := claims["user_id"].(string)
-	if !ok {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       "Invalid token payload",
-		}, nil
-	}
-
-	// Get session ID for reference (optional)
-	sessionID, _ := claims["session_id"].(string)
-
-	// Store connection info in DynamoDB
-	connection := &model.ConnectionInfo{
-		ConnectionID: connectionID,
-		UserID:       userID,
-		ConnectedAt:  time.Unix(req.RequestContext.RequestTimeEpoch, 0),
-		LastActive:   time.Unix(req.RequestContext.RequestTimeEpoch, 0),
-		UserAgent:    req.Headers["User-Agent"],
-		IPAddress:    h.websocketService.GetSourceIP(req.Headers),
-	}
-
+	connection := h.createConnectionInfo(connectionID, userID, req)
 	if err := h.websocketService.SaveConnection(connection); err != nil {
 		log.Printf("Failed to save connection: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-			Body:       "Failed to establish connection",
-		}, nil
+		return connectionFailedResponse(), nil
 	}
 
 	log.Printf("Client connected: %s, User: %s, Session: %s", connectionID, userID, sessionID)
-	return events.APIGatewayProxyResponse{
-		StatusCode: http.StatusOK,
-		Body:       "Connected",
-	}, nil
+	return successResponse("Connected"), nil
 }
 
-func (h *WebSocketHandler) handleDisconnect(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
+func (h *Handler) handleDisconnect(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
-	// Delete the connection record
 	if err := h.websocketService.DeleteConnection(connectionID); err != nil {
 		log.Printf("Error deleting connection: %v", err)
 	}
@@ -122,7 +87,10 @@ func (h *WebSocketHandler) handleDisconnect(req events.APIGatewayWebsocketProxyR
 	}, nil
 }
 
-func (h *WebSocketHandler) handleDefault(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
+func (h *Handler) handleDefault(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	var message model.WebSocketMessage
 	if err := json.Unmarshal([]byte(req.Body), &message); err != nil {
 		return events.APIGatewayProxyResponse{
@@ -131,10 +99,10 @@ func (h *WebSocketHandler) handleDefault(req events.APIGatewayWebsocketProxyRequ
 		}, nil
 	}
 
-	// Update last active timestamp
-	h.websocketService.UpdateConnectionLastActive(req.RequestContext.ConnectionID)
+	if err := h.websocketService.UpdateConnectionLastActive(req.RequestContext.ConnectionID); err != nil {
+		log.Printf("Warning: Failed to update connection last active: %v", err)
+	}
 
-	// Process based on the action
 	if message.Action == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
@@ -142,12 +110,15 @@ func (h *WebSocketHandler) handleDefault(req events.APIGatewayWebsocketProxyRequ
 		}, nil
 	}
 
-	// Here we'd handle different message types
 	return h.handleCustomRoute(req)
 }
 
 // handleCustomRoute processes custom WebSocket messages
-func (h *WebSocketHandler) handleCustomRoute(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
+func (h *Handler) handleCustomRoute(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	var message model.WebSocketMessage
 	if err := json.Unmarshal([]byte(req.Body), &message); err != nil {
 		log.Printf("Error parsing message: %v", err)
@@ -175,8 +146,11 @@ func (h *WebSocketHandler) handleCustomRoute(req events.APIGatewayWebsocketProxy
 }
 
 // handleSubscribeAction processes WebSocket subscription requests
-func (h *WebSocketHandler) handleSubscribeAction(req events.APIGatewayWebsocketProxyRequest, data json.RawMessage) (events.APIGatewayProxyResponse, error) {
-	// Parse the subscription data
+
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
+func (h *Handler) handleSubscribeAction(
+	req events.APIGatewayWebsocketProxyRequest, data json.RawMessage,
+) (events.APIGatewayProxyResponse, error) {
 	var subRequest model.SubscriptionRequest
 	if err := json.Unmarshal(data, &subRequest); err != nil {
 		log.Printf("Error parsing subscription data: %v", err)
@@ -188,7 +162,6 @@ func (h *WebSocketHandler) handleSubscribeAction(req events.APIGatewayWebsocketP
 
 	connectionID := req.RequestContext.ConnectionID
 
-	// Get the connection info to know which user is subscribing
 	connection, err := h.websocketService.GetConnection(connectionID)
 	if err != nil {
 		log.Printf("Error getting connection info: %v", err)
@@ -201,22 +174,30 @@ func (h *WebSocketHandler) handleSubscribeAction(req events.APIGatewayWebsocketP
 	userID := connection.UserID
 	spotIdentifier := fmt.Sprintf("%s/%s/%s", subRequest.Country, subRequest.Region, subRequest.Spot)
 
-	// Store the subscription in DynamoDB
-	if err := h.websocketService.SaveSubscription(spotIdentifier, userID, connectionID); err != nil {
-		log.Printf("Failed to save subscription: %v", err)
+	if saveErr := h.websocketService.SaveSubscription(spotIdentifier, userID, connectionID); saveErr != nil {
+		log.Printf("Failed to save subscription: %v", saveErr)
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 			Body:       "Failed to subscribe",
 		}, nil
 	}
 
-	// Update connection metadata with current spot
-	h.websocketService.UpdateConnectionSpot(connectionID, spotIdentifier)
+	if updateErr := h.websocketService.UpdateConnectionSpot(connectionID, spotIdentifier); updateErr != nil {
+		log.Printf("Warning: Failed to update connection spot: %v", updateErr)
+	}
 
-	// Send confirmation back to client
 	response := h.websocketService.CreateSubscriptionResponse(spotIdentifier)
-	responseJSON, _ := json.Marshal(response)
-	h.websocketService.SendToConnection(connectionID, string(responseJSON))
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Failed to marshal response: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Failed to process subscription",
+		}, nil
+	}
+	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
+		log.Printf("Warning: Failed to send message to connection: %v", err)
+	}
 
 	log.Printf("User %s subscribed to spot: %s via connection %s", userID, spotIdentifier, connectionID)
 	return events.APIGatewayProxyResponse{
@@ -226,16 +207,29 @@ func (h *WebSocketHandler) handleSubscribeAction(req events.APIGatewayWebsocketP
 }
 
 // handlePingAction responds to ping messages to keep the connection alive
-func (h *WebSocketHandler) handlePingAction(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+
+//nolint:gocritic // AWS Lambda handler signature cannot be changed
+func (h *Handler) handlePingAction(
+	req events.APIGatewayWebsocketProxyRequest,
+) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
-	// Update last active time
-	h.websocketService.UpdateConnectionLastActive(connectionID)
+	if err := h.websocketService.UpdateConnectionLastActive(connectionID); err != nil {
+		log.Printf("Warning: Failed to update connection last active: %v", err)
+	}
 
-	// Send pong response
 	response := h.websocketService.CreatePongResponse()
-	responseJSON, _ := json.Marshal(response)
-	h.websocketService.SendToConnection(connectionID, string(responseJSON))
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Failed to marshal response: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Failed to process ping",
+		}, nil
+	}
+	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
+		log.Printf("Warning: Failed to send message to connection: %v", err)
+	}
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
