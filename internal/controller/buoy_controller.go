@@ -14,273 +14,277 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// BuoyLocationInfo returns location information for all buoys.
 func BuoyLocationInfo(c *gin.Context) {
-    input := &dynamodb.ScanInput{
-        TableName: aws.String("BuoyLocations"),
-    }
+	input := &dynamodb.ScanInput{
+		TableName: aws.String("BuoyLocations"),
+	}
 
-    result, err := DB.Scan(input)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+	result, err := DB.Scan(input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    var locations []map[string]interface{}
-    err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &locations)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+	var locations []map[string]interface{}
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &locations)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    c.JSON(http.StatusOK, locations)
+	c.JSON(http.StatusOK, locations)
 }
 
+// IndividualBuoyLocationInfo returns location information for a specific buoy.
 func IndividualBuoyLocationInfo(c *gin.Context) {
-    regionName := c.Query("region")
-    buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")        
-    input := &dynamodb.QueryInput{
-        TableName: aws.String("BuoyLocations"),
-        KeyConditionExpression: aws.String("region_buoy = :region_buoy"),
-        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-            ":region_buoy": {
-                S: aws.String(fmt.Sprintf("%s_%s", regionName, buoyName)),
-            },
-        },
-    }
+	regionName := c.Query("region")
+	buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String("BuoyLocations"),
+		KeyConditionExpression: aws.String("region_buoy = :region_buoy"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":region_buoy": {
+				S: aws.String(fmt.Sprintf("%s_%s", regionName, buoyName)),
+			},
+		},
+	}
 
-    result, err := DB.Query(input)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+	result, err := DB.Query(input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    if len(result.Items) == 0 {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "No buoy location found"})
-        return
-    }
+	if len(result.Items) == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No buoy location found"})
+		return
+	}
 
-    var buoy map[string]interface{}
-    err = dynamodbattribute.UnmarshalMap(result.Items[0], &buoy)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+	var buoy map[string]interface{}
+	err = dynamodbattribute.UnmarshalMap(result.Items[0], &buoy)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    c.JSON(http.StatusOK, buoy)
+	c.JSON(http.StatusOK, buoy)
 }
 
+// GetLiveBuoyData returns the most recent buoy data for all buoys.
 func GetLiveBuoyData(c *gin.Context) {
-    buoys := []string{"M4", "Blackstones", "West Hebrides", "M2", "M3", "M5", "M6"}
-    var buoyData []map[string]interface{}
+	buoys := []string{"M4", "Blackstones", "West Hebrides", "M2", "M3", "M5", "M6"}
+	var buoyData []map[string]interface{}
 
-    for _, buoy := range buoys {
-        data := getBuoyData(buoy, "string")
-        buoyData = append(buoyData, data)
-    }
+	for _, buoy := range buoys {
+		data := getBuoyData(buoy, "string")
+		buoyData = append(buoyData, data)
+	}
 
-    c.JSON(http.StatusOK, buoyData)
+	c.JSON(http.StatusOK, buoyData)
 }
-// Example handler function to use the above function
+
+// GetBuoyDataRange returns buoy data for a specific buoy within a specified time range.
 func GetBuoyDataRange(c *gin.Context) {
-    buoyName := c.Query("buoyName")
-    startTimeStr := c.Query("startTime") // expected format: 2006-01-02T15:00:00Z or 2006-01-02
-    endTimeStr := c.Query("endTime")     // expected format: 2006-01-02T15:00:00Z or 2006-01-02
+	buoyName := c.Query("buoyName")
+	startTimeStr := c.Query("startTime") // expected format: 2006-01-02T15:00:00Z or 2006-01-02
+	endTimeStr := c.Query("endTime")     // expected format: 2006-01-02T15:00:00Z or 2006-01-02
 
-    // Try parsing with full timestamp first, then try date-only format
-    startTime, err := time.Parse("2006-01-02T15:04:05Z", startTimeStr)
-    if err != nil {
-        // Try parsing as date only
-        startTime, err = time.Parse("2006-01-02", startTimeStr)
-        if err != nil {
-            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start time format. Expected 2006-01-02T15:04:05Z or 2006-01-02"})
-            return
-        }
-    }
+	// Try parsing with full timestamp first, then try date-only format
+	startTime, err := time.Parse("2006-01-02T15:04:05Z", startTimeStr)
+	if err != nil {
+		// Try parsing as date only
+		startTime, err = time.Parse("2006-01-02", startTimeStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid start time format. Expected 2006-01-02T15:04:05Z or 2006-01-02",
+			})
+			return
+		}
+	}
 
-    endTime, err := time.Parse("2006-01-02T15:04:05Z", endTimeStr)
-    if err != nil {
-        // Try parsing as date only
-        endTime, err = time.Parse("2006-01-02", endTimeStr)
-        if err != nil {
-            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end time format. Expected 2006-01-02T15:04:05Z or 2006-01-02"})
-            return
-        }
-        // If parsing date only, set to end of day
-        endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 23, 59, 59, 0, endTime.Location())
-    }
+	endTime, err := time.Parse("2006-01-02T15:04:05Z", endTimeStr)
+	if err != nil {
+		// Try parsing as date only
+		endTime, err = time.Parse("2006-01-02", endTimeStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end time format. Expected 2006-01-02T15:04:05Z or 2006-01-02"})
+			return
+		}
+		// If parsing date only, set to end of day
+		endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 23, 59, 59, 0, endTime.Location())
+	}
 
-    data, err := getBuoyDataRange(buoyName, startTime, endTime)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+	data, err := getBuoyDataRange(buoyName, startTime, endTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    // Return empty array instead of null when no data found
-    if data == nil {
-        data = []map[string]interface{}{}
-    }
+	// Return empty array instead of null when no data found
+	if data == nil {
+		data = []map[string]interface{}{}
+	}
 
-    c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, data)
 }
 
+// GetSingleBuoyData returns the most recent data for a specific buoy.
 func GetSingleBuoyData(c *gin.Context) {
-    // buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")    
-    var data map[string]interface{}
-    // Start from current time rounded down to the nearest hour
-    now := time.Now()
-    currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
+	var data map[string]interface{}
+	// Start from current time rounded down to the nearest hour
+	now := time.Now()
+	currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
 
-    for i := 0; i < 12; i++ {
-        searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-        dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-        data = getBuoyData(c.Query("buoyName"), dateStr)
-        if data != nil {
-            break
-        }
-    }
+	for i := 0; i < 12; i++ {
+		searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
+		dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
+		data = getBuoyData(c.Query("buoyName"), dateStr)
+		if data != nil {
+			break
+		}
+	}
 
-    c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, data)
 }
 
+// GetLast24HoursBuoyData returns buoy data from the last 24 hours for a specific buoy.
 func GetLast24HoursBuoyData(c *gin.Context) {
-    // buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")    
-    // Calculate time range
-    endTime := time.Now().UTC()
-    startTime := endTime.AddDate(0, 0, -1) // 7 days ago
-    
-    // Get the data range
-    data, err := getBuoyDataRange(c.Query("buoyName"), startTime, endTime)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    
-    if len(data) == 0 {
-        c.JSON(http.StatusNotFound, gin.H{"error": "No data found for the last week"})
-        return
-    }
-    
-    c.JSON(http.StatusOK, data)
+	// buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")
+	// Calculate time range
+	endTime := time.Now().UTC()
+	startTime := endTime.AddDate(0, 0, -1) // 7 days ago
+
+	// Get the data range
+	data, err := getBuoyDataRange(c.Query("buoyName"), startTime, endTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(data) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No data found for the last week"})
+		return
+	}
+
+	c.JSON(http.StatusOK, data)
 }
 
+// GetMultipleBuoyData returns the most recent data for multiple specified buoys.
 func GetMultipleBuoyData(c *gin.Context) {
-    buoysStr := c.Query("buoys")
-    buoys := strings.Split(buoysStr, ",")
-    var values []map[string]interface{}
+	buoysStr := c.Query("buoys")
+	buoys := strings.Split(buoysStr, ",")
+	var values []map[string]interface{}
 
-    for _, buoy := range buoys {
-        var data map[string]interface{}
-        // Start from current time rounded down to the nearest hour
-        now := time.Now()
-        currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
-    
-        for i := 0; i < 12; i++ {
-            searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-            dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-            // buoyName := strings.ReplaceAll(buoy, " ", "")
-            data = getBuoyData(buoy, dateStr)
-            if data != nil {
-                break
-            }
-        }
-        if(data != nil){
-        values = append(values, data)
-        }
-    }
+	for _, buoy := range buoys {
+		var data map[string]interface{}
+		// Start from current time rounded down to the nearest hour
+		now := time.Now()
+		currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
 
-    c.JSON(http.StatusOK, values)
+		for i := 0; i < 12; i++ {
+			searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
+			dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
+			data = getBuoyData(buoy, dateStr)
+			if data != nil {
+				break
+			}
+		}
+		if data != nil {
+			values = append(values, data)
+		}
+	}
+
+	c.JSON(http.StatusOK, values)
 }
 
 func getBuoyDataRange(buoyName string, startTime, endTime time.Time) ([]map[string]interface{}, error) {
-    startStr := startTime.UTC().Format("2006-01-02T15:00:00Z")
-    endStr := endTime.UTC().Format("2006-01-02T15:00:00Z")
-    input := &dynamodb.QueryInput{
-        TableName: aws.String("BuoyData"),
-        KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime BETWEEN :start AND :end"),
-        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-            ":rb": {
-                S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
-            },
-            ":start": {
-                S: aws.String(startStr),
-            },
-            ":end": {
-                S: aws.String(endStr),
-            },
-        },
-        ScanIndexForward: aws.Bool(true), // true for ascending order by time
-    }
+	startStr := startTime.UTC().Format("2006-01-02T15:00:00Z")
+	endStr := endTime.UTC().Format("2006-01-02T15:00:00Z")
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String("BuoyData"),
+		KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime BETWEEN :start AND :end"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":rb": {
+				S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
+			},
+			":start": {
+				S: aws.String(startStr),
+			},
+			":end": {
+				S: aws.String(endStr),
+			},
+		},
+		ScanIndexForward: aws.Bool(true), // true for ascending order by time
+	}
 
-    var allItems []map[string]interface{}
-    for {
-        result, err := DB.Query(input)
-        if err != nil {
-            return nil, fmt.Errorf("error querying buoy data: %v", err)
-        }
+	var allItems []map[string]interface{}
+	for {
+		result, err := DB.Query(input)
+		if err != nil {
+			return nil, fmt.Errorf("error querying buoy data: %v", err)
+		}
 
-        var items []map[string]interface{}
-        if err := dynamodbattribute.UnmarshalListOfMaps(result.Items, &items); err != nil {
-            return nil, fmt.Errorf("error unmarshalling buoy data: %v", err)
-        }
-        
-        allItems = append(allItems, items...)
+		var items []map[string]interface{}
+		if err := dynamodbattribute.UnmarshalListOfMaps(result.Items, &items); err != nil {
+			return nil, fmt.Errorf("error unmarshalling buoy data: %v", err)
+		}
 
-        // Handle pagination
-        if result.LastEvaluatedKey == nil {
-            break
-        }
-        input.ExclusiveStartKey = result.LastEvaluatedKey
-    }
+		allItems = append(allItems, items...)
 
-    return allItems, nil
+		// Handle pagination
+		if result.LastEvaluatedKey == nil {
+			break
+		}
+		input.ExclusiveStartKey = result.LastEvaluatedKey
+	}
+
+	return allItems, nil
 }
 
-func getBuoyData(buoyName string, dateStr string) map[string]interface{} {
-    var buoyData map[string]interface{}
+func getBuoyData(buoyName, dateStr string) map[string]interface{} {
+	var buoyData map[string]interface{}
 
-    input := &dynamodb.QueryInput{
-        TableName: aws.String("BuoyData"),
-        KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime = :dt"),
-        ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-            ":rb": {
-                S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
-            },
-            ":dt": {
-                S: aws.String(dateStr),
-            },
-        },
-        ScanIndexForward: aws.Bool(false), // Get most recent first
-        Limit:           aws.Int64(1),     // We only want the most recent reading
-    }
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String("BuoyData"),
+		KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime = :dt"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":rb": {
+				S: aws.String(fmt.Sprintf("Ireland_%s", buoyName)),
+			},
+			":dt": {
+				S: aws.String(dateStr),
+			},
+		},
+		ScanIndexForward: aws.Bool(false), // Get most recent first
+		Limit:            aws.Int64(1),    // We only want the most recent reading
+	}
 
-    result, err := DB.Query(input)
-    if err != nil {
-        log.Printf("Error querying buoy data: %v", err)
-        return nil
-    }
+	result, err := DB.Query(input)
+	if err != nil {
+		log.Printf("Error querying buoy data: %v", err)
+		return nil
+	}
 
-    if len(result.Items) == 0 {
-        return nil
-    }
+	if len(result.Items) == 0 {
+		return nil
+	}
 
-    
-    err = dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
-    if err != nil {
-        log.Printf("Error unmarshalling buoy data: %v", err)
-        return nil
-    }
-    return buoyData
-    
+	err = dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
+	if err != nil {
+		log.Printf("Error unmarshalling buoy data: %v", err)
+		return nil
+	}
+	return buoyData
 }
 
-func GetRegionBuoys(c *gin.Context){
-    regionName := c.Query("region")
-    var buoys []model.Buoy
+// GetRegionBuoys returns buoy location information for a specific region.
+func GetRegionBuoys(c *gin.Context) {
+	regionName := c.Query("region")
+	var buoys []model.Buoy
 
-
-
-    input := &dynamodb.ScanInput{
-		TableName: aws.String("BuoyLocations"),
+	input := &dynamodb.ScanInput{
+		TableName:        aws.String("BuoyLocations"),
 		FilterExpression: aws.String("begins_with(region_buoy, :region)"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":region": {
@@ -291,20 +295,20 @@ func GetRegionBuoys(c *gin.Context){
 
 	result, err := DB.Scan(input)
 	if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to query"})
-        return
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to query"})
+		return
 	}
 
 	if len(result.Items) == 0 {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "no buoys found for this region"})
-        return
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "no buoys found for this region"})
+		return
 	}
 
-    err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &buoys)
-    if err != nil {
-        log.Printf("Error unmarshalling buoy data: %v", err)
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to find buoys for this region"})
-        return
-    }
-    c.JSON(http.StatusOK, buoys)
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &buoys)
+	if err != nil {
+		log.Printf("Error unmarshalling buoy data: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to find buoys for this region"})
+		return
+	}
+	c.JSON(http.StatusOK, buoys)
 }

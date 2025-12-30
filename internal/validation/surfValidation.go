@@ -1,3 +1,4 @@
+// Package validation provides validation functions for surf-related data.
 package validation
 
 // IsValidSwellSize validates if a swell size is valid
@@ -6,6 +7,7 @@ func IsValidSwellSize(swellSize string) bool {
 	return contains(validSizes, swellSize)
 }
 
+// IsValidSurfSize validates if a surf size string is valid.
 func IsValidSurfSize(swellSize string) bool {
 	validSizes := []string{"flat", "knee-waist", "chest-shoulder", "head-high", "overhead", "double-overhead"}
 	return contains(validSizes, swellSize)

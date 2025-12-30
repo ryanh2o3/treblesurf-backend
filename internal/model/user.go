@@ -2,7 +2,6 @@ package model
 
 import "time"
 
-// User represents a user in the system
 type User struct {
 	UUID       string `json:"uuid" dynamodbav:"uuid"`
 	Email      string `json:"email" dynamodbav:"email"`
@@ -16,7 +15,6 @@ type User struct {
 	Role       string `json:"role,omitempty" dynamodbav:"role,omitempty"`
 }
 
-// UserSession represents a user's session information
 type UserSession struct {
 	Email       string    `json:"email"`
 	SessionID   string    `json:"session_id"`
@@ -27,7 +25,6 @@ type UserSession struct {
 	CSRFToken   string    `json:"csrf_token"`
 }
 
-// TokenRequest defines the structure for incoming token validation requests
 type TokenRequest struct {
 	IDToken string `json:"id_token"`
 }

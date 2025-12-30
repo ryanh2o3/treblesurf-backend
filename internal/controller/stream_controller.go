@@ -25,7 +25,11 @@ func GetStreamingCredentials(c *gin.Context) {
 		return
 	}
 
-	key := apiKey.(*APIKey)
+	key, ok := apiKey.(*APIKey)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key in context"})
+		return
+	}
 
 	// Create an STS client
 	sess := session.Must(session.NewSession(&aws.Config{
@@ -87,7 +91,7 @@ func GetStreamPlaybackURL(c *gin.Context) {
 	})
 
 	hlsOutput, err := archiveClient.GetHLSStreamingSessionURL(&kinesisvideoarchivedmedia.GetHLSStreamingSessionURLInput{
-		StreamName: aws.String("treblesurf-webcam"),
+		StreamName:   aws.String("treblesurf-webcam"),
 		PlaybackMode: aws.String("LIVE"), // Use "ON_DEMAND" for recorded content
 		HLSFragmentSelector: &kinesisvideoarchivedmedia.HLSFragmentSelector{
 			FragmentSelectorType: aws.String("SERVER_TIMESTAMP"),
@@ -124,12 +128,18 @@ func RequestStreamHandler(c *gin.Context) {
 		return
 	}
 
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+		return
+	}
+
 	now := time.Now()
 	expiration := now.Add(5 * time.Minute).Unix()
 
 	streamRequest := StreamRequest{
 		SpotID:      request.SpotID,
-		RequestedBy: email.(string),
+		RequestedBy: emailStr,
 		RequestedAt: now,
 		Expiration:  expiration,
 	}
@@ -151,7 +161,7 @@ func RequestStreamHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":   "Stream requested successfully",
+		"message":    "Stream requested successfully",
 		"expires_at": now.Add(5 * time.Minute).Format(time.RFC3339),
 	})
 }
@@ -195,9 +205,9 @@ func CheckStreamRequestHandler(c *gin.Context) {
 
 // StreamRequest represents a stream request
 type StreamRequest struct {
+	RequestedAt time.Time `json:"requested_at"`
 	SpotID      string    `json:"spot_id"`
 	RequestedBy string    `json:"requested_by"`
-	RequestedAt time.Time `json:"requested_at"`
 	Expiration  int64     `json:"expiration"`
 }
 

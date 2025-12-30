@@ -1,8 +1,8 @@
+// Package model provides data models used throughout the application.
 package model
 
 import "time"
 
-// APIKey represents an API key in the system
 type APIKey struct {
 	KeyID       string    `json:"key_id" dynamodbav:"key_id"`
 	KeyValue    string    `json:"key_value" dynamodbav:"key_value"`

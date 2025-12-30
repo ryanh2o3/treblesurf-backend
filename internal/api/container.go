@@ -1,4 +1,5 @@
-package api
+// Package httphandler provides the API container for dependency injection and route setup.
+package httphandler
 
 import (
 	"bytes"
@@ -9,9 +10,10 @@ import (
 	"os"
 	"time"
 	"treblesurf-backend/internal/auth"
+	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/controller"
 	"treblesurf-backend/internal/service"
-	"treblesurf-backend/internal/storage"
+	storagepkg "treblesurf-backend/internal/storage"
 	localstorage "treblesurf-backend/local/storage"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -23,8 +25,8 @@ import (
 
 type Container struct {
 	// Storage
-	DynamoDBStorage storage.DynamoDBStorage
-	S3Storage       storage.S3Storage
+	DynamoDBStorage storagepkg.DynamoDBStorage
+	S3Storage       storagepkg.S3Storage
 	
 	// Services
 	ForecastService *service.ForecastService
@@ -40,147 +42,231 @@ type Container struct {
 	SwellPredictionController *controller.SwellPredictionController
 }
 
+type containerConfig struct {
+	region     string
+	bucketName string
+	isLocal    bool
+}
+
+type containerStorage struct {
+	dynamoDBClient   *dynamodb.DynamoDB
+	rekognitionClient *rekognition.Rekognition
+	dbStorage        storagepkg.DynamoDBStorage
+	s3Storage        storagepkg.S3Storage
+}
+
+type containerServices struct {
+	forecastService        *service.ForecastService
+	tideService            *service.TideService
+	locationService        *service.LocationService
+	userService            *service.UserService
+	reportService          *service.ReportService
+	apiKeyService          *service.APIKeyService
+	swellPredictionService *service.SwellPredictionService
+	websocketService       *service.WebSocketService
+}
+
+type containerControllers struct {
+	forecastController        *controller.ForecastController
+	swellPredictionController *controller.SwellPredictionController
+}
+
 func NewContainer() (*Container, error) {
-	// Get configuration from environment
+	cfg := loadContainerConfig()
+	
+	storage, err := initializeStorage(cfg)
+	if err != nil {
+		return nil, err
+	}
+	
+	services, err := initializeServices(storage, cfg)
+	if err != nil {
+		return nil, err
+	}
+	
+	controllers := initializeControllers(services)
+	
+	setupGlobalDependencies(storage, services, cfg)
+	
+	return buildContainer(storage, services, controllers), nil
+}
+
+func loadContainerConfig() containerConfig {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
-		region = "eu-west-1" // default
+		region = "eu-west-1"
 	}
 	
 	bucketName := os.Getenv("S3_BUCKET_NAME")
 	if bucketName == "" {
-		bucketName = "treblesurf-images" // default
+		bucketName = "treblesurf-images"
 	}
-
-	// Check if we're running locally
-	isLocal := os.Getenv("GO_ENV") == "development"
 	
-	var dynamoDBClient *dynamodb.DynamoDB
-	var rekognitionClient *rekognition.Rekognition
-	var dbStorage storage.DynamoDBStorage
-	var s3Storage storage.S3Storage
-	var err error
-
-	if isLocal {
-		// In local development, use the local storage clients
-		log.Println("Using local development storage clients")
-		
-		// Check if local clients are available
-		if localDB := getLocalDynamoDB(); localDB != nil {
-			dynamoDBClient = localDB
-			// Create a simple wrapper that implements the storage interface
-			dbStorage = &localDynamoDBWrapper{client: localDB}
-		} else {
-			return nil, fmt.Errorf("local DynamoDB client not initialized. Make sure to call storage.InitLocal() first")
-		}
-		
-		if localS3 := getLocalS3Client(); localS3 != nil {
-			// Create a simple wrapper that implements the storage interface
-			s3Storage = &localS3Wrapper{client: localS3}
-		} else {
-			return nil, fmt.Errorf("local S3 client not initialized. Make sure to call storage.InitLocal() first")
-		}
-		
-		if localRekognition := getLocalRekognitionClient(); localRekognition != nil {
-			rekognitionClient = localRekognition
-		} else {
-			return nil, fmt.Errorf("local Rekognition client not initialized. Make sure to call storage.InitLocal() first")
-		}
-	} else {
-		// In production, create new AWS session
-		sess := session.Must(session.NewSession(&aws.Config{
-			Region: aws.String(region),
-		}))
-
-		// Initialize AWS clients
-		dynamoDBClient = dynamodb.New(sess)
-		rekognitionClient = rekognition.New(sess)
-
-		// Initialize storage clients
-		dbStorage, err = storage.NewDynamoDBStorage(region)
-		if err != nil {
-			return nil, err
-		}
-
-		s3Storage, err = storage.NewS3Storage(region)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Initialize services
-	forecastService := service.NewForecastService(dynamoDBClient)
-	tideService := service.NewTideService()
-	locationService := service.NewLocationService(dbStorage, s3Storage, bucketName)
-	userService := service.NewUserService(dynamoDBClient)
-	reportService := service.NewReportService(dbStorage, s3Storage, rekognitionClient, bucketName, userService)
-	apiKeyService := service.NewAPIKeyService(dbStorage)
-	swellPredictionService := service.NewSwellPredictionService(dynamoDBClient)
+	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
 	
-	// Initialize WebSocket service
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "default-jwt-secret" // fallback for local development
+	return containerConfig{
+		region:     region,
+		bucketName: bucketName,
+		isLocal:    isLocal,
 	}
-	websocketService := service.NewWebSocketService(dbStorage, []byte(jwtSecret))
-
-	// Initialize auth service
-	auth.InitJWTSecret()
-	auth.SetDynamoDB(dynamoDBClient)
-	
-	// Initialize session service
-	if err := auth.InitSessionService(); err != nil {
-		log.Printf("Warning: Failed to initialize session service: %v", err)
-		// Continue without session service for now
-	}
-
-	// Initialize controllers
-	forecastController := controller.NewForecastController(forecastService, tideService)
-	swellPredictionController := controller.NewSwellPredictionController(swellPredictionService)
-
-	// Set global dependencies for all controllers
-	// For local development, use the local S3 client directly
-	var s3ClientForControllers *s3.S3
-	if isLocal {
-		s3ClientForControllers = getLocalS3Client()
-	} else {
-		// For production, we need to get the S3 client from storage
-		// This is a bit of a hack, but we'll create a temporary client
-		sess := session.Must(session.NewSession(&aws.Config{
-			Region: aws.String(region),
-		}))
-		s3ClientForControllers = s3.New(sess)
-	}
-	controller.SetGlobalDependencies(dynamoDBClient, s3ClientForControllers, rekognitionClient)
-
-	// Set services in the shared registry
-	controller.SetUserService(userService)
-	controller.SetReportService(reportService)
-	controller.SetLocationService(locationService)
-	controller.SetAPIKeyService(apiKeyService)
-	controller.SetWebSocketService(websocketService)
-
-	return &Container{
-		// Storage
-		DynamoDBStorage: dbStorage,
-		S3Storage:       s3Storage,
-		
-		// Services
-		ForecastService: forecastService,
-		TideService:     tideService,
-		LocationService: locationService,
-		ReportService:   reportService,
-		APIKeyService:   apiKeyService,
-		WebSocketService: websocketService,
-		SwellPredictionService: swellPredictionService,
-		
-		// Controllers
-		ForecastController: forecastController,
-		SwellPredictionController: swellPredictionController,
-	}, nil
 }
 
-// Helper functions to access local storage clients
+func initializeStorage(cfg containerConfig) (*containerStorage, error) {
+	storage := &containerStorage{}
+	
+	if cfg.isLocal {
+		return initializeLocalStorage(storage)
+	}
+	
+	return initializeProductionStorage(storage, cfg.region)
+}
+
+func initializeLocalStorage(storage *containerStorage) (*containerStorage, error) {
+	log.Println("Using local development storage clients")
+	
+	localDB := getLocalDynamoDB()
+	if localDB == nil {
+		return nil, fmt.Errorf("local DynamoDB client not initialized. Make sure to call storage.InitLocal() first")
+	}
+	storage.dynamoDBClient = localDB
+	storage.dbStorage = &localDynamoDBWrapper{client: localDB}
+	
+	localS3 := getLocalS3Client()
+	if localS3 == nil {
+		return nil, fmt.Errorf("local S3 client not initialized. Make sure to call storage.InitLocal() first")
+	}
+	storage.s3Storage = &localS3Wrapper{client: localS3}
+	
+	localRekognition := getLocalRekognitionClient()
+	if localRekognition == nil {
+		return nil, fmt.Errorf("local Rekognition client not initialized. Make sure to call storage.InitLocal() first")
+	}
+	storage.rekognitionClient = localRekognition
+	
+	return storage, nil
+}
+
+func initializeProductionStorage(storage *containerStorage, region string) (*containerStorage, error) {
+	sess := session.Must(session.NewSession(&aws.Config{
+		Region: aws.String(region),
+	}))
+	
+	storage.dynamoDBClient = dynamodb.New(sess)
+	storage.rekognitionClient = rekognition.New(sess)
+	
+	var err error
+	storage.dbStorage, err = storagepkg.NewDynamoDBStorage(region)
+	if err != nil {
+		return nil, err
+	}
+	
+	storage.s3Storage, err = storagepkg.NewS3Storage(region)
+	if err != nil {
+		return nil, err
+	}
+	
+	return storage, nil
+}
+
+func initializeServices(storage *containerStorage, cfg containerConfig) (*containerServices, error) {
+	services := &containerServices{
+		forecastService:        service.NewForecastService(storage.dynamoDBClient),
+		tideService:            service.NewTideService(),
+		locationService:        service.NewLocationService(storage.dbStorage, storage.s3Storage, cfg.bucketName),
+		userService:            service.NewUserService(storage.dynamoDBClient),
+		apiKeyService:          service.NewAPIKeyService(storage.dbStorage),
+		swellPredictionService: service.NewSwellPredictionService(storage.dynamoDBClient),
+	}
+	
+	services.reportService = service.NewReportService(
+		storage.dbStorage,
+		storage.s3Storage,
+		storage.rekognitionClient,
+		cfg.bucketName,
+		services.userService,
+	)
+	
+	jwtSecret, err := getJWTSecret(cfg.isLocal)
+	if err != nil {
+		return nil, err
+	}
+	services.websocketService = service.NewWebSocketService(storage.dbStorage, []byte(jwtSecret))
+	
+	return services, nil
+}
+
+func getJWTSecret(isLocal bool) (string, error) {
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		if isLocal {
+			jwtSecret = "default-jwt-secret" //nolint:gosec // Local development only
+			log.Println(
+				"WARNING: Using default JWT secret for local development. " +
+					"Set JWT_SECRET environment variable in production.",
+			)
+			return jwtSecret, nil
+		}
+		return "", fmt.Errorf("JWT_SECRET environment variable is required")
+	}
+	return jwtSecret, nil
+}
+
+func initializeControllers(services *containerServices) *containerControllers {
+	return &containerControllers{
+		forecastController:        controller.NewForecastController(services.forecastService, services.tideService),
+		swellPredictionController: controller.NewSwellPredictionController(services.swellPredictionService),
+	}
+}
+
+func setupGlobalDependencies(storage *containerStorage, services *containerServices, cfg containerConfig) {
+	auth.InitJWTSecret()
+	auth.SetDynamoDB(storage.dynamoDBClient)
+	
+	if err := auth.InitSessionService(); err != nil {
+		log.Printf("Warning: Failed to initialize session service: %v", err)
+	}
+	
+	s3ClientForControllers := getS3ClientForControllers(cfg)
+	controller.SetGlobalDependencies(storage.dynamoDBClient, s3ClientForControllers, storage.rekognitionClient)
+	
+	controller.SetUserService(services.userService)
+	controller.SetReportService(services.reportService)
+	controller.SetLocationService(services.locationService)
+	controller.SetAPIKeyService(services.apiKeyService)
+	controller.SetWebSocketService(services.websocketService)
+}
+
+func getS3ClientForControllers(cfg containerConfig) *s3.S3 {
+	if cfg.isLocal {
+		return getLocalS3Client()
+	}
+	
+	sess := session.Must(session.NewSession(&aws.Config{
+		Region: aws.String(cfg.region),
+	}))
+	return s3.New(sess)
+}
+
+func buildContainer(
+	storage *containerStorage,
+	services *containerServices,
+	controllers *containerControllers,
+) *Container {
+	return &Container{
+		DynamoDBStorage:         storage.dbStorage,
+		S3Storage:               storage.s3Storage,
+		ForecastService:         services.forecastService,
+		TideService:             services.tideService,
+		LocationService:         services.locationService,
+		ReportService:           services.reportService,
+		APIKeyService:           services.apiKeyService,
+		WebSocketService:        services.websocketService,
+		SwellPredictionService:  services.swellPredictionService,
+		ForecastController:      controllers.forecastController,
+		SwellPredictionController: controllers.swellPredictionController,
+	}
+}
+
 func getLocalDynamoDB() *dynamodb.DynamoDB {
 	return localstorage.DB
 }
@@ -193,7 +279,6 @@ func getLocalRekognitionClient() *rekognition.Rekognition {
 	return localstorage.RekognitionClient
 }
 
-// Local storage wrappers that implement the storage interfaces
 type localDynamoDBWrapper struct {
 	client *dynamodb.DynamoDB
 }
@@ -215,7 +300,6 @@ func (l *localDynamoDBWrapper) PutItem(input *dynamodb.PutItemInput) (*dynamodb.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	
-	// Create a request with context
 	req, _ := l.client.PutItemRequest(input)
 	req.SetContext(ctx)
 	
@@ -224,7 +308,12 @@ func (l *localDynamoDBWrapper) PutItem(input *dynamodb.PutItemInput) (*dynamodb.
 		return nil, err
 	}
 	
-	return req.Data.(*dynamodb.PutItemOutput), nil
+	output, ok := req.Data.(*dynamodb.PutItemOutput)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type from PutItem")
+	}
+	
+	return output, nil
 }
 
 func (l *localDynamoDBWrapper) UpdateItem(input *dynamodb.UpdateItemInput) (*dynamodb.UpdateItemOutput, error) {
@@ -247,9 +336,17 @@ func (l *localS3Wrapper) GetObject(bucket, key string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object from S3: %v", err)
 	}
-	defer result.Body.Close()
+	defer func() {
+		if closeErr := result.Body.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close S3 response body: %v", closeErr)
+		}
+	}()
 
-	return io.ReadAll(result.Body)
+	data, readErr := io.ReadAll(result.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("failed to read S3 object body: %v", readErr)
+	}
+	return data, nil
 }
 
 func (l *localS3Wrapper) PutObject(bucket, key string, data []byte, contentType string) error {

@@ -1,8 +1,10 @@
+// Package middleware provides HTTP middleware functions.
 package middleware
 
 import (
 	"net/http"
 	"strings"
+	"treblesurf-backend/internal/constants"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,7 +14,8 @@ func CorsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+		c.Header("Access-Control-Allow-Headers",
+			"Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 		c.Header("Access-Control-Expose-Headers", "Content-Length")
 		c.Header("Access-Control-Allow-Credentials", "true")
 
@@ -25,6 +28,7 @@ func CorsMiddleware() gin.HandlerFunc {
 	}
 }
 
+// AdminMiddleware returns a Gin middleware function that validates admin user permissions.
 func AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		email, exists := c.Get("email")
@@ -33,7 +37,13 @@ func AdminMiddleware() gin.HandlerFunc {
 			return
 		}
 		
-		if !isAdminUser(email.(string)) {
+		emailStr, ok := email.(string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+			return
+		}
+		
+		if !isAdminUser(emailStr) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -42,6 +52,8 @@ func AdminMiddleware() gin.HandlerFunc {
 	}
 }
 
+// APIKeyAuthMiddleware returns a Gin middleware function that validates API key authentication
+// with the specified scope.
 func APIKeyAuthMiddleware(requiredScope string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -76,7 +88,7 @@ func DevAuthMiddleware() gin.HandlerFunc {
 			"name":       "Test User",
 			"GivenName":  "Test",
 			"FamilyName": "User",
-			"Theme":      "dark",
+			"Theme":      constants.DefaultUserTheme,
 			"Picture":    "https://via.placeholder.com/150",
 		})
 		
@@ -95,7 +107,7 @@ func DevAdminAuthMiddleware() gin.HandlerFunc {
 			"name":       "Admin User",
 			"GivenName":  "Admin",
 			"FamilyName": "User",
-			"Theme":      "dark",
+			"Theme":      constants.DefaultUserTheme,
 			"Picture":    "https://via.placeholder.com/150",
 			"Role":       "admin",
 		})
@@ -120,12 +132,12 @@ func CSRFMiddleware() gin.HandlerFunc {
 }
 
 // Helper functions (these would need to be implemented or moved to services)
-func isAdminUser(email string) bool {
+func isAdminUser(_ string) bool {
 	// TODO: Implement admin user check
 	return false
 }
 
-func validateAPIKey(keyValue string, requiredScope string) (interface{}, bool) {
+func validateAPIKey(_, _ string) (interface{}, bool) {
 	// TODO: Implement API key validation
 	return nil, false
 }

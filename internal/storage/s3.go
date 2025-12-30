@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -11,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+// S3Storage defines the interface for S3 storage operations.
 type S3Storage interface {
 	GetObject(bucket, key string) ([]byte, error)
 	PutObject(bucket, key string, data []byte, contentType string) error
@@ -19,10 +21,12 @@ type S3Storage interface {
 	GeneratePresignedViewURL(bucket, key string, expires time.Duration) (string, error)
 }
 
+// S3Client provides S3 storage operations using the AWS SDK.
 type S3Client struct {
 	client *s3.S3
 }
 
+// NewS3Storage creates a new S3 storage client for the specified AWS region.
 func NewS3Storage(region string) (*S3Client, error) {
 	sess := session.Must(session.NewSession(&aws.Config{
 		Region: aws.String(region),
@@ -32,6 +36,7 @@ func NewS3Storage(region string) (*S3Client, error) {
 	return &S3Client{client: client}, nil
 }
 
+// GetObject retrieves an object from S3 and returns its contents as a byte slice.
 func (s *S3Client) GetObject(bucket, key string) ([]byte, error) {
 	result, err := s.client.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(bucket),
@@ -40,11 +45,20 @@ func (s *S3Client) GetObject(bucket, key string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object from S3: %v", err)
 	}
-	defer result.Body.Close()
+	defer func() {
+		if closeErr := result.Body.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close S3 response body: %v", closeErr)
+		}
+	}()
 
-	return io.ReadAll(result.Body)
+	data, readErr := io.ReadAll(result.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("failed to read S3 object body: %v", readErr)
+	}
+	return data, nil
 }
 
+// PutObject uploads data to S3 with the specified bucket, key, and content type.
 func (s *S3Client) PutObject(bucket, key string, data []byte, contentType string) error {
 	_, err := s.client.PutObject(&s3.PutObjectInput{
 		Bucket:      aws.String(bucket),
@@ -58,6 +72,7 @@ func (s *S3Client) PutObject(bucket, key string, data []byte, contentType string
 	return nil
 }
 
+// DeleteObject removes an object from S3.
 func (s *S3Client) DeleteObject(bucket, key string) error {
 	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
 		Bucket: aws.String(bucket),
