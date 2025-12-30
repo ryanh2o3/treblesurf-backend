@@ -172,7 +172,17 @@ func getAuthenticatedUserEmail(c *gin.Context) (string, bool) {
 		})
 		return "", false
 	}
-	return email.(string), true
+	emailStr, ok := email.(string)
+	if !ok {
+		log.Printf("Invalid email type in context")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "Authentication required",
+			"message": "Invalid authentication data",
+			"help":    "Please log in again.",
+		})
+		return "", false
+	}
+	return emailStr, true
 }
 
 // handleReportBindingError handles JSON binding errors for report requests.
@@ -515,7 +525,17 @@ func validateUploadURLParams(c *gin.Context) (country, region, spot, email strin
 		return "", "", "", "", false
 	}
 
-	email = emailVal.(string)
+	emailStr, ok := emailVal.(string)
+	if !ok {
+		log.Printf("Invalid email type in context")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "Authentication required",
+			"message": "Invalid authentication data",
+			"help":    "Please log in again.",
+		})
+		return "", "", "", "", false
+	}
+	email = emailStr
 	return country, region, spot, email, true
 }
 

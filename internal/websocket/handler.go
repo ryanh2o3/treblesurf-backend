@@ -13,7 +13,7 @@ import (
 )
 
 // WebSocketHandler handles WebSocket events from API Gateway.
-//nolint:revive // Name stuttering is acceptable for clarity
+
 type WebSocketHandler struct {
 	websocketService *service.WebSocketService
 }
@@ -188,7 +188,14 @@ func (h *WebSocketHandler) handleSubscribeAction(
 
 	// Send confirmation back to client
 	response := h.websocketService.CreateSubscriptionResponse(spotIdentifier)
-	responseJSON, _ := json.Marshal(response)
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Failed to marshal response: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Failed to process subscription",
+		}, nil
+	}
 	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
 		log.Printf("Warning: Failed to send message to connection: %v", err)
 	}
@@ -213,7 +220,14 @@ func (h *WebSocketHandler) handlePingAction(
 
 	// Send pong response
 	response := h.websocketService.CreatePongResponse()
-	responseJSON, _ := json.Marshal(response)
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Failed to marshal response: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Failed to process ping",
+		}, nil
+	}
 	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
 		log.Printf("Warning: Failed to send message to connection: %v", err)
 	}

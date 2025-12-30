@@ -24,8 +24,8 @@ type ReportService struct {
 	dbStorage         storage.DynamoDBStorage
 	s3Storage         storage.S3Storage
 	rekognitionClient *rekognition.Rekognition
-	bucketName        string
 	userService       *UserService
+	bucketName        string
 }
 
 func NewReportService(
@@ -560,6 +560,7 @@ func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 // GetSurfReportsWithSimilarBuoyData retrieves surf reports that had similar buoy conditions.
 // It takes buoy data parameters (waveHeight, waveDirection, period), a specific buoy name,
 // and optionally spot parameters. Returns a list of surf reports with similarity scores.
+//
 //nolint:gocyclo,funlen // Complex business logic with multiple conditional branches
 func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 	waveHeight float64,
@@ -719,8 +720,12 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 			if len(parts) == 3 {
 				spotLoc, err := s.getSpotLocation(parts[0], parts[1], parts[2])
 				if err == nil && spotLoc != nil {
-					spotLat = spotLoc["Latitude"].(float64)
-					spotLon = spotLoc["Longitude"].(float64)
+					if lat, ok := spotLoc["Latitude"].(float64); ok {
+						spotLat = lat
+					}
+					if lon, ok := spotLoc["Longitude"].(float64); ok {
+						spotLon = lon
+					}
 				}
 			}
 		}
@@ -729,8 +734,12 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 		if spotLat == 0 && spotLon == 0 && countryName != "" && regionName != "" && spotName != "" {
 			spotLoc, err := s.getSpotLocation(countryName, regionName, spotName)
 			if err == nil && spotLoc != nil {
-				spotLat = spotLoc["Latitude"].(float64)
-				spotLon = spotLoc["Longitude"].(float64)
+				if lat, ok := spotLoc["Latitude"].(float64); ok {
+					spotLat = lat
+				}
+				if lon, ok := spotLoc["Longitude"].(float64); ok {
+					spotLon = lon
+				}
 			}
 		}
 
@@ -1286,6 +1295,7 @@ func (s *ReportService) calculateWindSimilarity(
 // GetSurfReportsWithMatchingConditions retrieves surf reports for a spot where:
 // 1. Buoy data at the report time (accounting for travel time) matches current buoy data from nearest buoys
 // 2. Wind conditions from forecast data at the report time are similar to current wind conditions
+//
 //nolint:gocyclo,funlen // Complex business logic with multiple conditional branches
 func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	countryName string,
@@ -1326,9 +1336,9 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 
 	// Step 3: Get current buoy data for all nearest buoys
 	type buoyData struct {
-		name          string
 		location      map[string]interface{}
 		currentData   map[string]interface{}
+		name          string
 		waveHeight    float64
 		waveDirection float64
 		period        float64
@@ -1354,7 +1364,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		if h, ok := currentBuoyData["WaveHeight"].(float64); ok {
 			waveHeight = h
 		} else if hStr, ok := currentBuoyData["WaveHeight"].(string); ok {
-			if h, err := strconv.ParseFloat(hStr, 64); err == nil {
+			if h, parseErr := strconv.ParseFloat(hStr, 64); parseErr == nil {
 				waveHeight = h
 			}
 		}
@@ -1362,7 +1372,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		if d, ok := currentBuoyData["MeanWaveDirection"].(float64); ok {
 			waveDirection = d
 		} else if dStr, ok := currentBuoyData["MeanWaveDirection"].(string); ok {
-			if d, err := strconv.ParseFloat(dStr, 64); err == nil {
+			if d, parseErr := strconv.ParseFloat(dStr, 64); parseErr == nil {
 				waveDirection = d
 			}
 		}
@@ -1370,13 +1380,13 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		if p, ok := currentBuoyData["MaxPeriod"].(float64); ok {
 			period = p
 		} else if pStr, ok := currentBuoyData["MaxPeriod"].(string); ok {
-			if p, err := strconv.ParseFloat(pStr, 64); err == nil {
+			if p, parseErr := strconv.ParseFloat(pStr, 64); parseErr == nil {
 				period = p
+			}
 		}
-	}
 
-	// Will be accessed from location map later
-	if _, ok1 := buoy["Latitude"].(float64); !ok1 {
+		// Will be accessed from location map later
+		if _, ok1 := buoy["Latitude"].(float64); !ok1 {
 			continue
 		}
 		if _, ok2 := buoy["Longitude"].(float64); !ok2 {
@@ -1443,11 +1453,11 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	// Step 6: Process each report and calculate similarity
 	type reportWithSimilarity struct {
 		report             map[string]interface{}
+		matchedBuoy        string
 		buoySimilarity     float64
 		windSimilarity     float64
 		combinedSimilarity float64
-		matchedBuoy        string  // Which buoy matched
-		travelTimeHours    float64 // Travel time for the matched buoy
+		travelTimeHours    float64
 	}
 
 	var reportsWithSimilarity []reportWithSimilarity
@@ -1467,10 +1477,10 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 
 		// Try each buoy and find the best match
 		bestMatch := struct {
+			historicalData map[string]interface{}
 			buoyName       string
 			similarity     float64
 			travelTime     float64
-			historicalData map[string]interface{}
 		}{
 			similarity: 0.0,
 		}

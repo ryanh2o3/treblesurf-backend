@@ -60,6 +60,7 @@ func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyNa
 	picture, _ = payload.Claims["picture"].(string)
 	familyName, _ = payload.Claims["family_name"].(string)
 	givenName, _ = payload.Claims["given_name"].(string)
+	// Note: Type assertions above are safe - these are optional fields
 
 	return email, name, picture, familyName, givenName, nil
 }
@@ -212,7 +213,11 @@ func updateSessionLastActive(userSession *user.Session, c *gin.Context) {
 	}
 
 	sessionData.LastActive = time.Now()
-	updatedJSON, _ := json.Marshal(sessionData)
+	updatedJSON, err := json.Marshal(sessionData)
+	if err != nil {
+		log.Printf("Failed to marshal session data: %v", err)
+		return
+	}
 	userSession.JSON = string(updatedJSON)
 
 	if sessionData.CSRF != "" {

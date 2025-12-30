@@ -17,8 +17,8 @@ func CreateAPIKeyHandler(c *gin.Context) {
 
 	var request struct {
 		Description string   `json:"description" binding:"required"`
-		ExpiryDays  int      `json:"expiry_days"`
 		Scopes      []string `json:"scopes" binding:"required"`
+		ExpiryDays  int      `json:"expiry_days"`
 	}
 
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -27,9 +27,14 @@ func CreateAPIKeyHandler(c *gin.Context) {
 	}
 
 	// Generate the API key
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+		return
+	}
 	apiKey, err := APIKeyService.GenerateAPIKey(
 		request.Description,
-		email.(string),
+		emailStr,
 		request.ExpiryDays,
 		request.Scopes,
 	)
@@ -49,13 +54,13 @@ func CreateAPIKeyHandler(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "API key created successfully",
 		"key": gin.H{
-			"key_id":       apiKey.KeyID,
-			"key_value":    apiKey.KeyValue,
-			"description":  apiKey.Description,
-			"created_by":   apiKey.CreatedBy,
-			"created_at":   apiKey.CreatedAt,
-			"expires_at":   apiKey.ExpiresAt,
-			"scopes":       apiKey.Scopes,
+			"key_id":      apiKey.KeyID,
+			"key_value":   apiKey.KeyValue,
+			"description": apiKey.Description,
+			"created_by":  apiKey.CreatedBy,
+			"created_at":  apiKey.CreatedAt,
+			"expires_at":  apiKey.ExpiresAt,
+			"scopes":      apiKey.Scopes,
 		},
 	})
 }
@@ -68,7 +73,13 @@ func ListAPIKeysHandler(c *gin.Context) {
 		return
 	}
 
-	apiKeys, err := APIKeyService.ListAPIKeys(email.(string))
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+		return
+	}
+
+	apiKeys, err := APIKeyService.ListAPIKeys(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API keys"})
 		return
@@ -78,12 +89,12 @@ func ListAPIKeysHandler(c *gin.Context) {
 	var responseKeys []gin.H
 	for _, key := range apiKeys {
 		responseKeys = append(responseKeys, gin.H{
-			"key_id":       key.KeyID,
-			"description":  key.Description,
-			"created_by":   key.CreatedBy,
-			"created_at":   key.CreatedAt,
-			"expires_at":   key.ExpiresAt,
-			"scopes":       key.Scopes,
+			"key_id":      key.KeyID,
+			"description": key.Description,
+			"created_by":  key.CreatedBy,
+			"created_at":  key.CreatedAt,
+			"expires_at":  key.ExpiresAt,
+			"scopes":      key.Scopes,
 		})
 	}
 
@@ -108,7 +119,12 @@ func RevokeAPIKeyHandler(c *gin.Context) {
 	}
 
 	// Verify the key belongs to the current user before deleting
-	apiKeys, err := APIKeyService.ListAPIKeys(email.(string))
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+		return
+	}
+	apiKeys, err := APIKeyService.ListAPIKeys(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify key ownership"})
 		return

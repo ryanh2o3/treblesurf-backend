@@ -32,6 +32,7 @@ func (h *WebSocketHandler) validateWebSocketToken(token string) (string, string,
 	}
 
 	sessionID, _ := claims["session_id"].(string)
+	// Note: sessionID is optional, empty string is acceptable
 	return userID, sessionID, nil
 }
 

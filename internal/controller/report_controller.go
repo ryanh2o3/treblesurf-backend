@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/model"
 
 	"github.com/gin-gonic/gin"
@@ -366,7 +367,7 @@ func GenerateVideoUploadURL(c *gin.Context) {
 
 	response, err := ReportService.GenerateVideoUploadURL(country, region, spot, email)
 	if err != nil {
-		handleUploadURLError(c, "video", err)
+		handleUploadURLError(c, constants.MediaTypeVideo, err)
 			return
 		}
 		
@@ -584,7 +585,7 @@ func canUserAccessMedia(mediaKey, userUUID, mediaType string) bool {
 	
 	// Remove the file extension
 	var filenameWithoutExt string
-	if mediaType == "video" {
+	if mediaType == constants.MediaTypeVideo {
 		// Remove video extensions
 		for _, ext := range []string{".mp4", ".mov", ".avi"} {
 			if strings.HasSuffix(filename, ext) {

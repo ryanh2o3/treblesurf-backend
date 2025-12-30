@@ -49,8 +49,16 @@ func (c *SwellPredictionController) GetSpotSwellPrediction(ctx *gin.Context) {
 	
 	// Sort predictions by forecast_timestamp (earliest first for better UX)
 	sort.Slice(predictions, func(i, j int) bool {
-		timeI, _ := strconv.ParseInt(predictions[i]["forecast_timestamp"].(string), 10, 64)
-		timeJ, _ := strconv.ParseInt(predictions[j]["forecast_timestamp"].(string), 10, 64)
+		tsI, okI := predictions[i]["forecast_timestamp"].(string)
+		tsJ, okJ := predictions[j]["forecast_timestamp"].(string)
+		if !okI || !okJ {
+			return false
+		}
+		timeI, errI := strconv.ParseInt(tsI, 10, 64)
+		timeJ, errJ := strconv.ParseInt(tsJ, 10, 64)
+		if errI != nil || errJ != nil {
+			return false
+		}
 		return timeI < timeJ
 	})
 	
@@ -110,7 +118,12 @@ func (c *SwellPredictionController) GetRegionSwellPrediction(ctx *gin.Context) {
 
 	// Sort the predictions by spot_id
 	sort.Slice(predictions, func(i, j int) bool {
-		return predictions[i]["spot_id"].(string) < predictions[j]["spot_id"].(string)
+		spotI, okI := predictions[i]["spot_id"].(string)
+		spotJ, okJ := predictions[j]["spot_id"].(string)
+		if !okI || !okJ {
+			return false
+		}
+		return spotI < spotJ
 	})
 
 	ctx.JSON(http.StatusOK, predictions)
@@ -191,7 +204,12 @@ func (c *SwellPredictionController) GetRecentSwellPredictions(ctx *gin.Context) 
 
 	// Sort the predictions by spot_id
 	sort.Slice(predictions, func(i, j int) bool {
-		return predictions[i]["spot_id"].(string) < predictions[j]["spot_id"].(string)
+		spotI, okI := predictions[i]["spot_id"].(string)
+		spotJ, okJ := predictions[j]["spot_id"].(string)
+		if !okI || !okJ {
+			return false
+		}
+		return spotI < spotJ
 	})
 
 	ctx.JSON(http.StatusOK, predictions)

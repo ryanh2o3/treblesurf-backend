@@ -236,19 +236,25 @@ func (s *ReportService) processS3ImageForReport(
 	imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
 	if err != nil {
 		log.Printf("Failed to retrieve pre-uploaded image %s: %v", imageKey, err)
-		_ = s.s3Storage.DeleteObject(s.bucketName, imageKey)
+		if delErr := s.s3Storage.DeleteObject(s.bucketName, imageKey); delErr != nil {
+			log.Printf("Failed to cleanup image %s: %v", imageKey, delErr)
+		}
 		return "", model.ErrImageRetrievalFailed
 	}
 
 	valid, err := s.validateImageWithRekognition(imageData)
 	if err != nil {
 		log.Printf("Failed to validate pre-uploaded image %s: %v", imageKey, err)
-		_ = s.s3Storage.DeleteObject(s.bucketName, imageKey)
+		if delErr := s.s3Storage.DeleteObject(s.bucketName, imageKey); delErr != nil {
+			log.Printf("Failed to cleanup image %s: %v", imageKey, delErr)
+		}
 		return "", err
 	}
 	if !valid {
 		log.Printf("Pre-uploaded image %s failed validation, deleting", imageKey)
-		_ = s.s3Storage.DeleteObject(s.bucketName, imageKey)
+		if delErr := s.s3Storage.DeleteObject(s.bucketName, imageKey); delErr != nil {
+			log.Printf("Failed to cleanup image %s: %v", imageKey, delErr)
+		}
 		return "", model.ErrImageNotSurfRelated
 	}
 
@@ -260,7 +266,9 @@ func (s *ReportService) storeReportWithCleanup(item map[string]*dynamodb.Attribu
 	err := s.storeReport(item)
 	if err != nil && s3Key != "" {
 		log.Printf("Database insertion failed, cleaning up image %s", s3Key)
-		_ = s.s3Storage.DeleteObject(s.bucketName, s3Key)
+		if delErr := s.s3Storage.DeleteObject(s.bucketName, s3Key); delErr != nil {
+			log.Printf("Failed to cleanup image %s: %v", s3Key, delErr)
+		}
 	}
 	return err
 }

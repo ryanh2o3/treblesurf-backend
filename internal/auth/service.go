@@ -48,20 +48,20 @@ type User struct {
 }
 
 type SessionJSON struct {
+	CreatedAt  time.Time `json:"created_at"`
+	LastActive time.Time `json:"last_active"`
 	CSRF       string    `json:"csrf"`
 	UserAgent  string    `json:"user_agent"`
 	IPAddress  string    `json:"ip_address"`
-	CreatedAt  time.Time `json:"created_at"`
-	LastActive time.Time `json:"last_active"`
 }
 
 type SessionInfo struct {
-	SessionID  string    `json:"session_id"`
 	ExpiresAt  time.Time `json:"expires_at"`
-	Current    bool      `json:"current"`
 	LastActive time.Time `json:"last_active,omitempty"`
+	SessionID  string    `json:"session_id"`
 	UserAgent  string    `json:"user_agent,omitempty"`
 	IPAddress  string    `json:"ip_address,omitempty"`
+	Current    bool      `json:"current"`
 }
 
 // DynamoDBStore implements the session store interface using DynamoDB
@@ -364,7 +364,7 @@ func createUser(user User) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	user.CreatedAt = now
 	user.LastLogin = now
-	user.Theme = "dark" // Default theme
+	user.Theme = constants.DefaultUserTheme // Default theme
 
 	item, err := dynamodbattribute.MarshalMap(user)
 	if err != nil {
@@ -538,7 +538,7 @@ func processGoogleAuthUser(email, name, picture, familyName, givenName string, c
 		return nil, ""
 	}
 
-	theme := "dark"
+	theme := constants.DefaultUserTheme
 	var finalUser *User
 
 	if existingUser == nil {
@@ -582,7 +582,7 @@ func ValidateTokenHandler(c *gin.Context) {
 				"picture":     "https://via.placeholder.com/150",
 				"family_name": "User",
 				"given_name":  "Test",
-				"theme":       "dark",
+				"theme":       constants.DefaultUserTheme,
 			},
 		})
 		return
@@ -613,7 +613,9 @@ func ValidateTokenHandler(c *gin.Context) {
 
 	user = ensureUserUUID(user, email)
 	updateSessionLastActive(userSession, c)
-	_ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
+	if err := sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
+		log.Printf("Failed to extend user session: %v", err)
+	}
 
 	c.JSON(http.StatusOK, buildValidateTokenResponse(user, "session"))
 }
@@ -644,7 +646,9 @@ func LogoutHandler(c *gin.Context) {
 	if sessionService != nil {
 		userSession, err := sessionService.GetUserSession(c.Request)
 		if err == nil && userSession != nil {
-			_ = sessionService.ClearUserSession(userSession, c.Writer)
+			if err := sessionService.ClearUserSession(userSession, c.Writer); err != nil {
+				log.Printf("Failed to clear user session: %v", err)
+			}
 		}
 	}
 
@@ -678,7 +682,7 @@ func GetUserSessionsHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
-	
+
 	userSessions, err := sessionStoreDB.GetSessionsByUserID(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve sessions"})
@@ -690,9 +694,9 @@ func GetUserSessionsHandler(c *gin.Context) {
 	for _, session := range userSessions {
 		// Parse JSON to get additional session metadata
 		sessionInfo := SessionInfo{
-			SessionID:  session.ID,
-			ExpiresAt:  session.ExpiresAt,
-			Current:    session.ID == currentSessionID,
+			SessionID: session.ID,
+			ExpiresAt: session.ExpiresAt,
+			Current:   session.ID == currentSessionID,
 		}
 
 		var sessionData SessionJSON
@@ -749,7 +753,7 @@ func TerminateSessionHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
-	
+
 	if session.UserID != emailStr {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot terminate another user's session"})
 		return
@@ -780,11 +784,11 @@ func GetWebSocketTokenHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
-	
+
 	token := fmt.Sprintf("ws_%s_%d", emailStr, time.Now().Unix())
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
+		"token":      token,
 		"expires_at": time.Now().Add(time.Hour).Format(time.RFC3339),
 	})
 }
@@ -843,7 +847,9 @@ func SessionMiddleware() gin.HandlerFunc {
 			c.Set("session", userSession)
 
 			// Extend the session if needed
-			_ = sessionService.ExtendUserSession(userSession, c.Request, c.Writer)
+			if err := sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
+				log.Printf("Failed to extend user session: %v", err)
+			}
 
 			// Parse session JSON to get CSRF token
 			var sessionData SessionJSON

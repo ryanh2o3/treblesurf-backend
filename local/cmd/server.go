@@ -46,8 +46,8 @@ func main() {
 	}
 
 	// Initialize local storage (DynamoDB, S3, etc.)
-	if err := storage.InitLocal(cfg); err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
+	if initErr := storage.InitLocal(cfg); initErr != nil {
+		log.Fatalf("Failed to initialize storage: %v", initErr)
 	}
 
 	// Initialize the new container

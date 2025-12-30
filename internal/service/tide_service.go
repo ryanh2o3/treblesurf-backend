@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -104,7 +105,10 @@ func (s *TideService) GetBeforeAfterTides(locationName string) (map[string]inter
 }
 
 func (s *TideService) GetDayTides(locationName, startDay string) map[string]interface{} {
-	start, _ := time.Parse("2006-01-02", startDay)
+	start, err := time.Parse("2006-01-02", startDay)
+	if err != nil {
+		return map[string]interface{}{"error": fmt.Sprintf("invalid date format: %v", err)}
+	}
 	end := start.AddDate(0, 0, 10)
 
 	tideData := make(map[string]interface{})
