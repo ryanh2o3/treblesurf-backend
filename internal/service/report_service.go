@@ -20,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/rekognition"
 )
 
-// ReportService provides surf report operations including submission, retrieval, and validation.
 type ReportService struct {
 	dbStorage         storage.DynamoDBStorage
 	s3Storage         storage.S3Storage
@@ -29,7 +28,6 @@ type ReportService struct {
 	userService       *UserService
 }
 
-// NewReportService creates a new report service instance.
 func NewReportService(
 	dbStorage storage.DynamoDBStorage,
 	s3Storage storage.S3Storage,
@@ -46,7 +44,6 @@ func NewReportService(
 	}
 }
 
-// SubmitSurfReport submits a new surf report
 func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmail string, userName string) error {
 	user, err := s.getUserAndValidate(userEmail)
 	if err != nil {
@@ -96,7 +93,6 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 	return nil
 }
 
-// SubmitSurfReportWithS3Image submits a new surf report with a pre-uploaded S3 image.
 func (s *ReportService) SubmitSurfReportWithS3Image(
 	report *model.ReportWithS3Image,
 	userEmail string,
@@ -182,7 +178,6 @@ func (s *ReportService) prepareUploadURLParams(
 	}, nil
 }
 
-// GenerateImageUploadURL generates a presigned URL for uploading an image to S3
 func (s *ReportService) GenerateImageUploadURL(
 	country, region, spot, userEmail string,
 ) (*model.PresignedUploadResponse, error) {
@@ -215,7 +210,6 @@ func (s *ReportService) GenerateImageUploadURL(
 	}, nil
 }
 
-// GenerateVideoUploadURL generates a presigned URL for uploading a video to S3
 func (s *ReportService) GenerateVideoUploadURL(
 	country, region, spot, userEmail string,
 ) (*model.VideoUploadResponse, error) {
@@ -248,7 +242,6 @@ func (s *ReportService) GenerateVideoUploadURL(
 	}, nil
 }
 
-// GetTodaysSurfReports retrieves surf reports for a specific spot (legacy - returns only most recent)
 func (s *ReportService) GetTodaysSurfReports(
 	countryName, regionName, spotName string,
 ) ([]map[string]interface{}, error) {
@@ -280,9 +273,7 @@ func (s *ReportService) GetSpotSurfReports(
 	return reports, nil
 }
 
-// GetReportImage retrieves a report image from S3
 func (s *ReportService) GetReportImage(imageKey string) ([]byte, string, error) {
-	// Read the image data using the interface method
 	imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read image data: %v", err)
@@ -295,9 +286,7 @@ func (s *ReportService) GetReportImage(imageKey string) ([]byte, string, error) 
 	return imageData, contentType, nil
 }
 
-// GetReportVideo retrieves a report video from S3
 func (s *ReportService) GetReportVideo(videoKey string) ([]byte, string, error) {
-	// Read the video data using the interface method
 	videoData, err := s.s3Storage.GetObject(s.bucketName, videoKey)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read video data: %v", err)
@@ -310,14 +299,11 @@ func (s *ReportService) GetReportVideo(videoKey string) ([]byte, string, error) 
 	return videoData, contentType, nil
 }
 
-// GenerateVideoViewURL generates a presigned URL for viewing a video
 func (s *ReportService) GenerateVideoViewURL(videoKey string, userEmail string) (*model.VideoViewURLResponse, error) {
-	// Validate that the video key is not empty
 	if videoKey == "" {
 		return nil, fmt.Errorf("video key is required")
 	}
 
-	// Get the user's UUID for access control
 	user, err := s.userService.GetUserByEmail(userEmail)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %v", err)
@@ -329,20 +315,16 @@ func (s *ReportService) GenerateVideoViewURL(videoKey string, userEmail string) 
 		return nil, fmt.Errorf("user does not have a UUID")
 	}
 
-	// Verify that the video exists and is accessible
 	_, err = s.s3Storage.GetObject(s.bucketName, videoKey)
 	if err != nil {
 		return nil, fmt.Errorf("video not found or not accessible: %v", err)
 	}
 
-	// Verify that the video belongs to a report the user can access
-	// Extract the user UUID from the video key to verify ownership
 	// Video keys follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.mp4
 	if !s.canUserAccessVideo(videoKey, user.UUID) {
 		return nil, fmt.Errorf("access denied: you don't have permission to view this video")
 	}
 
-	// Generate presigned URL valid for 1 hour
 	expires := 1 * time.Hour
 	viewURL, err := s.s3Storage.GeneratePresignedViewURL(s.bucketName, videoKey, expires)
 	if err != nil {
@@ -405,7 +387,6 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(
 	return nil
 }
 
-// validateImageWithRekognition validates an image using AWS Rekognition
 func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, error) {
 	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
 		// In development, always return true to allow all images
@@ -444,7 +425,6 @@ func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, er
 	return false, model.ErrImageAnalysisFailed
 }
 
-// uploadImageToS3 uploads an image to S3
 func (s *ReportService) uploadImageToS3(imageData []byte, key string) (string, error) {
 	err := s.s3Storage.PutObject(s.bucketName, key, imageData, "image/jpeg")
 	if err != nil {
@@ -454,7 +434,6 @@ func (s *ReportService) uploadImageToS3(imageData []byte, key string) (string, e
 	return key, nil
 }
 
-// ValidateImageKeyExists checks if an image key exists in S3 and is accessible
 func (s *ReportService) ValidateImageKeyExists(imageKey string) (bool, error) {
 	if imageKey == "" {
 		return false, fmt.Errorf("image key is empty")
@@ -469,51 +448,42 @@ func (s *ReportService) ValidateImageKeyExists(imageKey string) (bool, error) {
 	return true, nil
 }
 
-// IsValidSurfSize validates if a surf size string is valid.
 func (s *ReportService) IsValidSurfSize(swellSize string) bool {
 	return validation.IsValidSurfSize(swellSize)
 }
 
-// IsValidWindAmount validates if a wind amount string is valid.
 func (s *ReportService) IsValidWindAmount(windAmount string) bool {
 	return validation.IsValidWindAmount(windAmount)
 }
 
-// IsValidWindDirection validates if a wind direction string is valid.
 func (s *ReportService) IsValidWindDirection(windDirection string) bool {
 	return validation.IsValidWindDirection(windDirection)
 }
 
-// IsValidSurfConditions validates if a surf conditions string is valid.
 func (s *ReportService) IsValidSurfConditions(surfConditions string) bool {
 	return validation.IsValidSurfConditions(surfConditions)
 }
 
-// IsValidSurfDifficulty validates if a surf difficulty string is valid.
 func (s *ReportService) IsValidSurfDifficulty(surfDifficulty string) bool {
 	return validation.IsValidSurfDifficulty(surfDifficulty)
 }
 
-// IsValidMessiness validates if a messiness string is valid.
 func (s *ReportService) IsValidMessiness(messiness string) bool {
 	return validation.IsValidMessiness(messiness)
 }
 
-// getSpotSubscribers retrieves subscribers for a specific spot
 func (s *ReportService) getSpotSubscribers(_ string, _ string, _ string) ([]string, error) {
 	// TODO: Implement spot subscribers retrieval
 	// For now, return empty list
 	return []string{}, nil
 }
 
-// broadcastToUsers broadcasts a message to multiple users via WebSocket
 func (s *ReportService) broadcastToUsers(subscribers []string, message interface{}) {
 	// TODO: Implement user broadcasting
 	// For now, just log the message
 	log.Printf("Broadcasting message to %d subscribers: %v", len(subscribers), message)
 }
 
-// CleanupOrphanedImage removes an image from S3 if it's not associated with any report
 func (s *ReportService) CleanupOrphanedImage(imageKey string) error {
 	if imageKey == "" {
 		return nil
@@ -530,7 +500,6 @@ func (s *ReportService) CleanupOrphanedImage(imageKey string) error {
 	return nil
 }
 
-// DeleteMediaFromS3 deletes media from S3 storage
 func (s *ReportService) DeleteMediaFromS3(mediaKey string) error {
 	if mediaKey == "" {
 		return fmt.Errorf("media key is required")
@@ -547,7 +516,6 @@ func (s *ReportService) DeleteMediaFromS3(mediaKey string) error {
 	return nil
 }
 
-// canUserAccessVideo checks if a user has permission to access a specific video
 func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 	// Video keys follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.mp4
 	// We need to extract the UUID from the video key to verify ownership
@@ -869,7 +837,6 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 	return finalReports, nil
 }
 
-// getBuoyDataAtTime retrieves buoy data closest to a specific time
 func (s *ReportService) getBuoyDataAtTime(targetTime time.Time, buoyPriority []string) map[string]interface{} {
 	// Look for data within 6 hours of target time
 	startTime := targetTime.Add(-6 * time.Hour)
@@ -917,7 +884,6 @@ func (s *ReportService) getBuoyDataAtTime(targetTime time.Time, buoyPriority []s
 	return nil
 }
 
-// calculateBuoyConditionSimilarity calculates similarity between two buoy conditions
 func (s *ReportService) calculateBuoyConditionSimilarity(
 	predHeight float64,
 	predDirection float64,
@@ -995,7 +961,6 @@ func maxFloat(a, b float64) float64 {
 	return b
 }
 
-// parseReportTime parses various timestamp formats from surf reports
 func parseReportTime(timeStr string) (time.Time, error) {
 	// Try RFC3339 format first
 	if t, err := time.Parse(time.RFC3339, timeStr); err == nil {
@@ -1020,7 +985,6 @@ func parseReportTime(timeStr string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("unable to parse time string: %s", timeStr)
 }
 
-// getSpotLocation retrieves spot location data
 func (s *ReportService) getSpotLocation(countryName, regionName, spotName string) (map[string]interface{}, error) {
 	locationKey := fmt.Sprintf("%s/%s/%s", countryName, regionName, spotName)
 
@@ -1052,7 +1016,6 @@ func (s *ReportService) getSpotLocation(countryName, regionName, spotName string
 	return location, nil
 }
 
-// getBuoyLocations retrieves all buoy locations
 func (s *ReportService) getBuoyLocations() map[string]map[string]interface{} {
 	input := &dynamodb.ScanInput{
 		TableName: aws.String("BuoyLocations"),
@@ -1088,7 +1051,6 @@ func (s *ReportService) getBuoyLocations() map[string]map[string]interface{} {
 	return buoyLocations
 }
 
-// getNearestBuoys finds the 2 nearest buoys to a given spot location
 func (s *ReportService) getNearestBuoys(spotLat, spotLon float64, numBuoys int) []map[string]interface{} {
 	if numBuoys <= 0 {
 		numBuoys = 2 // Default to 2 nearest buoys
@@ -1136,7 +1098,6 @@ func (s *ReportService) getNearestBuoys(spotLat, spotLon float64, numBuoys int) 
 		}
 	}
 
-	// Return the N nearest buoys
 	result := []map[string]interface{}{}
 	for i := 0; i < numBuoys && i < len(buoysWithDistance); i++ {
 		result = append(result, buoysWithDistance[i].buoy)
@@ -1145,7 +1106,6 @@ func (s *ReportService) getNearestBuoys(spotLat, spotLon float64, numBuoys int) 
 	return result
 }
 
-// calculateDistance calculates distance between two points using Haversine formula
 // Returns distance in meters
 func (s *ReportService) calculateDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	const R = 6371000 // Earth's radius in meters
@@ -1163,7 +1123,6 @@ func (s *ReportService) calculateDistance(lat1, lon1, lat2, lon2 float64) float6
 	return R * c
 }
 
-// calculateBearing calculates bearing from point 1 to point 2 in degrees (0-360)
 func (s *ReportService) calculateBearing(lat1, lon1, lat2, lon2 float64) float64 {
 	lat1Rad := lat1 * math.Pi / 180
 	lat2Rad := lat2 * math.Pi / 180
@@ -1180,7 +1139,6 @@ func (s *ReportService) calculateBearing(lat1, lon1, lat2, lon2 float64) float64
 	return math.Mod(bearingDegrees, 360)
 }
 
-// getCurrentBuoyData retrieves the most recent buoy data for a given buoy
 func (s *ReportService) getCurrentBuoyData(buoyName string) map[string]interface{} {
 	// Start from current time rounded down to the nearest hour
 	now := time.Now()
@@ -1225,7 +1183,6 @@ func (s *ReportService) getCurrentBuoyData(buoyName string) map[string]interface
 	return nil
 }
 
-// getCurrentWindConditions retrieves current wind conditions from forecast data for a spot.
 func (s *ReportService) getCurrentWindConditions(
 	countryName, regionName, spotName string,
 ) (windSpeed float64, windDirection float64, err error) {
@@ -1250,7 +1207,6 @@ func (s *ReportService) getCurrentWindConditions(
 	return s.extractWindData(forecast)
 }
 
-// getForecastDataAtTime retrieves forecast data for a spot at a specific time
 func (s *ReportService) getForecastDataAtTime(
 	countryName, regionName, spotName string, targetTime time.Time,
 ) map[string]interface{} {
@@ -1299,7 +1255,6 @@ func (s *ReportService) getForecastDataAtTime(
 	return forecast
 }
 
-// calculateWindSimilarity calculates similarity between two wind conditions
 func (s *ReportService) calculateWindSimilarity(
 	currentSpeed, currentDirection float64,
 	historicalSpeed, historicalDirection float64,
@@ -1392,7 +1347,6 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 			continue
 		}
 
-		// Extract buoy measurements
 		waveHeight := 0.0
 		waveDirection := 0.0
 		period := 0.0
@@ -1418,11 +1372,11 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		} else if pStr, ok := currentBuoyData["MaxPeriod"].(string); ok {
 			if p, err := strconv.ParseFloat(pStr, 64); err == nil {
 				period = p
-			}
 		}
+	}
 
-		// Verify buoy has valid coordinates (will be accessed from location map later)
-		if _, ok1 := buoy["Latitude"].(float64); !ok1 {
+	// Will be accessed from location map later
+	if _, ok1 := buoy["Latitude"].(float64); !ok1 {
 			continue
 		}
 		if _, ok2 := buoy["Longitude"].(float64); !ok2 {

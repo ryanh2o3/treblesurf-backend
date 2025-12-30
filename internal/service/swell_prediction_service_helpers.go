@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
-// buildPredictionQuery builds a DynamoDB query for predictions within a time window.
 func buildPredictionQuery(spotID string, startTime, endTime time.Time) *dynamodb.QueryInput {
 	return &dynamodb.QueryInput{
 		TableName: aws.String("SwellPredictions"),
@@ -25,7 +24,6 @@ func buildPredictionQuery(spotID string, startTime, endTime time.Time) *dynamodb
 	}
 }
 
-// buildFallbackPredictionQuery builds a fallback query for predictions in the last 7 days.
 func buildFallbackPredictionQuery(spotID string, startTime time.Time) *dynamodb.QueryInput {
 	return &dynamodb.QueryInput{
 		TableName: aws.String("SwellPredictions"),
@@ -39,7 +37,6 @@ func buildFallbackPredictionQuery(spotID string, startTime time.Time) *dynamodb.
 	}
 }
 
-// findClosestPrediction finds the prediction closest to the current time.
 //nolint:unparam // Error return maintained for API consistency
 func findClosestPrediction(
 	items []map[string]*dynamodb.AttributeValue,
@@ -84,7 +81,6 @@ func findClosestPrediction(
 	return closestPrediction, nil
 }
 
-// abs returns the absolute value of an int64.
 func abs(x int64) int64 {
 	if x < 0 {
 		return -x

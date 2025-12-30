@@ -70,7 +70,6 @@ func iOSHeadersMiddleware() gin.HandlerFunc {
 	}
 }
 
-// contains checks if a slice contains a specific string
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
@@ -191,7 +190,6 @@ func DevAdminAuthMiddleware() gin.HandlerFunc {
 
 // Helper functions for middleware
 
-// isAdminUser checks if a user has admin privileges
 func isAdminUser(email string) bool {
 	adminUsers := map[string]bool{
 		"ryancpatton0@gmail.com": true,
@@ -200,7 +198,6 @@ func isAdminUser(email string) bool {
 	return adminUsers[email]
 }
 
-// validateAPIKey validates an API key against DynamoDB
 func validateAPIKey(keyValue string, requiredScope string) (*model.APIKey, bool) {
 	// Use the APIKeyService from the service registry
 	if controller.APIKeyService == nil {

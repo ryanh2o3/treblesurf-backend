@@ -17,7 +17,6 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-// getUserAndValidate retrieves and validates a user by email.
 func (s *ReportService) getUserAndValidate(userEmail string) (*model.User, error) {
 	user, err := s.userService.GetUserByEmail(userEmail)
 	if err != nil {
@@ -32,7 +31,6 @@ func (s *ReportService) getUserAndValidate(userEmail string) (*model.User, error
 	return user, nil
 }
 
-// parseReportDate parses the report date string, falling back to current time if invalid.
 func parseReportDate(dateStr string) time.Time {
 	if dateStr == "" {
 		return time.Now()
@@ -47,7 +45,6 @@ func parseReportDate(dateStr string) time.Time {
 	return parsedDate
 }
 
-// extractDateFromImageData extracts EXIF date from image data if available.
 func extractDateFromImageData(imageData []byte, currentTime time.Time) time.Time {
 	exifData, err := exif.Decode(bytes.NewReader(imageData))
 	if err != nil {
@@ -63,7 +60,6 @@ func extractDateFromImageData(imageData []byte, currentTime time.Time) time.Time
 	return dateTime
 }
 
-// decodeBase64ImageData decodes base64 image data, handling data URIs.
 func decodeBase64ImageData(base64String string) ([]byte, error) {
 	// Handle data URIs by removing the prefix
 	if strings.HasPrefix(base64String, "data:") {
@@ -76,7 +72,6 @@ func decodeBase64ImageData(base64String string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(base64String)
 }
 
-// addReportFieldsToItem adds report fields to a DynamoDB item.
 func addReportFieldsToItem(
 	item map[string]*dynamodb.AttributeValue,
 	surfSize, windAmount, windDirection, consistency, quality, messiness string,
@@ -101,7 +96,6 @@ func addReportFieldsToItem(
 	}
 }
 
-// buildWebSocketMessage builds a WebSocket message for broadcasting new reports.
 func buildWebSocketMessage(
 	country, region, spot, userName, userUUID, imageKey, videoKey, mediaType string,
 	iosValidated bool,
@@ -132,7 +126,6 @@ func buildWebSocketMessage(
 	}
 }
 
-// broadcastReportMessage broadcasts a report message to spot subscribers.
 func (s *ReportService) broadcastReportMessage(country, region, spot string, message map[string]interface{}) {
 	subscribers, err := s.getSpotSubscribers(country, region, spot)
 	if err != nil {
@@ -145,7 +138,6 @@ func (s *ReportService) broadcastReportMessage(country, region, spot string, mes
 	}()
 }
 
-// createBaseReportItem creates the base DynamoDB item structure for a surf report.
 func (s *ReportService) createBaseReportItem(
 	countryRegionSpot, dateReported, userEmail, userName, userUUID string,
 	currentTime time.Time,
@@ -164,7 +156,6 @@ func (s *ReportService) createBaseReportItem(
 	}
 }
 
-// storeReport stores a report item in DynamoDB.
 func (s *ReportService) storeReport(item map[string]*dynamodb.AttributeValue) error {
 	input := &dynamodb.PutItemInput{
 		TableName: aws.String("SurfReports"),
@@ -180,8 +171,6 @@ func (s *ReportService) storeReport(item map[string]*dynamodb.AttributeValue) er
 	return nil
 }
 
-// processBase64Image processes base64 image data: extracts date from EXIF if needed,
-// validates, and uploads to S3.
 func (s *ReportService) processBase64Image(
 	imageDataStr, dateStr, countryRegionSpot, userUUID string,
 	currentTime *time.Time,
@@ -209,7 +198,6 @@ func (s *ReportService) processBase64Image(
 		return "", model.ErrImageNotSurfRelated
 	}
 
-	// Upload to S3
 	imageKey := fmt.Sprintf(
 		"surf-reports/%s/%s_%s.jpg",
 		countryRegionSpot,
@@ -224,7 +212,6 @@ func (s *ReportService) processBase64Image(
 	return s3Key, nil
 }
 
-// determineMediaType determines the media type based on image and video keys.
 func determineMediaType(hasImage, hasVideo bool) string {
 	switch {
 	case hasImage && hasVideo:
@@ -238,8 +225,6 @@ func determineMediaType(hasImage, hasVideo bool) string {
 	}
 }
 
-// processS3ImageForReport processes an S3 image key: retrieves, validates with
-// Rekognition, and adds to item.
 func (s *ReportService) processS3ImageForReport(
 	imageKey string,
 	item map[string]*dynamodb.AttributeValue,
@@ -271,7 +256,6 @@ func (s *ReportService) processS3ImageForReport(
 	return imageKey, nil
 }
 
-// storeReportWithCleanup stores a report and cleans up S3 image if storage fails.
 func (s *ReportService) storeReportWithCleanup(item map[string]*dynamodb.AttributeValue, s3Key string) error {
 	err := s.storeReport(item)
 	if err != nil && s3Key != "" {
@@ -281,8 +265,6 @@ func (s *ReportService) storeReportWithCleanup(item map[string]*dynamodb.Attribu
 	return err
 }
 
-// processIOSMediaKeys processes iOS validated image and video keys (trusts
-// client-side validation).
 func (s *ReportService) processIOSMediaKeys(
 	imageKey, videoKey string,
 	item map[string]*dynamodb.AttributeValue,

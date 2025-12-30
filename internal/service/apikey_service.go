@@ -14,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
-// APIKeyService provides API key management operations.
 type APIKeyService struct {
 	dbStorage storage.DynamoDBStorage
 }

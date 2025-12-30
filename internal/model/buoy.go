@@ -2,7 +2,6 @@ package model
 
 import "time"
 
-// Buoy represents a buoy in the system
 type Buoy struct {
 	RegionBuoy string `json:"region_buoy"`
 	Latitude    float64   `json:"latitude" dynamodbav:"latitude"`
@@ -10,7 +9,6 @@ type Buoy struct {
 	Name string `json:"name"`
 }
 
-// BuoyData represents buoy measurement data
 type BuoyData struct {
 	BuoyName     string    `json:"buoy_name" dynamodbav:"buoy_name"`
 	Timestamp    time.Time `json:"timestamp" dynamodbav:"timestamp"`
@@ -24,7 +22,6 @@ type BuoyData struct {
 	Pressure     float64   `json:"pressure" dynamodbav:"pressure"`
 }
 
-// BuoyLocation represents buoy location information
 type BuoyLocation struct {
 	Name      string  `json:"name" dynamodbav:"name"`
 	Country   string  `json:"country" dynamodbav:"country"`

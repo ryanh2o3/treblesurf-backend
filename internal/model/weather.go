@@ -2,7 +2,6 @@ package model
 
 import "time"
 
-// Weather represents current weather conditions
 type Weather struct {
 	Location      string    `json:"location" dynamodbav:"location"`
 	Country       string    `json:"country" dynamodbav:"country"`
@@ -18,7 +17,6 @@ type Weather struct {
 	Conditions    string    `json:"conditions" dynamodbav:"conditions"`
 }
 
-// Tide represents tide information
 type Tide struct {
 	Location    string    `json:"location" dynamodbav:"location"`
 	Date        time.Time `json:"date" dynamodbav:"date"`

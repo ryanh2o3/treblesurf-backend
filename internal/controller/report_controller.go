@@ -14,7 +14,6 @@ import (
 
 // This controller uses the shared service registry
 
-// handleImageError handles image-related errors and sends appropriate HTTP responses
 func handleImageError(c *gin.Context, err error, logPrefix string) {
 	log.Printf("%s: %v", logPrefix, err)
 
@@ -62,7 +61,6 @@ func handleImageError(c *gin.Context, err error, logPrefix string) {
 		}
 }
 
-// SubmitCurrentSurfReport handles surf report submission
 func SubmitCurrentSurfReport(c *gin.Context) {
 	logRequestDetails(c, "Report Submission Request")
 	log.Print("start of submit report")
@@ -92,7 +90,6 @@ func SubmitCurrentSurfReport(c *gin.Context) {
 	handleReportSubmissionSuccess(c, email, "Report")
 }
 
-// SubmitSurfReportWithS3Image handles surf report submission with pre-uploaded S3 image
 func SubmitSurfReportWithS3Image(c *gin.Context) {
 	logRequestDetails(c, "S3 Image Report Submission Request")
 	log.Print("start of submit S3 image report")
@@ -122,7 +119,6 @@ func SubmitSurfReportWithS3Image(c *gin.Context) {
 	handleReportSubmissionSuccess(c, email, "S3 Image Report")
 }
 
-// GenerateImageUploadURL generates a presigned URL for uploading an image to S3
 func GenerateImageUploadURL(c *gin.Context) {
 	log.Printf("=== Generate Image Upload URL Request ===")
 
@@ -144,7 +140,6 @@ func GenerateImageUploadURL(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// RetrieveTodaysSurfReports retrieves the most recent surf report for a specific spot (legacy endpoint)
 func RetrieveTodaysSurfReports(c *gin.Context) {
 	countryName := c.Query("country")
 	regionName := c.Query("region")
@@ -181,7 +176,6 @@ func RetrieveTodaysSurfReports(c *gin.Context) {
 	c.JSON(http.StatusOK, reports)
 }
 
-// GetAllSpotSurfReports retrieves all surf reports for a specific spot with pagination support
 func GetAllSpotSurfReports(c *gin.Context) {
 	countryName := c.Query("country")
 	regionName := c.Query("region")
@@ -231,7 +225,6 @@ func GetAllSpotSurfReports(c *gin.Context) {
 	c.JSON(http.StatusOK, reports)
 }
 
-// GetSurfReportsWithSimilarBuoyData retrieves surf reports that had similar buoy conditions
 func GetSurfReportsWithSimilarBuoyData(c *gin.Context) {
 	waveHeight, waveDirection, period, buoyName, ok := parseBuoyQueryParams(c)
 	if !ok {
@@ -321,7 +314,6 @@ func GetSurfReportsWithMatchingConditions(c *gin.Context) {
 	c.JSON(http.StatusOK, reports)
 }
 
-// GetReportImage retrieves a report image from S3
 func GetReportImage(c *gin.Context) {
 	// Get the image key from the query parameter
 	imageKey := c.Query("key")
@@ -353,17 +345,14 @@ func GetReportImage(c *gin.Context) {
 		return
 	}
 
-	// Convert to base64
 	base64Data := base64.StdEncoding.EncodeToString(imageData)
 
-	// Return the base64-encoded image
 	c.JSON(http.StatusOK, gin.H{
 		"imageData":   base64Data,
 		"contentType": contentType,
 	})
 }
 
-// GenerateVideoUploadURL generates a presigned URL for uploading a video to S3
 func GenerateVideoUploadURL(c *gin.Context) {
 	log.Printf("=== Generate Video Upload URL Request ===")
 
@@ -385,7 +374,6 @@ func GenerateVideoUploadURL(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// GetReportVideo retrieves a report video from S3
 func GetReportVideo(c *gin.Context) {
 	// Get the video key from the query parameter
 	videoKey := c.Query("key")
@@ -417,17 +405,14 @@ func GetReportVideo(c *gin.Context) {
 		return
 	}
 
-	// Convert to base64
 	base64Data := base64.StdEncoding.EncodeToString(videoData)
 
-	// Return the base64-encoded video
 	c.JSON(http.StatusOK, gin.H{
 		"videoData":   base64Data,
 		"contentType": contentType,
 	})
 }
 
-// GenerateVideoViewURL generates a presigned URL for viewing a video
 func GenerateVideoViewURL(c *gin.Context) {
 	log.Printf("=== Generate Video View URL Request ===")
 
@@ -457,7 +442,6 @@ func GenerateVideoViewURL(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// SubmitSurfReportWithIOSValidation handles surf report submission with iOS validation
 func SubmitSurfReportWithIOSValidation(c *gin.Context) {
 	logRequestDetails(c, "iOS Validated Report Submission Request")
 	log.Print("start of submit iOS validated report")
@@ -514,7 +498,6 @@ func SubmitSurfReportWithIOSValidation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
-// DeleteUploadedMedia handles deletion of uploaded media from S3
 func DeleteUploadedMedia(c *gin.Context) {
 	logRequestDetails(c, "Delete Uploaded Media Request")
 
@@ -558,25 +541,21 @@ func getUserByEmail(email string) (*model.User, error) {
 	return UserService.GetUserByEmail(email)
 }
 
-// isValidMediaKey validates that the media key is in the expected format
 func isValidMediaKey(mediaKey string) bool {
 	// Media keys should follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.ext
-	// This prevents path traversal attacks
+	// Prevents path traversal attacks
 	if mediaKey == "" {
 		return false
 	}
 	
-	// Check if it starts with the expected prefix
 	if !strings.HasPrefix(mediaKey, "surf-reports/") {
 		return false
 	}
 	
-	// Check for path traversal attempts
 	if strings.Contains(mediaKey, "..") || strings.Contains(mediaKey, "//") {
 		return false
 	}
 	
-	// Check for valid file extensions
 	validExtensions := []string{".jpg", ".jpeg", ".png", ".mp4", ".mov", ".avi"}
 	hasValidExtension := false
 	for _, ext := range validExtensions {
@@ -589,7 +568,6 @@ func isValidMediaKey(mediaKey string) bool {
 	return hasValidExtension
 }
 
-// canUserAccessMedia checks if a user has permission to access/delete a specific media file
 func canUserAccessMedia(mediaKey, userUUID, mediaType string) bool {
 	// Media keys follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.ext
 	// We need to extract the UUID from the media key to verify ownership

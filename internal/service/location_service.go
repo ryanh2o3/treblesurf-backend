@@ -11,14 +11,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-// LocationService provides location-related operations including regions, spots, and coordinates.
 type LocationService struct {
 	dbStorage  storage.DynamoDBStorage
 	s3Storage  storage.S3Storage
 	bucketName string
 }
 
-// NewLocationService creates a new location service instance.
 func NewLocationService(
 	dbStorage storage.DynamoDBStorage,
 	s3Storage storage.S3Storage,
@@ -31,7 +29,6 @@ func NewLocationService(
 	}
 }
 
-// GetRegions returns a list of regions for the specified country.
 func (s *LocationService) GetRegions(countryName string) ([]string, error) {
 	input := &dynamodb.ScanInput{
 		TableName: aws.String("LocationData"),
@@ -62,7 +59,6 @@ func (s *LocationService) GetRegions(countryName string) ([]string, error) {
 	return regions, nil
 }
 
-// GetSpots returns a list of spots for the specified country and region.
 func (s *LocationService) GetSpots(countryName, regionName string) ([]model.LocationInfo, error) {
 	input := &dynamodb.ScanInput{
 		TableName: aws.String("LocationData"),
@@ -117,7 +113,6 @@ func (s *LocationService) GetSpots(countryName, regionName string) ([]model.Loca
 	return locations, nil
 }
 
-// GetLocationInfo retrieves detailed information for a specific location.
 func (s *LocationService) GetLocationInfo(countryName, regionName, spotName string) (*model.LocationInfo, error) {
 	input := &dynamodb.QueryInput{
 		TableName: aws.String("LocationData"),
@@ -166,7 +161,6 @@ func (s *LocationService) GetLocationInfo(countryName, regionName, spotName stri
 	return &location, nil
 }
 
-// GetCoordinates retrieves the latitude and longitude coordinates for a specific location.
 func (s *LocationService) GetCoordinates(countryName, regionName, spotName string) ([]float64, error) {
 	input := &dynamodb.QueryInput{
 		TableName: aws.String("LocationData"),
