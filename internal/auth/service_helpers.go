@@ -47,7 +47,7 @@ func validateGoogleIDToken(idToken string, clientIDs map[string]bool) (*idtoken.
 }
 
 // extractUserClaims extracts user claims from a Google ID token payload.
-//nolint:unparam,gocritic // Error return maintained for API consistency; multiple return values needed for all claims
+//nolint:unparam // Error return maintained for API consistency; multiple return values needed for all claims
 func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyName, givenName string, err error) {
 	log.Printf("JWT claims available: %v", payload.Claims)
 

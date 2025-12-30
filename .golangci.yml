@@ -12,7 +12,7 @@ run:
 
 output:
   formats:
-    - format: text
+    text:
       print-issued-lines: true
       print-linter-name: true
   # Sort output by linter, then severity, then file for better organization
@@ -23,6 +23,8 @@ output:
 
 linters:
   # Explicitly enable specific linters
+  default: none
+
   enable:
     - bodyclose
     - dogsled
@@ -58,6 +60,12 @@ linters:
     # Warn about unused exclusion rules to keep config clean
     # Set to false to suppress warnings for standard exclusions (vendor, test files, etc.)
     warn-unused: false
+
+    # Predefined exclusion rule presets (recommended best practices)
+    presets:
+      - comments # Excludes issues related to comments
+      - std-error-handling # Excludes standard error handling false positives
+      - common-false-positives # Excludes known common false positives
     # Excluding configuration per-path, per-linter, per-text and per-source
     rules:
       # Exclude some linters from running on tests files.
