@@ -26,7 +26,6 @@ var (
 func InitLocal(cfg *config.Config) error {
 	log.Println("Initializing local AWS services...")
 
-	// Create AWS session with local endpoints
 	awsConfig := &aws.Config{
 		Region:      aws.String(cfg.AWSRegion),
 		Endpoint:    aws.String(cfg.DynamoDBEndpoint),
@@ -39,10 +38,8 @@ func InitLocal(cfg *config.Config) error {
 		return err
 	}
 
-	// Initialize DynamoDB client
 	DB = dynamodb.New(sess)
 
-	// Initialize S3 client with potentially different endpoint
 	s3Config := &aws.Config{
 		Region:           aws.String(cfg.AWSRegion),
 		Endpoint:         aws.String(cfg.S3Endpoint),
@@ -57,21 +54,17 @@ func InitLocal(cfg *config.Config) error {
 	}
 	S3Client = s3.New(s3Session)
 
-	// Initialize mock Rekognition client
 	RekognitionClient = rekognition.New(sess)
 
-	// Apply the overriding to API package
 	if err := applyOverrides(); err != nil {
 		return err
 	}
 
-	// Create required tables
 	return createLocalTables()
 }
 
 // applyOverrides replaces the AWS clients in the api package with our local implementations
 func applyOverrides() error {
-	// Directly set the db, s3Client, and rekognitionClient variables in the api package
 	models.Registry.DynamoDB = DB
 	models.Registry.S3Client = S3Client
 	models.Registry.Rekognition = RekognitionClient
@@ -95,7 +88,6 @@ func createLocalTables() error {
 
 // createTableIfNotExists creates a DynamoDB table if it doesn't already exist.
 func createTableIfNotExists(table tableDefinition) error {
-	// Check if table exists
 	_, err := DB.DescribeTable(&dynamodb.DescribeTableInput{
 		TableName: aws.String(table.name),
 	})
@@ -105,7 +97,6 @@ func createTableIfNotExists(table tableDefinition) error {
 		return nil
 	}
 
-	// Create table
 	_, err = DB.CreateTable(&dynamodb.CreateTableInput{
 		TableName:            aws.String(table.name),
 		KeySchema:            table.keySchema,

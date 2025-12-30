@@ -7,7 +7,7 @@ import (
 
 type ConnectionInfo struct {
 	ConnectionID string    `json:"connection_id"`
-	UserID       string    `json:"user_id"` // Email
+	UserID       string    `json:"user_id"`
 	ConnectedAt  time.Time `json:"connected_at"`
 	LastActive   time.Time `json:"last_active"`
 	UserAgent    string    `json:"user_agent"`

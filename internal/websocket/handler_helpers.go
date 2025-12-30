@@ -35,7 +35,6 @@ func (h *Handler) validateWebSocketToken(token string) (userID, sessionID string
 	if sessionIDVal, ok2 := claims["session_id"].(string); ok2 {
 		sessionID = sessionIDVal
 	}
-	// Note: sessionID is optional, empty string is acceptable
 	return userID, sessionID, nil
 }
 

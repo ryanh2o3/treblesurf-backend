@@ -76,7 +76,6 @@ func (h *Handler) handleDisconnect(
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
-	// Delete the connection record
 	if err := h.websocketService.DeleteConnection(connectionID); err != nil {
 		log.Printf("Error deleting connection: %v", err)
 	}
@@ -100,12 +99,10 @@ func (h *Handler) handleDefault(
 		}, nil
 	}
 
-	// Update last active timestamp
 	if err := h.websocketService.UpdateConnectionLastActive(req.RequestContext.ConnectionID); err != nil {
 		log.Printf("Warning: Failed to update connection last active: %v", err)
 	}
 
-	// Process based on the action
 	if message.Action == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
@@ -113,7 +110,6 @@ func (h *Handler) handleDefault(
 		}, nil
 	}
 
-	// Here we'd handle different message types
 	return h.handleCustomRoute(req)
 }
 
@@ -155,7 +151,6 @@ func (h *Handler) handleCustomRoute(
 func (h *Handler) handleSubscribeAction(
 	req events.APIGatewayWebsocketProxyRequest, data json.RawMessage,
 ) (events.APIGatewayProxyResponse, error) {
-	// Parse the subscription data
 	var subRequest model.SubscriptionRequest
 	if err := json.Unmarshal(data, &subRequest); err != nil {
 		log.Printf("Error parsing subscription data: %v", err)
@@ -167,7 +162,6 @@ func (h *Handler) handleSubscribeAction(
 
 	connectionID := req.RequestContext.ConnectionID
 
-	// Get the connection info to know which user is subscribing
 	connection, err := h.websocketService.GetConnection(connectionID)
 	if err != nil {
 		log.Printf("Error getting connection info: %v", err)
@@ -180,7 +174,6 @@ func (h *Handler) handleSubscribeAction(
 	userID := connection.UserID
 	spotIdentifier := fmt.Sprintf("%s/%s/%s", subRequest.Country, subRequest.Region, subRequest.Spot)
 
-	// Store the subscription in DynamoDB
 	if saveErr := h.websocketService.SaveSubscription(spotIdentifier, userID, connectionID); saveErr != nil {
 		log.Printf("Failed to save subscription: %v", saveErr)
 		return events.APIGatewayProxyResponse{
@@ -189,12 +182,10 @@ func (h *Handler) handleSubscribeAction(
 		}, nil
 	}
 
-	// Update connection metadata with current spot
 	if updateErr := h.websocketService.UpdateConnectionSpot(connectionID, spotIdentifier); updateErr != nil {
 		log.Printf("Warning: Failed to update connection spot: %v", updateErr)
 	}
 
-	// Send confirmation back to client
 	response := h.websocketService.CreateSubscriptionResponse(spotIdentifier)
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
@@ -223,12 +214,10 @@ func (h *Handler) handlePingAction(
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
-	// Update last active time
 	if err := h.websocketService.UpdateConnectionLastActive(connectionID); err != nil {
 		log.Printf("Warning: Failed to update connection last active: %v", err)
 	}
 
-	// Send pong response
 	response := h.websocketService.CreatePongResponse()
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
