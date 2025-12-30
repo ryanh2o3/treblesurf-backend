@@ -23,7 +23,6 @@ func (s *SwellPredictionService) GetSpotSwellPrediction(
 ) ([]map[string]interface{}, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	
-	// Get current time rounded to the hour (UTC)
 	now := time.Now().UTC()
 	currentHour := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.UTC)
 	currentHourTimestamp := fmt.Sprintf("%d", currentHour.Unix())
