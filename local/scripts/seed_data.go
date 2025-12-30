@@ -1,4 +1,5 @@
 // Package main provides a script to seed the local database with test data.
+//nolint:errcheck // Seed script with known data structures - type assertions are safe
 package main
 
 import (

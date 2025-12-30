@@ -137,7 +137,7 @@ func isAdminUser(_ string) bool {
 	return false
 }
 
-func validateAPIKey(_ string, _ string) (interface{}, bool) {
+func validateAPIKey(_, _ string) (interface{}, bool) {
 	// TODO: Implement API key validation
 	return nil, false
 }

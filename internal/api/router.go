@@ -1,4 +1,6 @@
-package api
+// Package httphandler provides HTTP API routing configuration, route registration,
+// and middleware setup for the Treble Surf backend API.
+package httphandler
 
 import (
 	"log"

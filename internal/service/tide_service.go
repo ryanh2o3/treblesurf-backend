@@ -49,11 +49,9 @@ func (s *TideService) GetCurrentTides(locationName string) []map[string]interfac
 	return result
 }
 
-func (s *TideService) GetBeforeAfterTides(locationName string) (map[string]interface{}, map[string]interface{}) {
+func (s *TideService) GetBeforeAfterTides(locationName string) (prevTide, nextTide map[string]interface{}) {
 	tides := s.GetCurrentTides(locationName)
 	now := time.Now()
-
-	var prevTide, nextTide map[string]interface{}
 	for _, tide := range tides {
 		// Parse the tide time string
 		tideTimeStr, ok := tide["time"].(string)

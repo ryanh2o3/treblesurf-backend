@@ -276,9 +276,7 @@ func (s *ReportService) storeReportWithCleanup(item map[string]*dynamodb.Attribu
 func (s *ReportService) processIOSMediaKeys(
 	imageKey, videoKey string,
 	item map[string]*dynamodb.AttributeValue,
-) (string, string) {
-	var s3KeyReport, videoKeyReport string
-
+) (s3KeyReport, videoKeyReport string) {
 	if imageKey != "" {
 		log.Printf("iOS validated report with image: %s", imageKey)
 		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(imageKey)}
@@ -381,6 +379,7 @@ func (s *ReportService) queryCurrentForecast(spotID string) (*dynamodb.QueryOutp
 }
 
 // queryHistoricalForecast queries for forecast data looking backwards up to 24 hours.
+//
 //nolint:unparam // Error return maintained for API consistency
 func (s *ReportService) queryHistoricalForecast(spotID string) (*dynamodb.QueryOutput, error) {
 	currentEpoch := time.Now().Unix()
@@ -422,14 +421,14 @@ func (s *ReportService) unmarshalForecast(item map[string]*dynamodb.AttributeVal
 }
 
 // extractWindData extracts wind speed and direction from forecast data.
-func (s *ReportService) extractWindData(forecast map[string]interface{}) (float64, float64, error) {
+func (s *ReportService) extractWindData(forecast map[string]interface{}) (windSpeed, windDirection float64, err error) {
 	data, ok := forecast["data"].(map[string]interface{})
 	if !ok {
 		return 0, 0, fmt.Errorf("invalid forecast data structure")
 	}
 
-	windSpeed := extractFloatFromData(data, "windSpeed")
-	windDirection := extractFloatFromData(data, "windDirection")
+	windSpeed = extractFloatFromData(data, "windSpeed")
+	windDirection = extractFloatFromData(data, "windDirection")
 
 	return windSpeed, windDirection, nil
 }
@@ -446,4 +445,3 @@ func extractFloatFromData(data map[string]interface{}, key string) float64 {
 	}
 	return 0
 }
-

@@ -85,7 +85,7 @@ func (s *APIKeyService) StoreAPIKey(apiKey *model.APIKey) error {
 }
 
 // ValidateAPIKey validates an API key against DynamoDB
-func (s *APIKeyService) ValidateAPIKey(keyValue string, requiredScope string) (*model.APIKey, bool) {
+func (s *APIKeyService) ValidateAPIKey(keyValue, requiredScope string) (*model.APIKey, bool) {
 	// Query by key value
 	input := &dynamodb.ScanInput{
 		TableName:        aws.String("ApiKeys"),
