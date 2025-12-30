@@ -12,7 +12,7 @@ run:
 
 output:
   formats:
-    text:
+    - format: text
       print-issued-lines: true
       print-linter-name: true
   # Sort output by linter, then severity, then file for better organization
@@ -22,9 +22,7 @@ output:
     - file
 
 linters:
-  # Use 'none' as default since we're explicitly enabling specific linters
-  # Alternatives: 'standard' (default enabled linters), 'all' (all linters), 'fast' (fast linters only)
-  default: none
+  # Explicitly enable specific linters
   enable:
     - bodyclose
     - dogsled
@@ -60,12 +58,6 @@ linters:
     # Warn about unused exclusion rules to keep config clean
     # Set to false to suppress warnings for standard exclusions (vendor, test files, etc.)
     warn-unused: false
-    # Predefined exclusion rule presets (recommended best practices)
-    presets:
-      - comments # Excludes issues related to comments
-      - std-error-handling # Excludes standard error handling false positives
-      - common-false-positives # Excludes known common false positives
-      # - legacy          # Uncomment if you have legacy code patterns
     # Excluding configuration per-path, per-linter, per-text and per-source
     rules:
       # Exclude some linters from running on tests files.
@@ -85,101 +77,102 @@ linters:
     # Note: vendor/.* is kept as standard practice even if vendor directory doesn't exist
     paths:
       - "vendor/.*"
-  # All available settings of specific linters
-  settings:
-    errcheck:
-      check-type-assertions: true
-      check-blank: true
 
-    goconst:
-      min-len: 2
-      min-occurrences: 2
+# All available settings of specific linters
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
 
-    gocritic:
-      enabled-tags:
-        - diagnostic
-        - experimental
-        - opinionated
-        - performance
-        - style
-      disabled-checks:
-        - dupImport
-        - ifElseChain
-        - octalLiteral
-        - whyNoLint
-        - wrapperFunc
+  goconst:
+    min-len: 2
+    min-occurrences: 2
 
-    gocyclo:
-      min-complexity: 15
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc
 
-    govet:
-      enable-all: true
+  gocyclo:
+    min-complexity: 15
 
-    lll:
-      line-length: 140
+  govet:
+    enable-all: true
 
-    misspell:
-      locale: US
+  lll:
+    line-length: 140
 
-    nakedret:
-      max-func-lines: 30
+  misspell:
+    locale: US
 
-    nolintlint:
-      allow-unused: false
-      require-explanation: false
-      require-specific: false
+  nakedret:
+    max-func-lines: 30
 
-    revive:
-      rules:
-        - name: exported
-          severity: warning
-          disabled: true
-        - name: unexported-return
-          severity: warning
-          disabled: false
-        - name: error-return
-          severity: warning
-          disabled: false
-        - name: error-naming
-          severity: warning
-          disabled: false
-        - name: var-naming
-          severity: warning
-          disabled: false
-        - name: if-return
-          severity: warning
-          disabled: false
-        - name: increment-decrement
-          severity: warning
-          disabled: false
-        - name: var-declaration
-          severity: warning
-          disabled: false
-        - name: range
-          severity: warning
-          disabled: false
-        - name: string-of-int
-          severity: warning
-          disabled: false
-        - name: superfluous-else
-          severity: warning
-          disabled: false
-        - name: unused-parameter
-          severity: warning
-          disabled: false
-        - name: unhandled-error
-          severity: warning
-          disabled: false
+  nolintlint:
+    allow-unused: false
+    require-explanation: false
+    require-specific: false
 
-    staticcheck:
-      checks: ["all"]
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+        disabled: true
+      - name: unexported-return
+        severity: warning
+        disabled: false
+      - name: error-return
+        severity: warning
+        disabled: false
+      - name: error-naming
+        severity: warning
+        disabled: false
+      - name: var-naming
+        severity: warning
+        disabled: false
+      - name: if-return
+        severity: warning
+        disabled: false
+      - name: increment-decrement
+        severity: warning
+        disabled: false
+      - name: var-declaration
+        severity: warning
+        disabled: false
+      - name: range
+        severity: warning
+        disabled: false
+      - name: string-of-int
+        severity: warning
+        disabled: false
+      - name: superfluous-else
+        severity: warning
+        disabled: false
+      - name: unused-parameter
+        severity: warning
+        disabled: false
+      - name: unhandled-error
+        severity: warning
+        disabled: false
 
-    unparam:
-      check-exported: false
+  staticcheck:
+    checks: ["all"]
 
-    whitespace:
-      multi-if: false
-      multi-func: false
+  unparam:
+    check-exported: false
+
+  whitespace:
+    multi-if: false
+    multi-func: false
 
 issues:
   # Exclusion rules are now in linters.exclusions.rules (best practice)
@@ -192,4 +185,4 @@ issues:
 
 severity:
   # Set default severity for all issues
-  default: error
+  default-severity: error

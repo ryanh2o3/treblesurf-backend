@@ -22,7 +22,6 @@ jobs:
           go-version: "1.24"
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v2.7.2
         with:
-          version: latest
           args: --timeout=5m
