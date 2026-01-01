@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/constants"
@@ -44,9 +43,8 @@ func SetupRouter(container *Container) *gin.Engine {
 		}))
 	}
 
-	// Register routes once on the root router
-	// The middleware in setupMiddleware handles /api prefix stripping,
-	// so routes work with or without the /api prefix
+	// Register routes - conditionally with /api prefix for local dev
+	// In production, Lambda handler strips /api before routing
 	setupRoutes(r, container)
 
 	return r
@@ -54,31 +52,27 @@ func SetupRouter(container *Container) *gin.Engine {
 
 func setupRoutes(r gin.IRouter, container *Container) {
 	log.Print(os.Getenv("GO_ENV"))
+	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
 
-	setupMiddleware(r)
-	setupPublicRoutes(r)
-	setupAuthRoutes(r)
-	setupLocationAndForecastRoutes(r, container)
-	setupSwellPredictionRoutes(r, container)
-	setupProtectedRoutes(r, container)
-	setupAPIKeyRoutes(r, container)
-	setupAdminRoutes(r, container)
-}
-
-// setupMiddleware configures middleware for all routes.
-func setupMiddleware(r gin.IRouter) {
 	// Apply iOS headers to all API routes
 	r.Use(iOSHeadersMiddleware())
 
-	// Strip /api prefix if present
-	r.Use(func(c *gin.Context) {
-		path := c.Request.URL.Path
-		if strings.HasPrefix(path, "/api") {
-			newPath := strings.TrimPrefix(path, "/api")
-			c.Request.URL.Path = newPath
-		}
-		c.Next()
-	})
+	// In production, Lambda handler strips /api before routing, so routes are registered without /api
+	// In local development, routes need /api prefix since there's no Lambda handler
+	var routeGroup gin.IRouter
+	if isLocal {
+		routeGroup = r.Group("/api")
+	} else {
+		routeGroup = r
+	}
+
+	setupPublicRoutes(routeGroup)
+	setupAuthRoutes(routeGroup)
+	setupLocationAndForecastRoutes(routeGroup, container)
+	setupSwellPredictionRoutes(routeGroup, container)
+	setupProtectedRoutes(routeGroup, container)
+	setupAPIKeyRoutes(routeGroup, container)
+	setupAdminRoutes(routeGroup, container)
 }
 
 // setupPublicRoutes configures public authentication routes.
