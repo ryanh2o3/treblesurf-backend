@@ -1,18 +1,26 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
 	"context"
+	"fmt"
 
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
 )
 
+// UserService provides business logic for user operations.
 type UserService struct {
 	users repository.UserRepository
 }
 
-func NewUserService(users repository.UserRepository) *UserService {
-	return &UserService{users: users}
+// NewUserService creates a new UserService with the given repository.
+// Returns an error if the repository is nil.
+func NewUserService(users repository.UserRepository) (*UserService, error) {
+	if users == nil {
+		return nil, fmt.Errorf("user repository is required")
+	}
+	return &UserService{users: users}, nil
 }
 
 // GetByEmail retrieves a user by email with context propagation.

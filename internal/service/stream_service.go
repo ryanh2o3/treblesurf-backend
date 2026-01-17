@@ -1,3 +1,4 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
@@ -11,12 +12,18 @@ import (
 
 const streamRequestTTL = 5 * time.Minute
 
+// StreamService provides business logic for stream request operations.
 type StreamService struct {
 	requests repository.StreamRequestRepository
 }
 
-func NewStreamService(requests repository.StreamRequestRepository) *StreamService {
-	return &StreamService{requests: requests}
+// NewStreamService creates a new StreamService with the given repository.
+// Returns an error if the repository is nil.
+func NewStreamService(requests repository.StreamRequestRepository) (*StreamService, error) {
+	if requests == nil {
+		return nil, fmt.Errorf("stream request repository is required")
+	}
+	return &StreamService{requests: requests}, nil
 }
 
 func (s *StreamService) RequestStream(ctx context.Context, spotID, requestedBy string) (*model.StreamRequest, error) {

@@ -1,3 +1,6 @@
+// Package repository defines interfaces for data persistence operations.
+// All repositories follow the repository pattern, abstracting data access
+// from business logic and enabling easy testing through mock implementations.
 package repository
 
 import (
@@ -8,21 +11,51 @@ import (
 )
 
 // UserRepository handles user data persistence.
+// Implementations should handle user CRUD operations and related queries.
 type UserRepository interface {
+	// GetByEmail retrieves a user by their email address.
+	// Returns ErrNotFound if the user doesn't exist.
 	GetByEmail(ctx context.Context, email string) (*model.User, error)
+
+	// GetByUUID retrieves a user by their unique identifier.
+	// Returns ErrNotFound if the user doesn't exist.
 	GetByUUID(ctx context.Context, uuid string) (*model.User, error)
+
+	// Create stores a new user in the database.
+	// Returns ErrAlreadyExists if a user with the same email exists.
 	Create(ctx context.Context, user *model.User) error
+
+	// Update modifies an existing user's data.
+	// Returns ErrNotFound if the user doesn't exist.
 	Update(ctx context.Context, user *model.User) error
+
+	// Delete removes a user by their email address.
+	// Returns ErrNotFound if the user doesn't exist.
 	Delete(ctx context.Context, email string) error
+
+	// UpdateTheme updates a user's theme preference.
 	UpdateTheme(ctx context.Context, email, theme string) error
+
+	// UpdateLastLogin updates the user's last login timestamp.
 	UpdateLastLogin(ctx context.Context, email string, at time.Time) error
 }
 
 // ReportRepository handles surf report persistence.
+// Surf reports are user-submitted observations about current surf conditions.
 type ReportRepository interface {
+	// Create stores a new surf report.
 	Create(ctx context.Context, report *model.SurfReport) error
+
+	// GetBySpot retrieves reports for a specific surf spot.
+	// Results are ordered by timestamp descending (newest first).
+	// Use limit=0 for no limit.
 	GetBySpot(ctx context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error)
+
+	// GetBySpotAndTimeRange retrieves reports within a specific time window.
 	GetBySpotAndTimeRange(ctx context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error)
+
+	// ScanSince retrieves all reports since a given time across all spots.
+	// Use limit=0 for no limit.
 	ScanSince(ctx context.Context, since time.Time, limit int) ([]*model.SurfReport, error)
 }
 
@@ -56,11 +89,22 @@ type BuoyDataRequest struct {
 }
 
 // BuoyRepository handles buoy data persistence.
+// Buoy data includes wave height, period, direction, and other oceanographic measurements.
 type BuoyRepository interface {
+	// GetLiveData retrieves the most recent data point for a buoy.
 	GetLiveData(ctx context.Context, buoyName string) (*model.BuoyData, error)
+
+	// GetDataAtTime retrieves buoy data closest to the specified time.
 	GetDataAtTime(ctx context.Context, buoyName string, t time.Time) (*model.BuoyData, error)
+
+	// GetDataRange retrieves all data points within a time range.
 	GetDataRange(ctx context.Context, buoyName string, start, end time.Time) ([]*model.BuoyData, error)
+
+	// GetBatchDataRanges retrieves data for multiple buoys in a single operation.
+	// Returns a map of buoy name to data points.
 	GetBatchDataRanges(ctx context.Context, requests []BuoyDataRequest) (map[string][]*model.BuoyData, error)
+
+	// GetLocations retrieves location metadata for all buoys.
 	GetLocations(ctx context.Context) (map[string]*model.BuoyLocation, error)
 }
 
@@ -73,11 +117,24 @@ type SessionRepository interface {
 }
 
 // MediaRepository handles media file storage (S3).
+// Used for storing and retrieving images and videos attached to surf reports.
 type MediaRepository interface {
+	// Upload stores a file with the given key and content type.
 	Upload(ctx context.Context, key string, data []byte, contentType string) error
+
+	// Download retrieves a file by its key.
+	// Returns ErrNotFound if the file doesn't exist.
 	Download(ctx context.Context, key string) ([]byte, error)
+
+	// Delete removes a file by its key.
 	Delete(ctx context.Context, key string) error
+
+	// GenerateUploadURL creates a presigned URL for direct client uploads.
+	// The URL expires after the specified duration.
 	GenerateUploadURL(ctx context.Context, key string, expires time.Duration) (string, error)
+
+	// GenerateViewURL creates a presigned URL for viewing a file.
+	// The URL expires after the specified duration.
 	GenerateViewURL(ctx context.Context, key string, expires time.Duration) (string, error)
 }
 

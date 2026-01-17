@@ -1,3 +1,4 @@
+// Package config provides application configuration management.
 package config
 
 import (
@@ -6,40 +7,57 @@ import (
 	"strings"
 )
 
+// Config holds all application configuration.
 type Config struct {
 	AWS       AWSConfig
 	Auth      AuthConfig
 	WebSocket WebSocketConfig
 	Server    ServerConfig
+	Security  SecurityConfig
 	Env       Environment
 }
 
+// Environment represents the application environment.
 type Environment string
 
 const (
+	// EnvDevelopment is the development environment.
 	EnvDevelopment Environment = "development"
-	EnvProduction  Environment = "production"
+	// EnvProduction is the production environment.
+	EnvProduction Environment = "production"
 )
 
+// AWSConfig holds AWS-related configuration.
 type AWSConfig struct {
 	Region     string
 	BucketName string
 }
 
+// AuthConfig holds authentication-related configuration.
 type AuthConfig struct {
 	JWTSecret       string
 	GoogleClientIDs []string
 }
 
+// WebSocketConfig holds WebSocket-related configuration.
 type WebSocketConfig struct {
 	Endpoint string
 	Stage    string
 }
 
+// ServerConfig holds HTTP server configuration.
 type ServerConfig struct {
 	Port string
 }
 
+// SecurityConfig holds security-related configuration.
+type SecurityConfig struct {
+	AdminEmails    []string
+	AllowedOrigins []string
+	RateLimitRPS   int
+}
+
+// Load reads configuration from environment variables.
 func Load() (*Config, error) {
 	env := Environment(getEnvOrDefault("GO_ENV", string(EnvProduction)))
 
@@ -56,8 +74,12 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Port: getEnvOrDefault("PORT", "8080"),
 		},
+		Security: SecurityConfig{
+			RateLimitRPS: 100, // Default rate limit
+		},
 	}
 
+	// Load JWT secret
 	cfg.Auth.JWTSecret = os.Getenv("JWT_SECRET")
 	if cfg.Auth.JWTSecret == "" && env == EnvProduction {
 		return nil, fmt.Errorf("JWT_SECRET is required in production")
@@ -66,11 +88,39 @@ func Load() (*Config, error) {
 		cfg.Auth.JWTSecret = "dev-secret-do-not-use-in-prod"
 	}
 
+	// Load Google client IDs
 	if ids := strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_IDS")); ids != "" {
 		cfg.Auth.GoogleClientIDs = splitCommaSeparated(ids)
 	}
 
+	// Load admin emails from environment
+	if admins := strings.TrimSpace(os.Getenv("ADMIN_EMAILS")); admins != "" {
+		cfg.Security.AdminEmails = splitCommaSeparated(admins)
+	}
+
+	// Load allowed origins for CORS
+	if origins := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); origins != "" {
+		cfg.Security.AllowedOrigins = splitCommaSeparated(origins)
+	} else if env == EnvProduction {
+		// Default production origins
+		cfg.Security.AllowedOrigins = []string{
+			"https://treblesurf.com",
+			"https://www.treblesurf.com",
+			"https://app.treblesurf.com",
+		}
+	}
+
 	return cfg, nil
+}
+
+// IsAdmin checks if the given email is an admin.
+func (c *Config) IsAdmin(email string) bool {
+	for _, admin := range c.Security.AdminEmails {
+		if strings.EqualFold(admin, email) {
+			return true
+		}
+	}
+	return false
 }
 
 func MustLoad() *Config {

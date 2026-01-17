@@ -7,7 +7,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
+
 	"treblesurf-backend/internal/auth"
+	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/service"
@@ -82,22 +86,35 @@ func contains(slice []string, item string) bool {
 }
 
 // AdminMiddleware returns a Gin middleware function that validates admin user permissions.
+// Uses config-based admin list instead of hardcoded values.
 func AdminMiddleware() gin.HandlerFunc {
+	return AdminMiddlewareWithConfig(nil)
+}
+
+// AdminMiddlewareWithConfig returns admin middleware with explicit config.
+func AdminMiddlewareWithConfig(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		email, exists := c.Get("email")
 		if !exists {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 			return
 		}
 
 		emailStr, ok := email.(string)
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 			return
 		}
 
-		if !isAdminUser(emailStr) {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+		isAdmin := false
+		if cfg != nil {
+			isAdmin = cfg.IsAdmin(emailStr)
+		} else {
+			isAdmin = isAdminUser(emailStr)
+		}
+
+		if !isAdmin {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin access required"})
 			return
 		}
 
@@ -190,12 +207,118 @@ func DevAdminAuthMiddleware(authService *auth.Service) gin.HandlerFunc {
 
 // Helper functions for middleware
 
+// isAdminUser checks if an email is in the hardcoded admin list.
+// Deprecated: Use config.IsAdmin() instead for production.
 func isAdminUser(email string) bool {
+	// Fallback admin users - prefer using config.IsAdmin() in production
 	adminUsers := map[string]bool{
 		"ryancpatton0@gmail.com": true,
 	}
-
 	return adminUsers[email]
+}
+
+// RateLimitMiddleware implements a simple rate limiter using token bucket algorithm.
+func RateLimitMiddleware(requestsPerSecond int) gin.HandlerFunc {
+	if requestsPerSecond <= 0 {
+		requestsPerSecond = 100 // Default
+	}
+
+	limiter := newRateLimiter(requestsPerSecond)
+
+	return func(c *gin.Context) {
+		ip := getClientIPFromContext(c)
+		if !limiter.allow(ip) {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error":   "rate limit exceeded",
+				"message": "too many requests, please try again later",
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
+// rateLimiter implements a simple token bucket rate limiter.
+type rateLimiter struct {
+	mu             sync.Mutex
+	clients        map[string]*clientBucket
+	rps            int
+	cleanupTicker  *time.Ticker
+}
+
+type clientBucket struct {
+	tokens    float64
+	lastCheck time.Time
+}
+
+func newRateLimiter(rps int) *rateLimiter {
+	rl := &rateLimiter{
+		clients:       make(map[string]*clientBucket),
+		rps:           rps,
+		cleanupTicker: time.NewTicker(time.Minute),
+	}
+
+	// Cleanup old entries periodically
+	go func() {
+		for range rl.cleanupTicker.C {
+			rl.cleanup()
+		}
+	}()
+
+	return rl
+}
+
+func (rl *rateLimiter) allow(clientID string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	bucket, exists := rl.clients[clientID]
+
+	if !exists {
+		rl.clients[clientID] = &clientBucket{
+			tokens:    float64(rl.rps) - 1,
+			lastCheck: now,
+		}
+		return true
+	}
+
+	// Refill tokens based on time elapsed
+	elapsed := now.Sub(bucket.lastCheck).Seconds()
+	bucket.tokens += elapsed * float64(rl.rps)
+	if bucket.tokens > float64(rl.rps) {
+		bucket.tokens = float64(rl.rps)
+	}
+	bucket.lastCheck = now
+
+	if bucket.tokens < 1 {
+		return false
+	}
+
+	bucket.tokens--
+	return true
+}
+
+func (rl *rateLimiter) cleanup() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	cutoff := time.Now().Add(-5 * time.Minute)
+	for id, bucket := range rl.clients {
+		if bucket.lastCheck.Before(cutoff) {
+			delete(rl.clients, id)
+		}
+	}
+}
+
+func getClientIPFromContext(c *gin.Context) string {
+	if ip := c.GetHeader("X-Forwarded-For"); ip != "" {
+		return strings.Split(ip, ",")[0]
+	}
+	if ip := c.GetHeader("X-Real-IP"); ip != "" {
+		return ip
+	}
+	return c.ClientIP()
 }
 
 func validateAPIKey(

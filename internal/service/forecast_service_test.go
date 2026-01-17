@@ -23,7 +23,11 @@ func TestForecastService_GetSpotForecast_PropagatesContext(t *testing.T) {
 		},
 	}
 
-	service := NewForecastService(repo)
+	service, err := NewForecastService(repo)
+	if err != nil {
+		t.Fatalf("unexpected error creating service: %v", err)
+	}
+
 	got, err := service.GetSpotForecast(ctx, "Spot", "CA", "US")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -46,13 +50,24 @@ func TestForecastService_GetListSpotsForecast_PropagatesContext(t *testing.T) {
 		},
 	}
 
-	service := NewForecastService(repo)
+	service, err := NewForecastService(repo)
+	if err != nil {
+		t.Fatalf("unexpected error creating service: %v", err)
+	}
+
 	spots := []string{"Spot1", "Spot2"}
-	_, err := service.GetListSpotsForecast(ctx, spots, "CA", "US")
+	_, err = service.GetListSpotsForecast(ctx, spots, "CA", "US")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if calls != len(spots) {
 		t.Fatalf("expected %d calls, got %d", len(spots), calls)
+	}
+}
+
+func TestNewForecastService_NilRepository_ReturnsError(t *testing.T) {
+	_, err := NewForecastService(nil)
+	if err == nil {
+		t.Fatalf("expected error for nil repository")
 	}
 }

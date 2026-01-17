@@ -1,24 +1,24 @@
+// Package controller provides HTTP handlers for the API endpoints.
 package controller
 
 import (
-	"context"
-	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
 	"treblesurf-backend/internal/model"
-	"treblesurf-backend/internal/repository"
+	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 // BuoyController handles buoy data routes.
 type BuoyController struct {
-	buoys repository.BuoyRepository
+	buoys *service.BuoyService
 }
 
-func NewBuoyController(buoys repository.BuoyRepository) *BuoyController {
+// NewBuoyController creates a new BuoyController with the given service.
+func NewBuoyController(buoys *service.BuoyService) *BuoyController {
 	return &BuoyController{buoys: buoys}
 }
 
@@ -45,192 +45,163 @@ func (bc *BuoyController) BuoyLocationInfo(c *gin.Context) {
 func (bc *BuoyController) IndividualBuoyLocationInfo(c *gin.Context) {
 	regionName := c.Query("region")
 	buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")
-	locations, err := bc.buoys.GetLocations(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
 
-	location, ok := locations[buoyName]
-	if !ok && regionName != "" {
-		location = locations[fmt.Sprintf("%s_%s", regionName, buoyName)]
-		ok = location != nil
-	}
-	if !ok || location == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "No buoy location found"})
-		return
+	location, err := bc.buoys.GetLocationByName(c.Request.Context(), buoyName)
+	if err != nil {
+		// Try with region prefix
+		if regionName != "" {
+			location, err = bc.buoys.GetLocationByName(c.Request.Context(), regionName+"_"+buoyName)
+		}
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no buoy location found"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, buoyLocationToMap(buoyName, location))
 }
 
-// GetLiveBuoyData returns the most recent buoy data for all buoys.
+// GetLiveBuoyData returns the most recent buoy data for all default buoys.
 func (bc *BuoyController) GetLiveBuoyData(c *gin.Context) {
-	buoys := []string{"M4", "Blackstones", "West Hebrides", "M2", "M3", "M5", "M6"}
-	var buoyData []map[string]interface{}
-
-	for _, buoy := range buoys {
-		data := bc.getBuoyData(c.Request.Context(), buoy)
-		buoyData = append(buoyData, data)
-	}
-
-	c.JSON(http.StatusOK, buoyData)
-}
-
-// GetBuoyDataRange returns buoy data for a specific buoy within a specified time range.
-func (bc *BuoyController) GetBuoyDataRange(c *gin.Context) {
-	buoyName := c.Query("buoyName")
-	startTimeStr := c.Query("startTime") // expected format: 2006-01-02T15:00:00Z or 2006-01-02
-	endTimeStr := c.Query("endTime")     // expected format: 2006-01-02T15:00:00Z or 2006-01-02
-
-	// Try parsing with full timestamp first, then try date-only format
-	startTime, err := time.Parse("2006-01-02T15:04:05Z", startTimeStr)
-	if err != nil {
-		// Try parsing as date only
-		startTime, err = time.Parse("2006-01-02", startTimeStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Invalid start time format. Expected 2006-01-02T15:04:05Z or 2006-01-02",
-			})
-			return
-		}
-	}
-
-	endTime, err := time.Parse("2006-01-02T15:04:05Z", endTimeStr)
-	if err != nil {
-		// Try parsing as date only
-		endTime, err = time.Parse("2006-01-02", endTimeStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end time format. Expected 2006-01-02T15:04:05Z or 2006-01-02"})
-			return
-		}
-		// If parsing date only, set to end of day
-		endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 23, 59, 59, 0, endTime.Location())
-	}
-
-	data, err := bc.getBuoyDataRange(c.Request.Context(), buoyName, startTime, endTime)
+	buoyNames := bc.buoys.DefaultBuoys()
+	data, err := bc.buoys.GetMultipleBuoysData(c.Request.Context(), buoyNames)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Return empty array instead of null when no data found
-	if data == nil {
-		data = []map[string]interface{}{}
+	results := make([]map[string]interface{}, 0, len(data))
+	for _, d := range data {
+		if m := buoyDataToMap(d); m != nil {
+			results = append(results, m)
+		}
 	}
 
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, results)
+}
+
+// GetBuoyDataRange returns buoy data for a specific buoy within a time range.
+func (bc *BuoyController) GetBuoyDataRange(c *gin.Context) {
+	buoyName := c.Query("buoyName")
+	startTimeStr := c.Query("startTime")
+	endTimeStr := c.Query("endTime")
+
+	startTime, err := parseTime(startTimeStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid start time format, expected 2006-01-02T15:04:05Z or 2006-01-02",
+		})
+		return
+	}
+
+	endTime, err := parseTime(endTimeStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid end time format, expected 2006-01-02T15:04:05Z or 2006-01-02",
+		})
+		return
+	}
+
+	// If only date provided, set end to end of day
+	if len(endTimeStr) == 10 {
+		endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 23, 59, 59, 0, endTime.Location())
+	}
+
+	data, err := bc.buoys.GetDataRange(c.Request.Context(), buoyName, startTime, endTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	results := buoyDataSliceToMaps(data)
+	c.JSON(http.StatusOK, results)
 }
 
 // GetSingleBuoyData returns the most recent data for a specific buoy.
 func (bc *BuoyController) GetSingleBuoyData(c *gin.Context) {
-	var data map[string]interface{}
+	buoyName := c.Query("buoyName")
 
+	var data *model.BuoyData
+	var err error
+
+	// Retry up to 12 times for eventual consistency
 	for i := 0; i < 12; i++ {
-		data = bc.getBuoyData(c.Request.Context(), c.Query("buoyName"))
-		if data != nil {
+		data, err = bc.buoys.GetLiveData(c.Request.Context(), buoyName)
+		if err == nil && data != nil {
 			break
 		}
 	}
 
-	c.JSON(http.StatusOK, data)
+	if data == nil {
+		c.JSON(http.StatusOK, nil)
+		return
+	}
+
+	c.JSON(http.StatusOK, buoyDataToMap(data))
 }
 
 // GetLast24HoursBuoyData returns buoy data from the last 24 hours for a specific buoy.
 func (bc *BuoyController) GetLast24HoursBuoyData(c *gin.Context) {
-	// buoyName := strings.ReplaceAll(c.Query("buoyName"), " ", "")
-	// Calculate time range
-	endTime := time.Now().UTC()
-	startTime := endTime.AddDate(0, 0, -1) // 7 days ago
+	buoyName := c.Query("buoyName")
 
-	// Get the data range
-	data, err := bc.getBuoyDataRange(c.Request.Context(), c.Query("buoyName"), startTime, endTime)
+	data, err := bc.buoys.GetLast24HoursData(c.Request.Context(), buoyName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	if len(data) == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "No data found for the last week"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "no data found for the last 24 hours"})
 		return
 	}
 
-	c.JSON(http.StatusOK, data)
+	results := buoyDataSliceToMaps(data)
+	c.JSON(http.StatusOK, results)
 }
 
 // GetMultipleBuoyData returns the most recent data for multiple specified buoys.
 func (bc *BuoyController) GetMultipleBuoyData(c *gin.Context) {
 	buoysStr := c.Query("buoys")
-	buoys := strings.Split(buoysStr, ",")
-	var values []map[string]interface{}
+	buoyNames := strings.Split(buoysStr, ",")
 
-	for _, buoy := range buoys {
-		var data map[string]interface{}
-		data = bc.getBuoyData(c.Request.Context(), buoy)
-		if data != nil {
-			values = append(values, data)
-		}
-	}
-
-	c.JSON(http.StatusOK, values)
-}
-
-func (bc *BuoyController) getBuoyDataRange(ctx context.Context, buoyName string, startTime, endTime time.Time) ([]map[string]interface{}, error) {
-	data, err := bc.buoys.GetDataRange(ctx, buoyName, startTime, endTime)
+	data, err := bc.buoys.GetMultipleBuoysData(c.Request.Context(), buoyNames)
 	if err != nil {
-		return nil, fmt.Errorf("error querying buoy data: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
-	items := make([]map[string]interface{}, 0, len(data))
-	for _, entry := range data {
-		if entry == nil {
-			continue
-		}
-		items = append(items, buoyDataToMap(entry))
-	}
-
-	return items, nil
-}
-
-func (bc *BuoyController) getBuoyData(ctx context.Context, buoyName string) map[string]interface{} {
-	data, err := bc.buoys.GetLiveData(ctx, buoyName)
-	if err != nil {
-		slog.Warn("error querying buoy data", slog.Any("error", err))
-		return nil
-	}
-	return buoyDataToMap(data)
+	results := buoyDataSliceToMaps(data)
+	c.JSON(http.StatusOK, results)
 }
 
 // GetRegionBuoys returns buoy location information for a specific region.
 func (bc *BuoyController) GetRegionBuoys(c *gin.Context) {
 	regionName := c.Query("region")
-	var buoys []model.Buoy
-	locations, err := bc.buoys.GetLocations(c.Request.Context())
+
+	buoys, err := bc.buoys.GetRegionBuoys(c.Request.Context(), regionName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to query"})
 		return
 	}
 
-	for name, location := range locations {
-		if location == nil {
-			continue
-		}
-		if regionName != "" && !strings.EqualFold(location.Region, regionName) {
-			continue
-		}
-		buoys = append(buoys, model.Buoy{
-			RegionBuoy: fmt.Sprintf("%s_%s", location.Region, name),
-			Name:       name,
-			Latitude:   location.Latitude,
-			Longitude:  location.Longitude,
-		})
-	}
-
 	if len(buoys) == 0 {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "no buoys found for this region"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "no buoys found for this region"})
 		return
 	}
+
 	c.JSON(http.StatusOK, buoys)
+}
+
+// Helper functions
+
+func parseTime(s string) (time.Time, error) {
+	// Try full timestamp first
+	t, err := time.Parse("2006-01-02T15:04:05Z", s)
+	if err == nil {
+		return t, nil
+	}
+	// Try date only
+	return time.Parse("2006-01-02", s)
 }
 
 func buoyLocationToMap(name string, location *model.BuoyLocation) map[string]interface{} {
@@ -252,14 +223,27 @@ func buoyDataToMap(data *model.BuoyData) map[string]interface{} {
 		return nil
 	}
 	return map[string]interface{}{
-		"wave_height":     data.WaveHeight,
-		"max_period":      data.MaxPeriod,
-		"wave_period":     data.WavePeriod,
-		"wave_direction":  data.WaveDirection,
-		"wind_speed":      data.WindSpeed,
-		"wind_direction":  data.WindDirection,
-		"temperature":     data.Temperature,
-		"pressure":        data.Pressure,
-		"dataDateTime":      data.Timestamp.UTC().Format(time.RFC3339),
+		"wave_height":    data.WaveHeight,
+		"max_period":     data.MaxPeriod,
+		"wave_period":    data.WavePeriod,
+		"wave_direction": data.WaveDirection,
+		"wind_speed":     data.WindSpeed,
+		"wind_direction": data.WindDirection,
+		"temperature":    data.Temperature,
+		"pressure":       data.Pressure,
+		"dataDateTime":   data.Timestamp.UTC().Format(time.RFC3339),
 	}
+}
+
+func buoyDataSliceToMaps(data []*model.BuoyData) []map[string]interface{} {
+	if data == nil {
+		return []map[string]interface{}{}
+	}
+	results := make([]map[string]interface{}, 0, len(data))
+	for _, d := range data {
+		if m := buoyDataToMap(d); m != nil {
+			results = append(results, m)
+		}
+	}
+	return results
 }

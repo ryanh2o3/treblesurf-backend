@@ -1,3 +1,4 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
@@ -11,19 +12,28 @@ import (
 	"treblesurf-backend/internal/repository"
 )
 
+// LocationService provides business logic for location operations.
 type LocationService struct {
 	locations repository.LocationRepository
 	media     repository.MediaRepository
 }
 
+// NewLocationService creates a new LocationService with the given repositories.
+// Returns an error if any required repository is nil.
 func NewLocationService(
 	locations repository.LocationRepository,
 	media repository.MediaRepository,
-) *LocationService {
+) (*LocationService, error) {
+	if locations == nil {
+		return nil, fmt.Errorf("location repository is required")
+	}
+	if media == nil {
+		return nil, fmt.Errorf("media repository is required")
+	}
 	return &LocationService{
 		locations: locations,
 		media:     media,
-	}
+	}, nil
 }
 
 func (s *LocationService) GetRegions(ctx context.Context, countryName string) ([]string, error) {

@@ -1,3 +1,4 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
@@ -9,12 +10,18 @@ import (
 	"treblesurf-backend/internal/repository"
 )
 
+// SnapshotService provides business logic for snapshot operations.
 type SnapshotService struct {
 	snapshots repository.SnapshotRepository
 }
 
-func NewSnapshotService(snapshots repository.SnapshotRepository) *SnapshotService {
-	return &SnapshotService{snapshots: snapshots}
+// NewSnapshotService creates a new SnapshotService with the given repository.
+// Returns an error if the repository is nil.
+func NewSnapshotService(snapshots repository.SnapshotRepository) (*SnapshotService, error) {
+	if snapshots == nil {
+		return nil, fmt.Errorf("snapshot repository is required")
+	}
+	return &SnapshotService{snapshots: snapshots}, nil
 }
 
 func (s *SnapshotService) StoreSnapshot(

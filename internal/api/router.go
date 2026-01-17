@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/config"
 
@@ -13,39 +14,47 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SetupRouter creates and configures a Gin router with all application routes
+// SetupRouter creates and configures a Gin router with all application routes.
 func SetupRouter(cfg *config.Config, container *Container) *gin.Engine {
 	r := gin.Default()
 
-	isLocal := cfg.IsDevelopment()
+	// Apply CORS middleware
+	r.Use(buildCORSMiddleware(cfg))
 
-	// Apply CORS middleware before registering routes
-	if isLocal {
-		// Add CORS middleware for development environment
-		r.Use(cors.New(cors.Config{
-			AllowOrigins:     []string{"http://localhost:5173"},
-			AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-			AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-CSRF-Token"},
-			ExposeHeaders:    []string{"Content-Length"},
-			AllowCredentials: true,
-		}))
-	} else {
-		// Production CORS configuration for iOS PWA and other clients
-		r.Use(cors.New(cors.Config{
-			AllowOrigins:     []string{"*"}, // Allow all origins in production
-			AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-			AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-CSRF-Token", "User-Agent"},
-			ExposeHeaders:    []string{"Content-Length", "X-CSRF-Token"},
-			AllowCredentials: true,
-			MaxAge:           12 * time.Hour, // Cache preflight for 12 hours
-		}))
+	// Apply rate limiting in production
+	if !cfg.IsDevelopment() {
+		r.Use(RateLimitMiddleware(cfg.Security.RateLimitRPS))
 	}
 
-	// Register routes - conditionally with /api prefix for local dev
-	// In production, Lambda handler strips /api before routing
+	// Register routes
 	setupRoutes(r, cfg, container)
 
 	return r
+}
+
+// buildCORSMiddleware creates the CORS middleware configuration.
+func buildCORSMiddleware(cfg *config.Config) gin.HandlerFunc {
+	corsConfig := cors.Config{
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-CSRF-Token", "User-Agent"},
+		ExposeHeaders:    []string{"Content-Length", "X-CSRF-Token"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
+
+	if cfg.IsDevelopment() {
+		corsConfig.AllowOrigins = []string{"http://localhost:5173", "http://localhost:3000"}
+	} else if len(cfg.Security.AllowedOrigins) > 0 {
+		corsConfig.AllowOrigins = cfg.Security.AllowedOrigins
+	} else {
+		// Fallback: restrict to treblesurf domains
+		corsConfig.AllowOrigins = []string{
+			"https://treblesurf.com",
+			"https://www.treblesurf.com",
+		}
+	}
+
+	return cors.New(corsConfig)
 }
 
 func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {

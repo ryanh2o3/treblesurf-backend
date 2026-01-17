@@ -1,19 +1,27 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
 )
 
+// ForecastService provides business logic for forecast operations.
 type ForecastService struct {
 	forecasts repository.ForecastRepository
 }
 
-func NewForecastService(forecasts repository.ForecastRepository) *ForecastService {
-	return &ForecastService{forecasts: forecasts}
+// NewForecastService creates a new ForecastService with the given repository.
+// Returns an error if the repository is nil.
+func NewForecastService(forecasts repository.ForecastRepository) (*ForecastService, error) {
+	if forecasts == nil {
+		return nil, fmt.Errorf("forecast repository is required")
+	}
+	return &ForecastService{forecasts: forecasts}, nil
 }
 
 func (s *ForecastService) GetSpotForecast(

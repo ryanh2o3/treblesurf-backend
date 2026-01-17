@@ -12,15 +12,20 @@ import (
 	"treblesurf-backend/internal/repository"
 )
 
+// APIKeyService provides business logic for API key operations.
 type APIKeyService struct {
 	apiKeys repository.APIKeyRepository
 }
 
-// NewAPIKeyService creates a new API key service instance.
-func NewAPIKeyService(apiKeys repository.APIKeyRepository) *APIKeyService {
+// NewAPIKeyService creates a new APIKeyService with the given repository.
+// Returns an error if the repository is nil.
+func NewAPIKeyService(apiKeys repository.APIKeyRepository) (*APIKeyService, error) {
+	if apiKeys == nil {
+		return nil, fmt.Errorf("api key repository is required")
+	}
 	return &APIKeyService{
 		apiKeys: apiKeys,
-	}
+	}, nil
 }
 
 // GenerateAPIKey creates a new API key with specified parameters

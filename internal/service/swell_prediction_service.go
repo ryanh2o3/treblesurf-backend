@@ -1,3 +1,4 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
@@ -8,14 +9,20 @@ import (
 	"treblesurf-backend/internal/repository"
 )
 
+// SwellPredictionService provides business logic for swell prediction operations.
 type SwellPredictionService struct {
 	predictions repository.SwellPredictionRepository
 }
 
-func NewSwellPredictionService(predictions repository.SwellPredictionRepository) *SwellPredictionService {
+// NewSwellPredictionService creates a new SwellPredictionService with the given repository.
+// Returns an error if the repository is nil.
+func NewSwellPredictionService(predictions repository.SwellPredictionRepository) (*SwellPredictionService, error) {
+	if predictions == nil {
+		return nil, fmt.Errorf("swell prediction repository is required")
+	}
 	return &SwellPredictionService{
 		predictions: predictions,
-	}
+	}, nil
 }
 
 
