@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
@@ -44,27 +43,4 @@ func (s *UserService) Delete(ctx context.Context, email string) error {
 	return s.users.Delete(ctx, email)
 }
 
-// Legacy helpers (no context) for existing callers.
-func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
-	user, err := s.GetByEmail(context.Background(), email)
-	if errors.Is(err, model.ErrUserNotFound) {
-		return nil, nil
-	}
-	return user, err
-}
-
-func (s *UserService) GetUserByUUID(uuid string) (*model.User, error) {
-	user, err := s.GetByUUID(context.Background(), uuid)
-	if errors.Is(err, model.ErrUserNotFound) {
-		return nil, nil
-	}
-	return user, err
-}
-
-func (s *UserService) UpdateUserTheme(email, theme string) error {
-	return s.UpdateTheme(context.Background(), email, theme)
-}
-
-func (s *UserService) DeleteUser(email string) error {
-	return s.Delete(context.Background(), email)
-}
+// Legacy helpers removed - use context-aware methods.

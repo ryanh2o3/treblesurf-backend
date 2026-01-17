@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -47,7 +47,7 @@ func (s *S3Client) GetObject(bucket, key string) ([]byte, error) {
 	}
 	defer func() {
 		if closeErr := result.Body.Close(); closeErr != nil {
-			log.Printf("Warning: Failed to close S3 response body: %v", closeErr)
+			slog.Warn("failed to close S3 response body", slog.Any("error", closeErr))
 		}
 	}()
 

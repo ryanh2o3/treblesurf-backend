@@ -55,7 +55,7 @@ func (ac *APIKeyController) CreateAPIKeyHandler(c *gin.Context) {
 	}
 
 	// Store the API key
-	err = ac.apiKeys.StoreAPIKey(apiKey)
+	err = ac.apiKeys.StoreAPIKey(c.Request.Context(), apiKey)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store API key"})
 		return
@@ -90,7 +90,7 @@ func (ac *APIKeyController) ListAPIKeysHandler(c *gin.Context) {
 		return
 	}
 
-	apiKeys, err := ac.apiKeys.ListAPIKeys(emailStr)
+	apiKeys, err := ac.apiKeys.ListAPIKeys(c.Request.Context(), emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API keys"})
 		return
@@ -135,7 +135,7 @@ func (ac *APIKeyController) RevokeAPIKeyHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
 		return
 	}
-	apiKeys, err := ac.apiKeys.ListAPIKeys(emailStr)
+	apiKeys, err := ac.apiKeys.ListAPIKeys(c.Request.Context(), emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify key ownership"})
 		return
@@ -156,7 +156,7 @@ func (ac *APIKeyController) RevokeAPIKeyHandler(c *gin.Context) {
 	}
 
 	// Delete the API key
-	err = ac.apiKeys.RevokeAPIKey(keyID)
+	err = ac.apiKeys.RevokeAPIKey(c.Request.Context(), keyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke API key"})
 		return

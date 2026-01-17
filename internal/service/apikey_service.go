@@ -67,13 +67,13 @@ func (s *APIKeyService) GenerateAPIKey(
 }
 
 // StoreAPIKey stores an API key using the repository.
-func (s *APIKeyService) StoreAPIKey(apiKey *model.APIKey) error {
-	return s.apiKeys.Create(context.Background(), apiKey)
+func (s *APIKeyService) StoreAPIKey(ctx context.Context, apiKey *model.APIKey) error {
+	return s.apiKeys.Create(ctx, apiKey)
 }
 
 // ValidateAPIKey validates an API key using the repository.
-func (s *APIKeyService) ValidateAPIKey(keyValue, requiredScope string) (*model.APIKey, bool) {
-	apiKey, err := s.apiKeys.GetByKey(context.Background(), keyValue)
+func (s *APIKeyService) ValidateAPIKey(ctx context.Context, keyValue, requiredScope string) (*model.APIKey, bool) {
+	apiKey, err := s.apiKeys.GetByKey(ctx, keyValue)
 	if err != nil {
 		return nil, false
 	}
@@ -94,8 +94,8 @@ func (s *APIKeyService) ValidateAPIKey(keyValue, requiredScope string) (*model.A
 }
 
 // ListAPIKeys retrieves all API keys for a user
-func (s *APIKeyService) ListAPIKeys(createdBy string) ([]*model.APIKey, error) {
-	apiKeys, err := s.apiKeys.List(context.Background())
+func (s *APIKeyService) ListAPIKeys(ctx context.Context, createdBy string) ([]*model.APIKey, error) {
+	apiKeys, err := s.apiKeys.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +109,6 @@ func (s *APIKeyService) ListAPIKeys(createdBy string) ([]*model.APIKey, error) {
 }
 
 // RevokeAPIKey deletes an API key
-func (s *APIKeyService) RevokeAPIKey(keyID string) error {
-	return s.apiKeys.Revoke(context.Background(), keyID)
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, keyID string) error {
+	return s.apiKeys.Revoke(ctx, keyID)
 }

@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	httphandler "treblesurf-backend/internal/api"
-	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/logging"
@@ -37,9 +36,6 @@ func main() {
 
 	appCfg := config.MustLoad()
 	logging.Init(appCfg)
-	if err := auth.InitJWTSecret(appCfg.Auth.JWTSecret); err != nil {
-		log.Fatalf("Failed to initialize JWT secret: %v", err)
-	}
 
 	cfg, err := localconfig.Load(true)
 	if err != nil {
@@ -53,10 +49,6 @@ func main() {
 	container, err := httphandler.NewContainer(appCfg)
 	if err != nil {
 		log.Fatalf("Failed to create container: %v", err)
-	}
-
-	if err := auth.InitSessionService(); err != nil {
-		log.Printf("Failed to initialize session service: %v", err)
 	}
 
 	r := httphandler.SetupRouter(appCfg, container)

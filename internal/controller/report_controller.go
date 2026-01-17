@@ -3,7 +3,7 @@ package controller
 import (
 	"encoding/base64"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,7 +25,7 @@ func NewReportController(reports *service.ReportService, users *service.UserServ
 }
 
 func handleImageError(c *gin.Context, err error, logPrefix string) {
-	log.Printf("%s: %v", logPrefix, err)
+	slog.Warn(logPrefix, slog.Any("error", err))
 
 	// Handle ImageValidationError type
 		var imageValidationErr *model.ImageValidationError
@@ -73,7 +73,7 @@ func handleImageError(c *gin.Context, err error, logPrefix string) {
 
 func (rc *ReportController) SubmitCurrentSurfReport(c *gin.Context) {
 	logRequestDetails(c, "Report Submission Request")
-	log.Print("start of submit report")
+	slog.Info("start of submit report")
 
 	var report model.ReportWithImage
 	if err := c.BindJSON(&report); err != nil {
@@ -81,8 +81,12 @@ func (rc *ReportController) SubmitCurrentSurfReport(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Report data received: Country=%s, Region=%s, Spot=%s, SurfSize=%s",
-		report.Country, report.Region, report.Spot, report.SurfSize)
+	slog.Info("report data received",
+		slog.String("country", report.Country),
+		slog.String("region", report.Region),
+		slog.String("spot", report.Spot),
+		slog.String("surf_size", report.SurfSize),
+	)
 
 	email, user, ok := handleReportSubmissionCommon(
 		c, report.Country, report.Region, report.Spot,
@@ -93,7 +97,7 @@ func (rc *ReportController) SubmitCurrentSurfReport(c *gin.Context) {
 		return
 	}
 
-	if err := rc.reports.SubmitSurfReport(&report, email, user.GivenName); err != nil {
+	if err := rc.reports.SubmitSurfReport(c.Request.Context(), &report, email, user.GivenName); err != nil {
 		handleImageError(c, err, "Failed to submit report")
 		return
 	}
@@ -103,7 +107,7 @@ func (rc *ReportController) SubmitCurrentSurfReport(c *gin.Context) {
 
 func (rc *ReportController) SubmitSurfReportWithS3Image(c *gin.Context) {
 	logRequestDetails(c, "S3 Image Report Submission Request")
-	log.Print("start of submit S3 image report")
+	slog.Info("start of submit S3 image report")
 
 	var report model.ReportWithS3Image
 	if err := c.BindJSON(&report); err != nil {
@@ -111,8 +115,12 @@ func (rc *ReportController) SubmitSurfReportWithS3Image(c *gin.Context) {
 		return
 	}
 
-	log.Printf("S3 Image Report data received: Country=%s, Region=%s, Spot=%s, ImageKey=%s",
-		report.Country, report.Region, report.Spot, report.ImageKey)
+	slog.Info("S3 image report data received",
+		slog.String("country", report.Country),
+		slog.String("region", report.Region),
+		slog.String("spot", report.Spot),
+		slog.String("image_key", report.ImageKey),
+	)
 
 	email, user, ok := handleReportSubmissionCommon(
 		c, report.Country, report.Region, report.Spot,
@@ -123,7 +131,7 @@ func (rc *ReportController) SubmitSurfReportWithS3Image(c *gin.Context) {
 		return
 	}
 
-	if err := rc.reports.SubmitSurfReportWithS3Image(&report, email, user.GivenName); err != nil {
+	if err := rc.reports.SubmitSurfReportWithS3Image(c.Request.Context(), &report, email, user.GivenName); err != nil {
 		handleImageError(c, err, "Failed to submit S3 image report")
 		return
 	}
@@ -132,23 +140,27 @@ func (rc *ReportController) SubmitSurfReportWithS3Image(c *gin.Context) {
 }
 
 func (rc *ReportController) GenerateImageUploadURL(c *gin.Context) {
-	log.Printf("=== Generate Image Upload URL Request ===")
+	slog.Info("generate image upload URL request")
 
 	country, region, spot, email, ok := validateUploadURLParams(c)
 	if !ok {
 		return
 	}
 
-	log.Printf("Generating upload URL for: Country=%s, Region=%s, Spot=%s, User=%s",
-		country, region, spot, email)
+	slog.Info("generating upload URL",
+		slog.String("country", country),
+		slog.String("region", region),
+		slog.String("spot", spot),
+		slog.String("user", email),
+	)
 
-	response, err := rc.reports.GenerateImageUploadURL(country, region, spot, email)
+	response, err := rc.reports.GenerateImageUploadURL(c.Request.Context(), country, region, spot, email)
 	if err != nil {
 		handleUploadURLError(c, "image", err)
 		return
 	}
 
-	log.Printf("Upload URL generated successfully for user: %s", email)
+	slog.Info("upload URL generated successfully", slog.String("user", email))
 	c.JSON(http.StatusOK, response)
 }
 
@@ -167,9 +179,9 @@ func (rc *ReportController) RetrieveTodaysSurfReports(c *gin.Context) {
 		return
 	}
 
-	reports, err := rc.reports.GetTodaysSurfReports(countryName, regionName, spotName)
+	reports, err := rc.reports.GetTodaysSurfReports(c.Request.Context(), countryName, regionName, spotName)
 	if err != nil {
-		log.Printf("Failed to retrieve surf reports: %v", err)
+		slog.Warn("failed to retrieve surf reports", slog.Any("error", err))
 		
 		// Provide more helpful error messages for common failures
 		if strings.Contains(err.Error(), "failed to query reports") {
@@ -216,9 +228,9 @@ func (rc *ReportController) GetAllSpotSurfReports(c *gin.Context) {
 
 	// For simplicity, we'll skip pagination token handling for now
 	// In a production system, you'd want to handle pagination tokens
-	reports, err := rc.reports.GetSpotSurfReports(countryName, regionName, spotName, limit, nil)
+	reports, err := rc.reports.GetSpotSurfReports(c.Request.Context(), countryName, regionName, spotName, limit)
 	if err != nil {
-		log.Printf("Failed to retrieve surf reports: %v", err)
+		slog.Warn("failed to retrieve surf reports", slog.Any("error", err))
 		
 		// Provide more helpful error messages for common failures
 		if strings.Contains(err.Error(), "failed to query reports") {
@@ -250,6 +262,7 @@ func (rc *ReportController) GetSurfReportsWithSimilarBuoyData(c *gin.Context) {
 	maxResults := parseOptionalIntParam(c, "maxResults", 20)
 
 	reports, err := rc.reports.GetSurfReportsWithSimilarBuoyData(
+		c.Request.Context(),
 		waveHeight,
 		waveDirection,
 		period,
@@ -261,7 +274,7 @@ func (rc *ReportController) GetSurfReportsWithSimilarBuoyData(c *gin.Context) {
 		maxResults,
 	)
 	if err != nil {
-		log.Printf("Failed to retrieve surf reports with similar buoy data: %v", err)
+		slog.Warn("failed to retrieve surf reports with similar buoy data", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to retrieve reports",
 			"message": "Unable to fetch surf reports with similar buoy conditions",
@@ -307,6 +320,7 @@ func (rc *ReportController) GetSurfReportsWithMatchingConditions(c *gin.Context)
 
 	// Get reports with matching conditions
 	reports, err := rc.reports.GetSurfReportsWithMatchingConditions(
+		c.Request.Context(),
 		countryName,
 		regionName,
 		spotName,
@@ -314,7 +328,7 @@ func (rc *ReportController) GetSurfReportsWithMatchingConditions(c *gin.Context)
 		maxResults,
 	)
 	if err != nil {
-		log.Printf("Failed to retrieve surf reports with matching conditions: %v", err)
+		slog.Warn("failed to retrieve surf reports with matching conditions", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to retrieve reports",
 			"message": "Unable to fetch surf reports with matching conditions",
@@ -339,9 +353,9 @@ func (rc *ReportController) GetReportImage(c *gin.Context) {
 	}
 
 	// Get the image from the report service
-	imageData, contentType, err := rc.reports.GetReportImage(imageKey)
+	imageData, contentType, err := rc.reports.GetReportImage(c.Request.Context(), imageKey)
 	if err != nil {
-		log.Printf("Error getting image: %v", err)
+		slog.Warn("error getting image", slog.Any("error", err))
 		
 		// Provide more helpful error messages for common failures
 		if strings.Contains(err.Error(), "failed to read image data") {
@@ -366,23 +380,27 @@ func (rc *ReportController) GetReportImage(c *gin.Context) {
 }
 
 func (rc *ReportController) GenerateVideoUploadURL(c *gin.Context) {
-	log.Printf("=== Generate Video Upload URL Request ===")
+	slog.Info("generate video upload URL request")
 
 	country, region, spot, email, ok := validateUploadURLParams(c)
 	if !ok {
 		return
 	}
 
-	log.Printf("Generating video upload URL for: Country=%s, Region=%s, Spot=%s, User=%s",
-		country, region, spot, email)
+	slog.Info("generating video upload URL",
+		slog.String("country", country),
+		slog.String("region", region),
+		slog.String("spot", spot),
+		slog.String("user", email),
+	)
 
-	response, err := rc.reports.GenerateVideoUploadURL(country, region, spot, email)
+	response, err := rc.reports.GenerateVideoUploadURL(c.Request.Context(), country, region, spot, email)
 	if err != nil {
 		handleUploadURLError(c, constants.MediaTypeVideo, err)
 			return
 		}
 		
-	log.Printf("Video upload URL generated successfully for user: %s", email)
+	slog.Info("video upload URL generated successfully", slog.String("user", email))
 	c.JSON(http.StatusOK, response)
 }
 
@@ -399,9 +417,9 @@ func (rc *ReportController) GetReportVideo(c *gin.Context) {
 	}
 
 	// Get the video from the report service
-	videoData, contentType, err := rc.reports.GetReportVideo(videoKey)
+	videoData, contentType, err := rc.reports.GetReportVideo(c.Request.Context(), videoKey)
 	if err != nil {
-		log.Printf("Error getting video: %v", err)
+		slog.Warn("error getting video", slog.Any("error", err))
 		
 		// Provide more helpful error messages for common failures
 		if strings.Contains(err.Error(), "failed to read video data") {
@@ -426,7 +444,7 @@ func (rc *ReportController) GetReportVideo(c *gin.Context) {
 }
 
 func (rc *ReportController) GenerateVideoViewURL(c *gin.Context) {
-	log.Printf("=== Generate Video View URL Request ===")
+	slog.Info("generate video view URL request")
 
 	videoKey := c.Query("key")
 	if videoKey == "" {
@@ -443,20 +461,20 @@ func (rc *ReportController) GenerateVideoViewURL(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Generating video view URL for key: %s, user: %s", videoKey, email)
-	response, err := rc.reports.GenerateVideoViewURL(videoKey, email)
+	slog.Info("generating video view URL", slog.String("video_key", videoKey), slog.String("user", email))
+	response, err := rc.reports.GenerateVideoViewURL(c.Request.Context(), videoKey, email)
 	if err != nil {
 		handleVideoViewURLError(c, err)
 			return
 		}
 		
-	log.Printf("Video view URL generated successfully for user: %s", email)
+	slog.Info("video view URL generated successfully", slog.String("user", email))
 	c.JSON(http.StatusOK, response)
 }
 
 func (rc *ReportController) SubmitSurfReportWithIOSValidation(c *gin.Context) {
 	logRequestDetails(c, "iOS Validated Report Submission Request")
-	log.Print("start of submit iOS validated report")
+	slog.Info("start of submit iOS validated report")
 
 	var report model.ReportWithIOSValidation
 	if err := c.BindJSON(&report); err != nil {
@@ -464,9 +482,14 @@ func (rc *ReportController) SubmitSurfReportWithIOSValidation(c *gin.Context) {
 		return
 	}
 
-	log.Printf(
-		"iOS Validated Report data received: Country=%s, Region=%s, Spot=%s, ImageKey=%s, VideoKey=%s, IOSValidated=%t",
-		report.Country, report.Region, report.Spot, report.ImageKey, report.VideoKey, report.IOSValidated)
+	slog.Info("iOS validated report data received",
+		slog.String("country", report.Country),
+		slog.String("region", report.Region),
+		slog.String("spot", report.Spot),
+		slog.String("image_key", report.ImageKey),
+		slog.String("video_key", report.VideoKey),
+		slog.Bool("ios_validated", report.IOSValidated),
+	)
 
 	if !validateReportLocation(c, report.Country, report.Region, report.Spot) {
 		return
@@ -489,10 +512,18 @@ func (rc *ReportController) SubmitSurfReportWithIOSValidation(c *gin.Context) {
 		return
 	}
 
-	log.Printf("User email from context: %s", email)
-	user, err := rc.users.GetUserByEmail(email)
+	slog.Info("user email from context", slog.String("email", email))
+	user, err := rc.users.GetByEmail(c.Request.Context(), email)
 	if err != nil {
-		log.Printf("Failed to fetch user information: %v", err)
+		if err == model.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":   "User not found",
+				"message": "Unable to retrieve your user profile",
+				"help":    "Please try again in a moment. If the problem persists, contact support.",
+			})
+			return
+		}
+		slog.Warn("failed to fetch user information", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "User information error",
 			"message": "Unable to retrieve your user profile",
@@ -501,12 +532,12 @@ func (rc *ReportController) SubmitSurfReportWithIOSValidation(c *gin.Context) {
 		return
 	}
 
-	if err := rc.reports.SubmitSurfReportWithIOSValidation(&report, email, user.GivenName); err != nil {
+	if err := rc.reports.SubmitSurfReportWithIOSValidation(c.Request.Context(), &report, email, user.GivenName); err != nil {
 		handleIOSReportError(c, err)
 		return
 	}
 
-	log.Printf("iOS Validated Report submitted successfully for user: %s", email)
+	slog.Info("iOS validated report submitted successfully", slog.String("user", email))
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
@@ -525,7 +556,7 @@ func (rc *ReportController) DeleteUploadedMedia(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Deleting %s media: %s for user: %s", mediaType, mediaKey, email)
+	slog.Info("deleting media", slog.String("type", mediaType), slog.String("key", mediaKey), slog.String("user", email))
 	user, ok := verifyMediaAccess(rc.users, c, email, mediaKey, mediaType)
 	if !ok {
 		return
@@ -533,12 +564,12 @@ func (rc *ReportController) DeleteUploadedMedia(c *gin.Context) {
 
 	_ = user // User verified but not used further
 
-	if err := rc.reports.DeleteMediaFromS3(mediaKey); err != nil {
+	if err := rc.reports.DeleteMediaFromS3(c.Request.Context(), mediaKey); err != nil {
 		handleMediaDeletionError(c, err)
 		return
 	}
 
-	log.Printf("Successfully deleted %s media: %s for user: %s", mediaType, mediaKey, email)
+	slog.Info("successfully deleted media", slog.String("type", mediaType), slog.String("key", mediaKey), slog.String("user", email))
 	c.JSON(http.StatusOK, gin.H{
 		"message":   "Media deleted successfully",
 		"mediaKey":  mediaKey,
@@ -580,7 +611,7 @@ func canUserAccessMedia(mediaKey, userUUID, mediaType string) bool {
 	// Split the media key by "/" to get the parts
 	parts := strings.Split(mediaKey, "/")
 	if len(parts) < 3 {
-		log.Printf("Invalid media key format: %s", mediaKey)
+		slog.Warn("invalid media key format", slog.String("key", mediaKey))
 		return false
 	}
 	
@@ -608,14 +639,14 @@ func canUserAccessMedia(mediaKey, userUUID, mediaType string) bool {
 	}
 	
 	if filenameWithoutExt == "" {
-		log.Printf("Media key does not have a valid extension: %s", mediaKey)
+	slog.Warn("media key does not have a valid extension", slog.String("key", mediaKey))
 		return false
 	}
 	
 	// Split by "_" to get timestamp and UUID
 	fileParts := strings.Split(filenameWithoutExt, "_")
 	if len(fileParts) < 2 {
-		log.Printf("Invalid media key filename format: %s", filename)
+	slog.Warn("invalid media key filename format", slog.String("filename", filename))
 		return false
 	}
 	
@@ -624,7 +655,7 @@ func canUserAccessMedia(mediaKey, userUUID, mediaType string) bool {
 	
 	// Check if the UUID matches the user's UUID
 	if mediaUUID != userUUID {
-		log.Printf("Media UUID %s does not match user UUID %s", mediaUUID, userUUID)
+	slog.Warn("media UUID does not match user UUID", slog.String("media_uuid", mediaUUID), slog.String("user_uuid", userUUID))
 		return false
 	}
 	

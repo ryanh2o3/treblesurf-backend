@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"treblesurf-backend/local/config"
-	"treblesurf-backend/models"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -56,21 +55,7 @@ func InitLocal(cfg *config.Config) error {
 
 	RekognitionClient = rekognition.New(sess)
 
-	if err := applyOverrides(); err != nil {
-		return err
-	}
-
 	return createLocalTables()
-}
-
-// applyOverrides replaces the AWS clients in the api package with our local implementations
-func applyOverrides() error {
-	models.Registry.DynamoDB = DB
-	models.Registry.S3Client = S3Client
-	models.Registry.Rekognition = RekognitionClient
-
-	log.Println("Successfully overrode AWS clients with local implementations")
-	return nil
 }
 
 // createLocalTables creates the necessary DynamoDB tables in local development

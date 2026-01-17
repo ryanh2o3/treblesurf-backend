@@ -17,12 +17,6 @@ func NewForecastService(forecasts repository.ForecastRepository) *ForecastServic
 }
 
 func (s *ForecastService) GetSpotForecast(
-	spotName, regionName, countryName string,
-) ([]*model.Forecast, error) {
-	return s.GetSpotForecastWithContext(context.Background(), spotName, regionName, countryName)
-}
-
-func (s *ForecastService) GetSpotForecastWithContext(
 	ctx context.Context,
 	spotName, regionName, countryName string,
 ) ([]*model.Forecast, error) {
@@ -30,13 +24,6 @@ func (s *ForecastService) GetSpotForecastWithContext(
 }
 
 func (s *ForecastService) GetListSpotsForecast(
-	spots []string,
-	regionName, countryName string,
-) ([][]*model.Forecast, error) {
-	return s.GetListSpotsForecastWithContext(context.Background(), spots, regionName, countryName)
-}
-
-func (s *ForecastService) GetListSpotsForecastWithContext(
 	ctx context.Context,
 	spots []string,
 	regionName, countryName string,
@@ -53,11 +40,7 @@ func (s *ForecastService) GetListSpotsForecastWithContext(
 	return results, nil
 }
 
-func (s *ForecastService) GetRegionForecast(regionName, countryName string) ([]*model.Forecast, error) {
-	return s.GetRegionForecastWithContext(context.Background(), regionName, countryName)
-}
-
-func (s *ForecastService) GetRegionForecastWithContext(
+func (s *ForecastService) GetRegionForecast(
 	ctx context.Context,
 	regionName, countryName string,
 ) ([]*model.Forecast, error) {
@@ -65,12 +48,6 @@ func (s *ForecastService) GetRegionForecastWithContext(
 }
 
 func (s *ForecastService) GetCurrentWeather(
-	spotName, regionName, countryName string,
-) ([]*model.Forecast, error) {
-	return s.GetCurrentWeatherWithContext(context.Background(), spotName, regionName, countryName)
-}
-
-func (s *ForecastService) GetCurrentWeatherWithContext(
 	ctx context.Context,
 	spotName, regionName, countryName string,
 ) ([]*model.Forecast, error) {

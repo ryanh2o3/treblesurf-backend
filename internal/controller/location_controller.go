@@ -24,7 +24,7 @@ func (lc *LocationController) GetRegions(c *gin.Context) {
 		return
 	}
 
-	regions, err := lc.locations.GetRegions(countryName)
+	regions, err := lc.locations.GetRegions(c.Request.Context(), countryName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -42,7 +42,7 @@ func (lc *LocationController) GetSpots(c *gin.Context) {
 		return
 	}
 
-	spots, err := lc.locations.GetSpots(countryName, regionName)
+	spots, err := lc.locations.GetSpots(c.Request.Context(), countryName, regionName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -61,7 +61,7 @@ func (lc *LocationController) GetLocationInfo(c *gin.Context) {
 		return
 	}
 
-	location, err := lc.locations.GetLocationInfo(countryName, regionName, spotName)
+	location, err := lc.locations.GetLocationInfo(c.Request.Context(), countryName, regionName, spotName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -80,7 +80,7 @@ func (lc *LocationController) GetCoordinates(c *gin.Context) {
 		return
 	}
 
-	coordinates, err := lc.locations.GetCoordinates(countryName, regionName, spotName)
+	coordinates, err := lc.locations.GetCoordinates(c.Request.Context(), countryName, regionName, spotName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

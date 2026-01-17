@@ -2,14 +2,15 @@
 package httphandler
 
 import (
-	"log"
+	"context"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/constants"
-	"treblesurf-backend/internal/controller"
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -107,7 +108,7 @@ func AdminMiddleware() gin.HandlerFunc {
 // APIKeyAuthMiddleware returns a Gin middleware function that validates API key
 // authentication with the specified scope.
 
-func APIKeyAuthMiddleware(requiredScope string) gin.HandlerFunc {
+func APIKeyAuthMiddleware(apiKeyService *service.APIKeyService, requiredScope string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if !strings.HasPrefix(authHeader, "ApiKey ") {
@@ -116,7 +117,7 @@ func APIKeyAuthMiddleware(requiredScope string) gin.HandlerFunc {
 		}
 
 		keyValue := strings.TrimPrefix(authHeader, "ApiKey ")
-		apiKey, valid := validateAPIKey(keyValue, requiredScope)
+		apiKey, valid := validateAPIKey(c.Request.Context(), apiKeyService, keyValue, requiredScope)
 
 		if !valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired API key"})
@@ -130,7 +131,7 @@ func APIKeyAuthMiddleware(requiredScope string) gin.HandlerFunc {
 }
 
 // DevAuthMiddleware automatically authenticates requests in local development
-func DevAuthMiddleware() gin.HandlerFunc {
+func DevAuthMiddleware(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Set a mock authenticated user
 		email := "testuser@example.com"
@@ -148,12 +149,10 @@ func DevAuthMiddleware() gin.HandlerFunc {
 		// Check if this is a validate request and create a mock session if needed
 		// This replicates the old DevAuthMiddleware functionality
 		if strings.Contains(c.Request.URL.Path, "/auth/validate") {
-			// Import the auth package to access the session service
-			// Note: This creates a dependency on the auth package
-			if err := auth.CreateDevSession(email, c); err != nil {
+			if err := authService.CreateDevSession(email, c); err != nil {
 				// Log the error but don't fail the request
 				// This is development mode, so we want to be lenient
-				log.Printf("Failed to create dev session: %v", err)
+				slog.Warn("failed to create dev session", slog.Any("error", err))
 			}
 		}
 
@@ -162,7 +161,7 @@ func DevAuthMiddleware() gin.HandlerFunc {
 }
 
 // DevAdminAuthMiddleware automatically authenticates requests as an admin in local development
-func DevAdminAuthMiddleware() gin.HandlerFunc {
+func DevAdminAuthMiddleware(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Set a mock authenticated admin user
 		email := "admin@example.com"
@@ -180,8 +179,8 @@ func DevAdminAuthMiddleware() gin.HandlerFunc {
 
 		// Check if this is a validate request and create a mock session if needed
 		if strings.Contains(c.Request.URL.Path, "/auth/validate") {
-			if err := auth.CreateDevSession(email, c); err != nil {
-				log.Printf("Failed to create dev admin session: %v", err)
+			if err := authService.CreateDevSession(email, c); err != nil {
+				slog.Warn("failed to create dev admin session", slog.Any("error", err))
 			}
 		}
 
@@ -199,12 +198,15 @@ func isAdminUser(email string) bool {
 	return adminUsers[email]
 }
 
-func validateAPIKey(keyValue, requiredScope string) (*model.APIKey, bool) {
-	// Use the APIKeyService from the service registry
-	if controller.APIKeyService == nil {
-		log.Printf("APIKeyService is not initialized")
+func validateAPIKey(
+	ctx context.Context,
+	apiKeyService *service.APIKeyService,
+	keyValue, requiredScope string,
+) (*model.APIKey, bool) {
+	if apiKeyService == nil {
+		slog.Warn("APIKeyService is not initialized")
 		return nil, false
 	}
 
-	return controller.APIKeyService.ValidateAPIKey(keyValue, requiredScope)
+	return apiKeyService.ValidateAPIKey(ctx, keyValue, requiredScope)
 }

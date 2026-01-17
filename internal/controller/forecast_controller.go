@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -32,7 +32,7 @@ func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 
-	forecast, err := c.forecastService.GetSpotForecast(spotName, regionName, countryName)
+	forecast, err := c.forecastService.GetSpotForecast(ctx.Request.Context(), spotName, regionName, countryName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -52,9 +52,9 @@ func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 	
-	log.Print(spots)
+	slog.Info("forecast spots requested", slog.Any("spots", spots))
 
-	forecasts, err := c.forecastService.GetListSpotsForecast(spots, regionName, countryName)
+	forecasts, err := c.forecastService.GetListSpotsForecast(ctx.Request.Context(), spots, regionName, countryName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -72,7 +72,7 @@ func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 
-	forecasts, err := c.forecastService.GetRegionForecast(regionName, countryName)
+	forecasts, err := c.forecastService.GetRegionForecast(ctx.Request.Context(), regionName, countryName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -96,7 +96,7 @@ func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 
-	forecast, err := c.forecastService.GetCurrentWeather(spotName, regionName, countryName)
+	forecast, err := c.forecastService.GetCurrentWeather(ctx.Request.Context(), spotName, regionName, countryName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

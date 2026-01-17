@@ -1,9 +1,10 @@
 package controller
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 
+	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -35,14 +36,18 @@ func (uc *UserController) SetUserTheme(c *gin.Context) {
 	}
 
 	// First check if the user exists
-	user, err := uc.users.GetUserByEmail(emailStr)
+	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
 	if err != nil {
+		if err == model.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return
 	}
 
 	if user == nil {
-		log.Print("email address", emailStr)
+		slog.Info("email address", slog.String("email", emailStr))
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
@@ -52,7 +57,7 @@ func (uc *UserController) SetUserTheme(c *gin.Context) {
 		return
 	}
 
-	err = uc.users.UpdateUserTheme(emailStr, theme)
+	err = uc.users.UpdateTheme(c.Request.Context(), emailStr, theme)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update theme"})
 		return
@@ -75,8 +80,12 @@ func (uc *UserController) DeleteMyAccount(c *gin.Context) {
 	}
 
 	// First check if the user exists
-	user, err := uc.users.GetUserByEmail(emailStr)
+	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
 	if err != nil {
+		if err == model.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return
 	}
@@ -87,7 +96,7 @@ func (uc *UserController) DeleteMyAccount(c *gin.Context) {
 	}
 
 	// Delete the user account
-	err = uc.users.DeleteUser(emailStr)
+	err = uc.users.Delete(c.Request.Context(), emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete account"})
 		return
@@ -116,8 +125,12 @@ func (uc *UserController) GetUserTheme(c *gin.Context) {
 	}
 
 	// First check if the user exists
-	user, err := uc.users.GetUserByEmail(emailStr)
+	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
 	if err != nil {
+		if err == model.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return
 	}

@@ -3,7 +3,7 @@
 package httphandler
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 	"treblesurf-backend/internal/auth"
@@ -49,7 +49,7 @@ func SetupRouter(cfg *config.Config, container *Container) *gin.Engine {
 }
 
 func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
-	log.Print(cfg.Env)
+	slog.Info("environment", slog.String("env", string(cfg.Env)))
 	isLocal := cfg.IsDevelopment()
 
 	// Apply iOS headers to all API routes
@@ -64,8 +64,8 @@ func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 		routeGroup = r
 	}
 
-	setupPublicRoutes(routeGroup)
-	setupAuthRoutes(routeGroup, cfg)
+	setupPublicRoutes(routeGroup, container.AuthService)
+	setupAuthRoutes(routeGroup, cfg, container.AuthService)
 	setupLocationAndForecastRoutes(routeGroup, container)
 	setupSwellPredictionRoutes(routeGroup, container)
 	setupProtectedRoutes(routeGroup, cfg, container)
@@ -74,22 +74,22 @@ func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 }
 
 // setupPublicRoutes configures public authentication routes.
-func setupPublicRoutes(r gin.IRouter) {
-	r.POST("/auth/google", auth.GoogleAuthHandler)
-	r.GET("/auth/validate", auth.ValidateTokenHandler)
-	r.POST("/auth/logout", auth.LogoutHandler)
+func setupPublicRoutes(r gin.IRouter, authService *auth.Service) {
+	r.POST("/auth/google", authService.GoogleAuthHandler)
+	r.GET("/auth/validate", authService.ValidateTokenHandler)
+	r.POST("/auth/logout", authService.LogoutHandler)
 }
 
 // setupAuthRoutes configures authenticated auth-related routes.
-func setupAuthRoutes(r gin.IRouter, cfg *config.Config) {
+func setupAuthRoutes(r gin.IRouter, cfg *config.Config, authService *auth.Service) {
 	isLocal := cfg.IsDevelopment()
 
 	// CSRF token refresh endpoint (requires authentication)
 	csrfRoutes := r.Group("/auth")
 	if isLocal {
-		csrfRoutes.Use(DevAuthMiddleware())
+		csrfRoutes.Use(DevAuthMiddleware(authService))
 	} else {
-		csrfRoutes.Use(auth.Middleware())
+		csrfRoutes.Use(authService.Middleware())
 	}
 	csrfRoutes.GET("/csrf", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "CSRF token available"})
@@ -106,7 +106,7 @@ func setupAuthRoutes(r gin.IRouter, cfg *config.Config) {
 				return
 			}
 
-			if err := auth.CreateDevSession(req.Email, c); err != nil {
+			if err := authService.CreateDevSession(req.Email, c); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
 				return
 			}
@@ -161,18 +161,18 @@ func setupProtectedRoutes(r gin.IRouter, cfg *config.Config, container *Containe
 	// Create authenticated route group
 	authorized := r.Group("/")
 	if isLocal {
-		log.Print("using dev middleware")
-		authorized.Use(DevAuthMiddleware())
+		slog.Info("using dev middleware")
+		authorized.Use(DevAuthMiddleware(container.AuthService))
 	} else {
-		log.Print("using production auth middleware")
-		authorized.Use(auth.Middleware())
+		slog.Info("using production auth middleware")
+		authorized.Use(container.AuthService.Middleware())
 	}
 
 	// Routes that modify data (require CSRF in production)
 	webModifyGroup := authorized.Group("/")
 	if !isLocal {
-		log.Print("using production CSRF middleware")
-		webModifyGroup.Use(auth.CSRFMiddleware())
+		slog.Info("using production CSRF middleware")
+		webModifyGroup.Use(container.AuthService.CSRFMiddleware())
 	}
 
 	setupReportModificationRoutes(webModifyGroup, container)
@@ -189,12 +189,12 @@ func setupReportModificationRoutes(g *gin.RouterGroup, container *Container) {
 	g.DELETE("/deleteUploadedMedia", container.ReportController.DeleteUploadedMedia)
 	g.DELETE("/deleteMyAccount", container.UserController.DeleteMyAccount)
 	g.PUT("/setTheme", container.UserController.SetUserTheme)
-	g.DELETE("/sessions/:sessionId", auth.TerminateSessionHandler)
+	g.DELETE("/sessions/:sessionId", container.AuthService.TerminateSessionHandler)
 }
 
 // setupUserRoutes configures user-related read routes.
 func setupUserRoutes(g *gin.RouterGroup, container *Container) {
-	g.GET("/sessions", auth.GetUserSessionsHandler)
+	g.GET("/sessions", container.AuthService.GetUserSessionsHandler)
 	g.GET("/getTheme", container.UserController.GetUserTheme)
 	g.GET("/getTodaySpotReports", container.ReportController.RetrieveTodaysSurfReports)
 	g.GET("/getAllSpotReports", container.ReportController.GetAllSpotSurfReports)
@@ -203,7 +203,7 @@ func setupUserRoutes(g *gin.RouterGroup, container *Container) {
 	g.GET("getReportImage", container.ReportController.GetReportImage)
 	g.GET("/getReportVideo", container.ReportController.GetReportVideo)
 	g.GET("/generateVideoViewURL", container.ReportController.GenerateVideoViewURL)
-	g.GET("/ws-token", auth.GetWebSocketTokenHandler)
+	g.GET("/ws-token", container.AuthService.GetWebSocketTokenHandler)
 	g.GET("/streamUrl", container.StreamController.GetStreamPlaybackURL)
 	g.GET("/latestSnapshot", container.SnapshotController.GetLatestSnapshotHandler)
 	g.POST("/requestStream", container.StreamController.RequestStreamHandler)
@@ -215,9 +215,9 @@ func setupAPIKeyRoutes(r gin.IRouter, cfg *config.Config, container *Container) 
 
 	apiKeyRoutes := r.Group("/")
 	if isLocal {
-		apiKeyRoutes.Use(DevAuthMiddleware())
+		apiKeyRoutes.Use(DevAuthMiddleware(container.AuthService))
 	} else {
-		apiKeyRoutes.Use(APIKeyAuthMiddleware("stream"))
+		apiKeyRoutes.Use(APIKeyAuthMiddleware(container.APIKeyService, "stream"))
 	}
 
 	apiKeyRoutes.POST("/streaming-credentials", container.StreamController.GetStreamingCredentials)
@@ -231,10 +231,10 @@ func setupAdminRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 
 	adminRoutes := r.Group("/admin")
 	if isLocal {
-		adminRoutes.Use(DevAdminAuthMiddleware())
+		adminRoutes.Use(DevAdminAuthMiddleware(container.AuthService))
 	} else {
-		log.Print("using production admin middleware")
-		adminRoutes.Use(auth.Middleware(), AdminMiddleware())
+		slog.Info("using production admin middleware")
+		adminRoutes.Use(container.AuthService.Middleware(), AdminMiddleware())
 	}
 
 	adminRoutes.POST("/api-keys", container.APIKeyController.CreateAPIKeyHandler)

@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -35,9 +35,9 @@ func (c *SwellPredictionController) GetSpotSwellPrediction(ctx *gin.Context) {
 		return
 	}
 
-	predictions, err := c.swellPredictionService.GetSpotSwellPrediction(spotName, regionName, countryName)
+	predictions, err := c.swellPredictionService.GetSpotSwellPrediction(ctx.Request.Context(), spotName, regionName, countryName)
 	if err != nil {
-		log.Printf("Error getting spot swell prediction: %v", err)
+		slog.Warn("error getting spot swell prediction", slog.Any("error", err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -77,11 +77,11 @@ func (c *SwellPredictionController) GetListSpotsSwellPrediction(ctx *gin.Context
 	}
 	
 	spots := strings.Split(spotsStr, ",")
-	log.Printf("Getting swell predictions for spots: %v", spots)
+	slog.Info("getting swell predictions for spots", slog.Any("spots", spots))
 
-	predictions, err := c.swellPredictionService.GetListSpotsSwellPrediction(spots, regionName, countryName)
+	predictions, err := c.swellPredictionService.GetListSpotsSwellPrediction(ctx.Request.Context(), spots, regionName, countryName)
 	if err != nil {
-		log.Printf("Error getting list spots swell prediction: %v", err)
+		slog.Warn("error getting list spots swell prediction", slog.Any("error", err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -104,9 +104,9 @@ func (c *SwellPredictionController) GetRegionSwellPrediction(ctx *gin.Context) {
 		return
 	}
 
-	predictions, err := c.swellPredictionService.GetRegionSwellPrediction(regionName, countryName)
+	predictions, err := c.swellPredictionService.GetRegionSwellPrediction(ctx.Request.Context(), regionName, countryName)
 	if err != nil {
-		log.Printf("Error getting region swell prediction: %v", err)
+		slog.Warn("error getting region swell prediction", slog.Any("error", err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -160,10 +160,10 @@ func (c *SwellPredictionController) GetSpotSwellPredictionRange(ctx *gin.Context
 	}
 
 	predictions, err := c.swellPredictionService.GetSpotSwellPredictionRange(
-		spotName, regionName, countryName, startTime, endTime,
+		ctx.Request.Context(), spotName, regionName, countryName, startTime, endTime,
 	)
 	if err != nil {
-		log.Printf("Error getting spot swell prediction range: %v", err)
+		slog.Warn("error getting spot swell prediction range", slog.Any("error", err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -190,9 +190,9 @@ func (c *SwellPredictionController) GetRecentSwellPredictions(ctx *gin.Context) 
 		}
 	}
 
-	predictions, err := c.swellPredictionService.GetRecentSwellPredictions(hours)
+	predictions, err := c.swellPredictionService.GetRecentSwellPredictions(ctx.Request.Context(), hours)
 	if err != nil {
-		log.Printf("Error getting recent swell predictions: %v", err)
+		slog.Warn("error getting recent swell predictions", slog.Any("error", err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -218,9 +218,9 @@ func (c *SwellPredictionController) GetRecentSwellPredictions(ctx *gin.Context) 
 // GetSwellPredictionStatus returns metadata about swell predictions (count, last update, etc.)
 func (c *SwellPredictionController) GetSwellPredictionStatus(ctx *gin.Context) {
 	// Get recent predictions to determine status
-	predictions, err := c.swellPredictionService.GetRecentSwellPredictions(24)
+	predictions, err := c.swellPredictionService.GetRecentSwellPredictions(ctx.Request.Context(), 24)
 	if err != nil {
-		log.Printf("Error getting swell prediction status: %v", err)
+		slog.Warn("error getting swell prediction status", slog.Any("error", err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -263,9 +263,9 @@ func (c *SwellPredictionController) GetClosestAIPredictionForSpot(ctx *gin.Conte
 		return
 	}
 
-	prediction, err := c.swellPredictionService.GetClosestAIPredictionForSpot(spotName, regionName, countryName)
+	prediction, err := c.swellPredictionService.GetClosestAIPredictionForSpot(ctx.Request.Context(), spotName, regionName, countryName)
 	if err != nil {
-		log.Printf("Error getting closest AI prediction: %v", err)
+		slog.Warn("error getting closest AI prediction", slog.Any("error", err))
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}

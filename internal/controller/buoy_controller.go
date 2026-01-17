@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -195,7 +195,7 @@ func (bc *BuoyController) getBuoyDataRange(ctx context.Context, buoyName string,
 func (bc *BuoyController) getBuoyData(ctx context.Context, buoyName string) map[string]interface{} {
 	data, err := bc.buoys.GetLiveData(ctx, buoyName)
 	if err != nil {
-		log.Printf("Error querying buoy data: %v", err)
+		slog.Warn("error querying buoy data", slog.Any("error", err))
 		return nil
 	}
 	return buoyDataToMap(data)

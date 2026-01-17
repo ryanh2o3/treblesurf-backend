@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"time"
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/config"
@@ -37,6 +37,7 @@ type Container struct {
 	APIKeyService   *service.APIKeyService
 	WebSocketService *service.WebSocketService
 	SwellPredictionService *service.SwellPredictionService
+	AuthService *auth.Service
 	
 	// Controllers
 	ForecastController *controller.ForecastController
@@ -74,6 +75,7 @@ type containerServices struct {
 	apiKeyService          *service.APIKeyService
 	swellPredictionService *service.SwellPredictionService
 	websocketService       *service.WebSocketService
+	authService            *auth.Service
 }
 
 type containerControllers struct {
@@ -106,8 +108,6 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	
 	controllers := initializeControllers(services, storage, containerCfg)
 	
-	setupGlobalDependencies(storage, containerCfg)
-	
 	return buildContainer(storage, services, controllers), nil
 }
 
@@ -131,7 +131,7 @@ func initializeStorage(cfg containerConfig) (*containerStorage, error) {
 }
 
 func initializeLocalStorage(storage *containerStorage) (*containerStorage, error) {
-	log.Println("Using local development storage clients")
+	slog.Info("using local development storage clients")
 	
 	localDB := getLocalDynamoDB()
 	if localDB == nil {
@@ -181,6 +181,7 @@ func initializeProductionStorage(storage *containerStorage, region string) (*con
 
 func initializeServices(storage *containerStorage, cfg containerConfig) (*containerServices, error) {
 	userRepo := repodynamo.NewUserRepo(storage.dynamoDBClient, "Users")
+	sessionRepo := repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions")
 	apiKeyRepo := repodynamo.NewAPIKeyRepo(storage.dynamoDBClient, "ApiKeys")
 	locationRepo := repodynamo.NewLocationRepo(storage.dynamoDBClient, "LocationData")
 	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, "SpotForecastData")
@@ -190,6 +191,12 @@ func initializeServices(storage *containerStorage, cfg containerConfig) (*contai
 	reportRepo := repodynamo.NewReportRepo(storage.dynamoDBClient, "SurfReports")
 	buoyRepo := repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations")
 	mediaRepo := repos3.NewMediaRepo(storage.s3Client, cfg.bucketName)
+
+	authService, err := auth.NewService(cfg.jwtSecret, userRepo, sessionRepo, slog.Default())
+	if err != nil {
+		return nil, err
+	}
+
 	services := &containerServices{
 		forecastService:        service.NewForecastService(forecastRepo),
 		tideService:            service.NewTideService(),
@@ -197,6 +204,7 @@ func initializeServices(storage *containerStorage, cfg containerConfig) (*contai
 		userService:            service.NewUserService(userRepo),
 		apiKeyService:          service.NewAPIKeyService(apiKeyRepo),
 		swellPredictionService: service.NewSwellPredictionService(swellPredictionRepo),
+		authService:            authService,
 	}
 	
 	services.reportService = service.NewReportService(
@@ -228,18 +236,6 @@ func initializeControllers(services *containerServices, storage *containerStorag
 	}
 }
 
-func setupGlobalDependencies(storage *containerStorage, cfg containerConfig) {
-	if err := auth.InitJWTSecret(cfg.jwtSecret); err != nil {
-		log.Printf("Warning: Failed to initialize JWT secret: %v", err)
-	}
-	auth.SetUserRepository(repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"))
-	auth.SetSessionRepository(repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions"))
-	
-	if err := auth.InitSessionService(); err != nil {
-		log.Printf("Warning: Failed to initialize session service: %v", err)
-	}
-}
-
 func buildContainer(
 	storage *containerStorage,
 	services *containerServices,
@@ -255,6 +251,7 @@ func buildContainer(
 		APIKeyService:           services.apiKeyService,
 		WebSocketService:        services.websocketService,
 		SwellPredictionService:  services.swellPredictionService,
+		AuthService:             services.authService,
 		ForecastController:      controllers.forecastController,
 		SwellPredictionController: controllers.swellPredictionController,
 		UserController:          controllers.userController,
@@ -338,7 +335,7 @@ func (l *localS3Wrapper) GetObject(bucket, key string) ([]byte, error) {
 	}
 	defer func() {
 		if closeErr := result.Body.Close(); closeErr != nil {
-			log.Printf("Warning: Failed to close S3 response body: %v", closeErr)
+			slog.Warn("failed to close S3 response body", slog.Any("error", closeErr))
 		}
 	}()
 

@@ -2,7 +2,7 @@ package controller
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
@@ -45,19 +45,19 @@ func (sc *SnapshotController) UploadSnapshotHandler(c *gin.Context) {
 	}
 	defer func() {
 		if closeErr := src.Close(); closeErr != nil {
-			log.Printf("Warning: Failed to close uploaded file: %v", closeErr)
+			slog.Warn("failed to close uploaded file", slog.Any("error", closeErr))
 		}
 	}()
 
 	s3Key := generateSnapshotS3Key(spotID, file.Filename)
 	if err := sc.uploadSnapshotToS3(src, s3Key, file.Header.Get("Content-Type"), spotID, timestamp); err != nil {
-		log.Printf("S3 upload error: %v", err)
+		slog.Warn("S3 upload error", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
 		return
 	}
 
 	if err := sc.storeSnapshotMetadata(spotID, s3Key, timestamp); err != nil {
-		log.Printf("Failed to store snapshot metadata: %v", err)
+		slog.Warn("failed to store snapshot metadata", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store snapshot metadata"})
 		return
 	}

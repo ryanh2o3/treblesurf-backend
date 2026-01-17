@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -49,7 +49,7 @@ func validateGoogleIDToken(idToken string, clientIDs map[string]bool) (*idtoken.
 // extractUserClaims extracts user claims from a Google ID token payload.
 //nolint:unparam,gocritic // Error return maintained for API consistency; multiple return values needed for all claims
 func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyName, givenName string, err error) {
-	log.Printf("JWT claims available: %v", payload.Claims)
+	slog.Debug("JWT claims available", slog.Any("claims", payload.Claims))
 
 	email, ok := payload.Claims["email"].(string)
 	if !ok || email == "" {
@@ -74,7 +74,7 @@ func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyNa
 }
 
 // handleNewUser creates a new user and returns the user data.
-func handleNewUser(email, name, picture, familyName, givenName string) (*User, error) {
+func (s *Service) handleNewUser(ctx context.Context, email, name, picture, familyName, givenName string) (*User, error) {
 	newUser := User{
 		Email:      email,
 		Name:       name,
@@ -83,30 +83,30 @@ func handleNewUser(email, name, picture, familyName, givenName string) (*User, e
 		GivenName:  givenName,
 	}
 
-	if err := createUser(newUser); err != nil {
+	if err := s.createUser(ctx, newUser); err != nil {
 		return nil, err
 	}
 
-	log.Printf("Created new user: %s", email)
-	return getUserByEmail(email)
+	s.logger.Info("created new user", slog.String("email", email))
+	return s.getUserByEmail(ctx, email)
 }
 
 // handleExistingUser updates last login and ensures UUID, returns updated user.
-func handleExistingUser(email string) (*User, error) {
-	if err := updateUserLastLogin(email); err != nil {
-		log.Printf("Error updating last login: %v", err)
+func (s *Service) handleExistingUser(ctx context.Context, email string) (*User, error) {
+	if err := s.updateUserLastLogin(ctx, email); err != nil {
+		s.logger.Warn("error updating last login", slog.Any("error", err))
 	}
 
-	if err := ensureUserHasUUID(email); err != nil {
-		log.Printf("Error ensuring user has UUID: %v", err)
+	if err := s.ensureUserHasUUID(ctx, email); err != nil {
+		s.logger.Warn("error ensuring user has UUID", slog.Any("error", err))
 	}
 
-	userData, err := getUserByEmail(email)
+	userData, err := s.getUserByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("User logged in: %s", email)
+	s.logger.Info("user logged in", slog.String("email", email))
 	return userData, nil
 }
 
@@ -132,8 +132,8 @@ func setupCSRFToken(c *gin.Context) string {
 }
 
 // createSession creates a session for the user if session service is available.
-func createSession(email, csrfToken string, c *gin.Context) {
-	if sessionService == nil {
+func (s *Service) createSession(email, csrfToken string, c *gin.Context) {
+	if s.sessionService == nil {
 		return
 	}
 
@@ -150,9 +150,9 @@ func createSession(email, csrfToken string, c *gin.Context) {
 		return
 	}
 
-	_, err = sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
+	_, err = s.sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
 	if err != nil {
-		log.Printf("Error creating session: %v", err)
+		s.logger.Warn("error creating session", slog.Any("error", err))
 	}
 }
 
@@ -195,18 +195,18 @@ func setCacheControlHeaders(c *gin.Context) {
 }
 
 // ensureUserUUID ensures a user has a UUID and refreshes user data if needed.
-func ensureUserUUID(userData *User, email string) *User {
+func (s *Service) ensureUserUUID(ctx context.Context, userData *User, email string) *User {
 	if userData.UUID != "" {
 		return userData
 	}
 
-	if err := ensureUserHasUUID(email); err != nil {
-		log.Printf("Error ensuring user has UUID: %v", err)
+	if err := s.ensureUserHasUUID(ctx, email); err != nil {
+		s.logger.Warn("error ensuring user has UUID", slog.Any("error", err))
 	}
 
-	updatedUser, err := getUserByEmail(email)
+	updatedUser, err := s.getUserByEmail(ctx, email)
 	if err != nil {
-		log.Printf("Error getting updated user data: %v", err)
+		s.logger.Warn("error getting updated user data", slog.Any("error", err))
 		return userData
 	}
 
@@ -223,7 +223,7 @@ func updateSessionLastActive(userSession *user.Session, c *gin.Context) {
 	sessionData.LastActive = time.Now()
 	updatedJSON, err := json.Marshal(sessionData)
 	if err != nil {
-		log.Printf("Failed to marshal session data: %v", err)
+		slog.Warn("failed to marshal session data", slog.Any("error", err))
 		return
 	}
 	userSession.JSON = string(updatedJSON)

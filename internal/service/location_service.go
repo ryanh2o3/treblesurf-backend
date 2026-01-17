@@ -25,19 +25,11 @@ func NewLocationService(
 	}
 }
 
-func (s *LocationService) GetRegions(countryName string) ([]string, error) {
-	return s.GetRegionsWithContext(context.Background(), countryName)
-}
-
-func (s *LocationService) GetRegionsWithContext(ctx context.Context, countryName string) ([]string, error) {
+func (s *LocationService) GetRegions(ctx context.Context, countryName string) ([]string, error) {
 	return s.locations.GetRegions(ctx, countryName)
 }
 
-func (s *LocationService) GetSpots(countryName, regionName string) ([]model.LocationInfo, error) {
-	return s.GetSpotsWithContext(context.Background(), countryName, regionName)
-}
-
-func (s *LocationService) GetSpotsWithContext(ctx context.Context, countryName, regionName string) ([]model.LocationInfo, error) {
+func (s *LocationService) GetSpots(ctx context.Context, countryName, regionName string) ([]model.LocationInfo, error) {
 	spots, err := s.locations.GetSpots(ctx, countryName, regionName)
 	if err != nil {
 		return nil, err
@@ -56,11 +48,7 @@ func (s *LocationService) GetSpotsWithContext(ctx context.Context, countryName, 
 	return locations, nil
 }
 
-func (s *LocationService) GetLocationInfo(countryName, regionName, spotName string) (*model.LocationInfo, error) {
-	return s.GetLocationInfoWithContext(context.Background(), countryName, regionName, spotName)
-}
-
-func (s *LocationService) GetLocationInfoWithContext(
+func (s *LocationService) GetLocationInfo(
 	ctx context.Context,
 	countryName, regionName, spotName string,
 ) (*model.LocationInfo, error) {
@@ -73,11 +61,7 @@ func (s *LocationService) GetLocationInfoWithContext(
 	return location, nil
 }
 
-func (s *LocationService) GetCoordinates(countryName, regionName, spotName string) ([]float64, error) {
-	return s.GetCoordinatesWithContext(context.Background(), countryName, regionName, spotName)
-}
-
-func (s *LocationService) GetCoordinatesWithContext(
+func (s *LocationService) GetCoordinates(
 	ctx context.Context,
 	countryName, regionName, spotName string,
 ) ([]float64, error) {

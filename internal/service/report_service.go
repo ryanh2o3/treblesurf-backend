@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"os"
 	"strconv"
@@ -16,7 +16,6 @@ import (
 	"treblesurf-backend/internal/validation"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/rekognition"
 )
 
@@ -26,8 +25,12 @@ type ReportService struct {
 	buoyRepo          repository.BuoyRepository
 	locationRepo      repository.LocationRepository
 	forecastDataRepo  repository.ForecastDataRepository
-	rekognitionClient *rekognition.Rekognition
+	rekognitionClient RekognitionAPI
 	userService       *UserService
+}
+
+type RekognitionAPI interface {
+	DetectLabels(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error)
 }
 
 func NewReportService(
@@ -36,7 +39,7 @@ func NewReportService(
 	buoyRepo repository.BuoyRepository,
 	locationRepo repository.LocationRepository,
 	forecastDataRepo repository.ForecastDataRepository,
-	rekognitionClient *rekognition.Rekognition,
+	rekognitionClient RekognitionAPI,
 	userService *UserService,
 ) *ReportService {
 	return &ReportService{
@@ -50,8 +53,12 @@ func NewReportService(
 	}
 }
 
-func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmail, userName string) error {
-	user, err := s.getUserAndValidate(userEmail)
+func (s *ReportService) SubmitSurfReport(
+	ctx context.Context,
+	report *model.ReportWithImage,
+	userEmail, userName string,
+) error {
+	user, err := s.getUserAndValidate(ctx, userEmail)
 	if err != nil {
 		return err
 	}
@@ -60,25 +67,25 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
 
 	// Process image data if provided
-	s3KeyReport, err := s.processBase64Image(report.ImageData, report.Date, countryRegionSpot, user.UUID, &currentTime)
+	s3KeyReport, err := s.processBase64Image(ctx, report.ImageData, report.Date, countryRegionSpot, user.UUID, &currentTime)
 	if err != nil {
 		return err
 	}
 
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
-	item := s.createBaseReportItem(
+	reportItem := s.createBaseReport(
 		countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false,
 	)
-	addReportFieldsToItem(
-		item, report.SurfSize, report.WindAmount, report.WindDirection,
+	addReportFieldsToReport(
+		reportItem, report.SurfSize, report.WindAmount, report.WindDirection,
 		report.Consistency, report.Quality, report.Messiness,
 	)
 
 	if s3KeyReport != "" {
-		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(s3KeyReport)}
+		reportItem.ImageKey = s3KeyReport
 	}
 
-	if err := s.storeReport(item); err != nil {
+	if err := s.storeReport(ctx, reportItem); err != nil {
 		return err
 	}
 
@@ -100,11 +107,12 @@ func (s *ReportService) SubmitSurfReport(report *model.ReportWithImage, userEmai
 }
 
 func (s *ReportService) SubmitSurfReportWithS3Image(
+	ctx context.Context,
 	report *model.ReportWithS3Image,
 	userEmail string,
 	userName string,
 ) error {
-	user, err := s.getUserAndValidate(userEmail)
+	user, err := s.getUserAndValidate(ctx, userEmail)
 	if err != nil {
 		return err
 	}
@@ -113,20 +121,20 @@ func (s *ReportService) SubmitSurfReportWithS3Image(
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
 
-	item := s.createBaseReportItem(
+	reportItem := s.createBaseReport(
 		countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false,
 	)
-	addReportFieldsToItem(
-		item, report.SurfSize, report.WindAmount, report.WindDirection,
+	addReportFieldsToReport(
+		reportItem, report.SurfSize, report.WindAmount, report.WindDirection,
 		report.Consistency, report.Quality, report.Messiness,
 	)
 
-	s3KeyReport, err := s.processS3ImageForReport(report.ImageKey, item)
+	s3KeyReport, err := s.processS3ImageForReport(ctx, report.ImageKey, reportItem)
 	if err != nil {
 		return err
 	}
 
-	if err := s.storeReportWithCleanup(item, s3KeyReport); err != nil {
+	if err := s.storeReportWithCleanup(ctx, reportItem, s3KeyReport); err != nil {
 		return err
 	}
 
@@ -157,11 +165,12 @@ type generateUploadURLParams struct {
 
 // prepareUploadURLParams validates user and prepares common parameters for URL generation
 func (s *ReportService) prepareUploadURLParams(
+	ctx context.Context,
 	country, region, spot, userEmail string,
 	fileExt string,
 ) (*generateUploadURLParams, error) {
 	// Get the user's UUID
-	user, err := s.userService.GetUserByEmail(userEmail)
+	user, err := s.userService.GetByEmail(ctx, userEmail)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -185,9 +194,10 @@ func (s *ReportService) prepareUploadURLParams(
 }
 
 func (s *ReportService) GenerateImageUploadURL(
+	ctx context.Context,
 	country, region, spot, userEmail string,
 ) (*model.PresignedUploadResponse, error) {
-	params, err := s.prepareUploadURLParams(country, region, spot, userEmail, "jpg")
+	params, err := s.prepareUploadURLParams(ctx, country, region, spot, userEmail, "jpg")
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +212,7 @@ func (s *ReportService) GenerateImageUploadURL(
 	)
 
 	// Generate presigned URL valid for 15 minutes
-	presignedURL, err := s.mediaRepo.GenerateUploadURL(context.Background(), imageKey, params.expiration)
+	presignedURL, err := s.mediaRepo.GenerateUploadURL(ctx, imageKey, params.expiration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
@@ -217,9 +227,10 @@ func (s *ReportService) GenerateImageUploadURL(
 }
 
 func (s *ReportService) GenerateVideoUploadURL(
+	ctx context.Context,
 	country, region, spot, userEmail string,
 ) (*model.VideoUploadResponse, error) {
-	params, err := s.prepareUploadURLParams(country, region, spot, userEmail, "mp4")
+	params, err := s.prepareUploadURLParams(ctx, country, region, spot, userEmail, "mp4")
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +245,7 @@ func (s *ReportService) GenerateVideoUploadURL(
 	)
 
 	// Generate presigned URL valid for 15 minutes
-	presignedURL, err := s.mediaRepo.GenerateUploadURL(context.Background(), videoKey, params.expiration)
+	presignedURL, err := s.mediaRepo.GenerateUploadURL(ctx, videoKey, params.expiration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
@@ -249,24 +260,21 @@ func (s *ReportService) GenerateVideoUploadURL(
 }
 
 func (s *ReportService) GetTodaysSurfReports(
+	ctx context.Context,
 	countryName, regionName, spotName string,
 ) ([]map[string]interface{}, error) {
-	return s.GetSpotSurfReports(countryName, regionName, spotName, 1, nil)
+	return s.GetSpotSurfReports(ctx, countryName, regionName, spotName, 1)
 }
 
 // GetSpotSurfReports retrieves surf reports for a specific spot with pagination support.
 // limit: maximum number of reports to return (0 for all).
 // lastEvaluatedKey: for pagination, provide the last key from previous query.
 func (s *ReportService) GetSpotSurfReports(
+	ctx context.Context,
 	countryName, regionName, spotName string,
 	limit int,
-	lastEvaluatedKey map[string]*dynamodb.AttributeValue,
 ) ([]map[string]interface{}, error) {
-	if lastEvaluatedKey != nil {
-		log.Printf("pagination token ignored by repository-backed report lookup")
-	}
-
-	reports, err := s.reportRepo.GetBySpot(context.Background(), countryName, regionName, spotName, limit)
+	reports, err := s.reportRepo.GetBySpot(ctx, countryName, regionName, spotName, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query reports: %w", err)
 	}
@@ -280,8 +288,8 @@ func (s *ReportService) GetSpotSurfReports(
 	return reportMaps, nil
 }
 
-func (s *ReportService) GetReportImage(imageKey string) (imageData []byte, contentType string, err error) {
-	imageData, err = s.mediaRepo.Download(context.Background(), imageKey)
+func (s *ReportService) GetReportImage(ctx context.Context, imageKey string) (imageData []byte, contentType string, err error) {
+	imageData, err = s.mediaRepo.Download(ctx, imageKey)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read image data: %v", err)
 	}
@@ -293,8 +301,8 @@ func (s *ReportService) GetReportImage(imageKey string) (imageData []byte, conte
 	return imageData, contentType, nil
 }
 
-func (s *ReportService) GetReportVideo(videoKey string) (videoData []byte, contentType string, err error) {
-	videoData, err = s.mediaRepo.Download(context.Background(), videoKey)
+func (s *ReportService) GetReportVideo(ctx context.Context, videoKey string) (videoData []byte, contentType string, err error) {
+	videoData, err = s.mediaRepo.Download(ctx, videoKey)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read video data: %v", err)
 	}
@@ -306,12 +314,12 @@ func (s *ReportService) GetReportVideo(videoKey string) (videoData []byte, conte
 	return videoData, contentType, nil
 }
 
-func (s *ReportService) GenerateVideoViewURL(videoKey, userEmail string) (*model.VideoViewURLResponse, error) {
+func (s *ReportService) GenerateVideoViewURL(ctx context.Context, videoKey, userEmail string) (*model.VideoViewURLResponse, error) {
 	if videoKey == "" {
 		return nil, fmt.Errorf("video key is required")
 	}
 
-	user, err := s.userService.GetUserByEmail(userEmail)
+	user, err := s.userService.GetByEmail(ctx, userEmail)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %v", err)
 	}
@@ -322,7 +330,7 @@ func (s *ReportService) GenerateVideoViewURL(videoKey, userEmail string) (*model
 		return nil, fmt.Errorf("user does not have a UUID")
 	}
 
-	_, err = s.mediaRepo.Download(context.Background(), videoKey)
+	_, err = s.mediaRepo.Download(ctx, videoKey)
 	if err != nil {
 		return nil, fmt.Errorf("video not found or not accessible: %v", err)
 	}
@@ -333,7 +341,7 @@ func (s *ReportService) GenerateVideoViewURL(videoKey, userEmail string) (*model
 	}
 
 	expires := 1 * time.Hour
-	viewURL, err := s.mediaRepo.GenerateViewURL(context.Background(), videoKey, expires)
+	viewURL, err := s.mediaRepo.GenerateViewURL(ctx, videoKey, expires)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate presigned view URL: %v", err)
 	}
@@ -349,11 +357,12 @@ func (s *ReportService) GenerateVideoViewURL(videoKey, userEmail string) (*model
 // SubmitSurfReportWithIOSValidation submits a surf report that has been validated
 // using iOS Vision framework.
 func (s *ReportService) SubmitSurfReportWithIOSValidation(
+	ctx context.Context,
 	report *model.ReportWithIOSValidation,
 	userEmail string,
 	userName string,
 ) error {
-	user, err := s.getUserAndValidate(userEmail)
+	user, err := s.getUserAndValidate(ctx, userEmail)
 	if err != nil {
 		return err
 	}
@@ -363,17 +372,17 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(
 	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
 	mediaType := determineMediaType(report.ImageKey != "", report.VideoKey != "")
 
-	item := s.createBaseReportItem(
+	reportItem := s.createBaseReport(
 		countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, mediaType, report.IOSValidated,
 	)
-	addReportFieldsToItem(
-		item, report.SurfSize, report.WindAmount, report.WindDirection,
+	addReportFieldsToReport(
+		reportItem, report.SurfSize, report.WindAmount, report.WindDirection,
 		report.Consistency, report.Quality, report.Messiness,
 	)
 
-	s3KeyReport, videoKeyReport := s.processIOSMediaKeys(report.ImageKey, report.VideoKey, item)
+	s3KeyReport, videoKeyReport := s.processIOSMediaKeys(report.ImageKey, report.VideoKey, reportItem)
 
-	if err := s.storeReport(item); err != nil {
+	if err := s.storeReport(ctx, reportItem); err != nil {
 		return err
 	}
 
@@ -432,8 +441,8 @@ func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, er
 	return false, model.ErrImageAnalysisFailed
 }
 
-func (s *ReportService) uploadImageToS3(imageData []byte, key string) (string, error) {
-	err := s.mediaRepo.Upload(context.Background(), key, imageData, "image/jpeg")
+func (s *ReportService) uploadImageToS3(ctx context.Context, imageData []byte, key string) (string, error) {
+	err := s.mediaRepo.Upload(ctx, key, imageData, "image/jpeg")
 	if err != nil {
 		return "", model.NewImageValidationError(err, "failed to upload image to S3")
 	}
@@ -441,13 +450,13 @@ func (s *ReportService) uploadImageToS3(imageData []byte, key string) (string, e
 	return key, nil
 }
 
-func (s *ReportService) ValidateImageKeyExists(imageKey string) (bool, error) {
+func (s *ReportService) ValidateImageKeyExists(ctx context.Context, imageKey string) (bool, error) {
 	if imageKey == "" {
 		return false, fmt.Errorf("image key is empty")
 	}
 
 	// Try to get the object metadata to check if it exists
-	_, err := s.mediaRepo.Download(context.Background(), imageKey)
+	_, err := s.mediaRepo.Download(ctx, imageKey)
 	if err != nil {
 		return false, fmt.Errorf("image key %s does not exist or is not accessible: %v", imageKey, err)
 	}
@@ -488,38 +497,38 @@ func (s *ReportService) getSpotSubscribers(_, _, _ string) ([]string, error) {
 func (s *ReportService) broadcastToUsers(subscribers []string, message interface{}) {
 	// TODO: Implement user broadcasting
 	// For now, just log the message
-	log.Printf("Broadcasting message to %d subscribers: %v", len(subscribers), message)
+	slog.Info("broadcasting message to subscribers", slog.Int("count", len(subscribers)))
 }
 
-func (s *ReportService) CleanupOrphanedImage(imageKey string) error {
+func (s *ReportService) CleanupOrphanedImage(ctx context.Context, imageKey string) error {
 	if imageKey == "" {
 		return nil
 	}
 
-	log.Printf("Cleaning up orphaned image: %s", imageKey)
-	err := s.mediaRepo.Delete(context.Background(), imageKey)
+	slog.Info("cleaning up orphaned image", slog.String("key", imageKey))
+	err := s.mediaRepo.Delete(ctx, imageKey)
 	if err != nil {
-		log.Printf("Failed to cleanup orphaned image %s: %v", imageKey, err)
+		slog.Warn("failed to cleanup orphaned image", slog.String("key", imageKey), slog.Any("error", err))
 		return fmt.Errorf("failed to cleanup orphaned image: %v", err)
 	}
 
-	log.Printf("Successfully cleaned up orphaned image: %s", imageKey)
+	slog.Info("successfully cleaned up orphaned image", slog.String("key", imageKey))
 	return nil
 }
 
-func (s *ReportService) DeleteMediaFromS3(mediaKey string) error {
+func (s *ReportService) DeleteMediaFromS3(ctx context.Context, mediaKey string) error {
 	if mediaKey == "" {
 		return fmt.Errorf("media key is required")
 	}
 
-	log.Printf("🗑️ [CLEANUP] Deleting media: %s", mediaKey)
-	err := s.mediaRepo.Delete(context.Background(), mediaKey)
+	slog.Info("deleting media", slog.String("key", mediaKey))
+	err := s.mediaRepo.Delete(ctx, mediaKey)
 	if err != nil {
-		log.Printf("❌ [CLEANUP] Failed to delete media %s: %v", mediaKey, err)
+		slog.Warn("failed to delete media", slog.String("key", mediaKey), slog.Any("error", err))
 		return fmt.Errorf("failed to delete media from S3: %v", err)
 	}
 
-	log.Printf("✅ [CLEANUP] Successfully deleted media: %s", mediaKey)
+	slog.Info("successfully deleted media", slog.String("key", mediaKey))
 	return nil
 }
 
@@ -530,7 +539,7 @@ func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 	// Split the video key by "/" to get the parts
 	parts := strings.Split(videoKey, "/")
 	if len(parts) < 3 {
-		log.Printf("Invalid video key format: %s", videoKey)
+		slog.Warn("invalid video key format", slog.String("key", videoKey))
 		return false
 	}
 
@@ -539,7 +548,7 @@ func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 
 	// Remove the .mp4 extension
 	if !strings.HasSuffix(filename, ".mp4") {
-		log.Printf("Video key does not end with .mp4: %s", videoKey)
+		slog.Warn("video key does not end with .mp4", slog.String("key", videoKey))
 		return false
 	}
 
@@ -548,7 +557,7 @@ func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 	// Split by "_" to get timestamp and UUID
 	fileParts := strings.Split(filenameWithoutExt, "_")
 	if len(fileParts) < 2 {
-		log.Printf("Invalid video key filename format: %s", filename)
+		slog.Warn("invalid video key filename format", slog.String("filename", filename))
 		return false
 	}
 
@@ -557,7 +566,7 @@ func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 
 	// Check if the UUID matches the user's UUID
 	if videoUUID != userUUID {
-		log.Printf("Video UUID %s does not match user UUID %s", videoUUID, userUUID)
+		slog.Warn("video UUID does not match user UUID", slog.String("video_uuid", videoUUID), slog.String("user_uuid", userUUID))
 		return false
 	}
 
@@ -570,6 +579,7 @@ func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 //
 //nolint:gocyclo,funlen // Complex business logic with multiple conditional branches
 func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
+	ctx context.Context,
 	waveHeight float64,
 	waveDirection float64,
 	period float64,
@@ -603,7 +613,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 
 	if countryRegionSpot != "" {
 		reportsBySpot, repoErr := s.reportRepo.GetBySpotAndTimeRange(
-			context.Background(),
+			ctx,
 			countryName,
 			regionName,
 			spotName,
@@ -619,7 +629,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 		}
 	} else {
 		// Scan all reports (filtered by time)
-		reportList, repoErr := s.reportRepo.ScanSince(context.Background(), cutoffTime, maxResults*10)
+		reportList, repoErr := s.reportRepo.ScanSince(ctx, cutoffTime, maxResults*10)
 		if repoErr != nil {
 			return nil, fmt.Errorf("failed to scan surf reports: %v", repoErr)
 		}
@@ -647,7 +657,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 	}
 
 	// Get the specified buoy location
-	buoyLocations := s.getBuoyLocations()
+	buoyLocations := s.getBuoyLocations(ctx)
 	buoyLocation, ok := buoyLocations[buoyName]
 	if !ok {
 		return nil, fmt.Errorf("buoy %s not found", buoyName)
@@ -675,7 +685,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 
 		reportTime, err := parseReportTime(timeStr)
 		if err != nil {
-			log.Printf("Failed to parse report time %s: %v", timeStr, err)
+			slog.Warn("failed to parse report time", slog.String("time", timeStr), slog.Any("error", err))
 			continue
 		}
 
@@ -692,7 +702,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 			// Format is "Country_Region_Spot"
 			parts := strings.Split(countryRegionSpot, "_")
 			if len(parts) == 3 {
-				spotLoc, err := s.getSpotLocation(parts[0], parts[1], parts[2])
+				spotLoc, err := s.getSpotLocation(ctx, parts[0], parts[1], parts[2])
 				if err == nil && spotLoc != nil {
 					if lat, ok := spotLoc["Latitude"].(float64); ok {
 						spotLat = lat
@@ -706,7 +716,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 
 		// Fallback to query parameters if not found in report
 		if spotLat == 0 && spotLon == 0 && countryName != "" && regionName != "" && spotName != "" {
-			spotLoc, err := s.getSpotLocation(countryName, regionName, spotName)
+			spotLoc, err := s.getSpotLocation(ctx, countryName, regionName, spotName)
 			if err == nil && spotLoc != nil {
 				if lat, ok := spotLoc["Latitude"].(float64); ok {
 					spotLat = lat
@@ -765,7 +775,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 		}
 
 		// Get buoy data at target time (accounting for travel time if calculated)
-		buoyData := s.getBuoyDataAtTime(targetBuoyTime, buoyPriority)
+		buoyData := s.getBuoyDataAtTime(ctx, targetBuoyTime, buoyPriority)
 		if buoyData == nil {
 			continue // Skip if no buoy data found
 		}
@@ -820,16 +830,16 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 	return finalReports, nil
 }
 
-func (s *ReportService) getBuoyDataAtTime(targetTime time.Time, buoyPriority []string) map[string]interface{} {
+func (s *ReportService) getBuoyDataAtTime(ctx context.Context, targetTime time.Time, buoyPriority []string) map[string]interface{} {
 	// Look for data within 6 hours of target time
 	startTime := targetTime.Add(-6 * time.Hour)
 	endTime := targetTime.Add(6 * time.Hour)
 
 	// Try multiple buoys in order of priority
 	for _, buoyName := range buoyPriority {
-		data, err := s.buoyRepo.GetDataRange(context.Background(), buoyName, startTime, endTime)
+		data, err := s.buoyRepo.GetDataRange(ctx, buoyName, startTime, endTime)
 		if err != nil {
-			log.Printf("Error querying buoy data for %s at %s: %v", buoyName, targetTime.Format(time.RFC3339), err)
+			slog.Warn("error querying buoy data", slog.String("buoy", buoyName), slog.Time("target_time", targetTime), slog.Any("error", err))
 			continue
 		}
 		if len(data) > 0 {
@@ -944,8 +954,8 @@ func parseReportTime(timeStr string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("unable to parse time string: %s", timeStr)
 }
 
-func (s *ReportService) getSpotLocation(countryName, regionName, spotName string) (map[string]interface{}, error) {
-	location, err := s.locationRepo.GetLocationInfo(context.Background(), countryName, regionName, spotName)
+func (s *ReportService) getSpotLocation(ctx context.Context, countryName, regionName, spotName string) (map[string]interface{}, error) {
+	location, err := s.locationRepo.GetLocationInfo(ctx, countryName, regionName, spotName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query location: %v", err)
 	}
@@ -959,11 +969,11 @@ func (s *ReportService) getSpotLocation(countryName, regionName, spotName string
 	}, nil
 }
 
-func (s *ReportService) getBuoyLocations() map[string]map[string]interface{} {
+func (s *ReportService) getBuoyLocations(ctx context.Context) map[string]map[string]interface{} {
 	buoyLocations := make(map[string]map[string]interface{})
-	locations, err := s.buoyRepo.GetLocations(context.Background())
+	locations, err := s.buoyRepo.GetLocations(ctx)
 	if err != nil {
-		log.Printf("Error loading buoy locations: %v", err)
+		slog.Warn("error loading buoy locations", slog.Any("error", err))
 		return buoyLocations
 	}
 
@@ -981,12 +991,12 @@ func (s *ReportService) getBuoyLocations() map[string]map[string]interface{} {
 	return buoyLocations
 }
 
-func (s *ReportService) getNearestBuoys(spotLat, spotLon float64, numBuoys int) []map[string]interface{} {
+func (s *ReportService) getNearestBuoys(ctx context.Context, spotLat, spotLon float64, numBuoys int) []map[string]interface{} {
 	if numBuoys <= 0 {
 		numBuoys = 2 // Default to 2 nearest buoys
 	}
 
-	allBuoys := s.getBuoyLocations()
+	allBuoys := s.getBuoyLocations(ctx)
 	type buoyWithDistance struct {
 		buoy     map[string]interface{}
 		name     string
@@ -1069,10 +1079,10 @@ func (s *ReportService) calculateBearing(lat1, lon1, lat2, lon2 float64) float64
 	return math.Mod(bearingDegrees, 360)
 }
 
-func (s *ReportService) getCurrentBuoyData(buoyName string) map[string]interface{} {
-	data, err := s.buoyRepo.GetLiveData(context.Background(), buoyName)
+func (s *ReportService) getCurrentBuoyData(ctx context.Context, buoyName string) map[string]interface{} {
+	data, err := s.buoyRepo.GetLiveData(ctx, buoyName)
 	if err != nil {
-		log.Printf("Error querying current buoy data for %s: %v", buoyName, err)
+		slog.Warn("error querying current buoy data", slog.String("buoy", buoyName), slog.Any("error", err))
 		return nil
 	}
 
@@ -1093,15 +1103,16 @@ func buoyDataToMap(data *model.BuoyData) map[string]interface{} {
 }
 
 func (s *ReportService) getCurrentWindConditions(
+	ctx context.Context,
 	countryName, regionName, spotName string,
 ) (windSpeed, windDirection float64, err error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
-	forecast, err := s.queryCurrentForecast(spotID)
+	forecast, err := s.queryCurrentForecast(ctx, spotID)
 	if err != nil {
 		return 0, 0, err
 	}
 	if forecast == nil {
-		forecast, err = s.queryHistoricalForecast(spotID)
+		forecast, err = s.queryHistoricalForecast(ctx, spotID)
 		if err != nil || forecast == nil {
 			return 0, 0, fmt.Errorf("no forecast data found for spot")
 		}
@@ -1111,6 +1122,7 @@ func (s *ReportService) getCurrentWindConditions(
 }
 
 func (s *ReportService) getForecastDataAtTime(
+	ctx context.Context,
 	countryName, regionName, spotName string, targetTime time.Time,
 ) map[string]interface{} {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
@@ -1118,9 +1130,9 @@ func (s *ReportService) getForecastDataAtTime(
 	startTime := targetTime.Add(-3 * time.Hour)
 	endTime := targetTime.Add(3 * time.Hour)
 
-	forecasts, err := s.forecastDataRepo.QueryBetween(context.Background(), spotID, startTime, endTime, 1)
+	forecasts, err := s.forecastDataRepo.QueryBetween(ctx, spotID, startTime, endTime, 1)
 	if err != nil {
-		log.Printf("Error querying forecast data for %s at %s: %v", spotID, targetTime.Format(time.RFC3339), err)
+		slog.Warn("error querying forecast data", slog.String("spot", spotID), slog.Any("error", err))
 		return nil
 	}
 	if len(forecasts) == 0 {
@@ -1164,6 +1176,7 @@ func (s *ReportService) calculateWindSimilarity(
 //
 //nolint:gocyclo,funlen // Complex business logic with multiple conditional branches
 func (s *ReportService) GetSurfReportsWithMatchingConditions(
+	ctx context.Context,
 	countryName string,
 	regionName string,
 	spotName string,
@@ -1179,7 +1192,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	}
 
 	// Step 1: Get spot location
-	spotLoc, err := s.getSpotLocation(countryName, regionName, spotName)
+	spotLoc, err := s.getSpotLocation(ctx, countryName, regionName, spotName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get spot location: %v", err)
 	}
@@ -1195,7 +1208,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	}
 
 	// Step 2: Find 2 nearest buoys
-	nearestBuoys := s.getNearestBuoys(spotLat, spotLon, 2)
+	nearestBuoys := s.getNearestBuoys(ctx, spotLat, spotLon, 2)
 	if len(nearestBuoys) == 0 {
 		return nil, fmt.Errorf("no buoys found")
 	}
@@ -1217,9 +1230,9 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 			continue
 		}
 
-		currentBuoyData := s.getCurrentBuoyData(buoyName)
+		currentBuoyData := s.getCurrentBuoyData(ctx, buoyName)
 		if currentBuoyData == nil {
-			log.Printf("Warning: No current buoy data found for buoy %s", buoyName)
+			slog.Warn("no current buoy data found for buoy", slog.String("buoy", buoyName))
 			continue
 		}
 
@@ -1277,9 +1290,9 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	}
 
 	// Step 4: Get current wind conditions
-	currentWindSpeed, currentWindDirection, err := s.getCurrentWindConditions(countryName, regionName, spotName)
+	currentWindSpeed, currentWindDirection, err := s.getCurrentWindConditions(ctx, countryName, regionName, spotName)
 	if err != nil {
-		log.Printf("Warning: Could not get current wind conditions: %v", err)
+		slog.Warn("could not get current wind conditions", slog.Any("error", err))
 		// Continue without wind matching if we can't get current wind data
 		currentWindSpeed = 0
 		currentWindDirection = 0
@@ -1288,7 +1301,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	// Step 5: Query historical surf reports
 	cutoffTime := time.Now().Add(-time.Duration(daysBack) * 24 * time.Hour)
 	reportsBySpot, err := s.reportRepo.GetBySpotAndTimeRange(
-		context.Background(),
+		ctx,
 		countryName,
 		regionName,
 		spotName,
@@ -1325,7 +1338,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 
 		reportTime, err := parseReportTime(timeStr)
 		if err != nil {
-			log.Printf("Failed to parse report time %s: %v", timeStr, err)
+			slog.Warn("failed to parse report time", slog.String("time", timeStr), slog.Any("error", err))
 			continue
 		}
 
@@ -1381,7 +1394,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 			}
 
 			// Get historical buoy data at target time
-			historicalBuoyData := s.getBuoyDataAtTime(targetBuoyTime, []string{buoyInfo.name})
+			historicalBuoyData := s.getBuoyDataAtTime(ctx, targetBuoyTime, []string{buoyInfo.name})
 			if historicalBuoyData == nil {
 				continue // Skip if no buoy data found
 			}
@@ -1407,7 +1420,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		}
 
 		// Get historical forecast data at report time
-		historicalForecast := s.getForecastDataAtTime(countryName, regionName, spotName, reportTime)
+		historicalForecast := s.getForecastDataAtTime(ctx, countryName, regionName, spotName, reportTime)
 		if historicalForecast == nil {
 			// If no forecast data, skip wind matching but still include if buoy matches
 			continue

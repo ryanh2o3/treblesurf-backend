@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -44,31 +44,31 @@ func (s *WebSocketService) ValidateWebSocketToken(token string) (*jwt.Token, err
 	})
 }
 
-func (s *WebSocketService) SaveConnection(conn *model.ConnectionInfo) error {
+func (s *WebSocketService) SaveConnection(ctx context.Context, conn *model.ConnectionInfo) error {
 	if conn.TTL == 0 {
 		conn.TTL = time.Now().Add(24 * time.Hour).Unix()
 	}
-	return s.connections.SaveConnection(context.Background(), conn)
+	return s.connections.SaveConnection(ctx, conn)
 }
 
-func (s *WebSocketService) DeleteConnection(connectionID string) error {
-	return s.connections.DeleteConnection(context.Background(), connectionID)
+func (s *WebSocketService) DeleteConnection(ctx context.Context, connectionID string) error {
+	return s.connections.DeleteConnection(ctx, connectionID)
 }
 
-func (s *WebSocketService) UpdateConnectionLastActive(connectionID string) error {
-	return s.connections.UpdateLastActive(context.Background(), connectionID)
+func (s *WebSocketService) UpdateConnectionLastActive(ctx context.Context, connectionID string) error {
+	return s.connections.UpdateLastActive(ctx, connectionID)
 }
 
-func (s *WebSocketService) GetConnection(connectionID string) (*model.ConnectionInfo, error) {
-	return s.connections.GetConnection(context.Background(), connectionID)
+func (s *WebSocketService) GetConnection(ctx context.Context, connectionID string) (*model.ConnectionInfo, error) {
+	return s.connections.GetConnection(ctx, connectionID)
 }
 
-func (s *WebSocketService) UpdateConnectionSpot(connectionID, spotIdentifier string) error {
-	return s.connections.UpdateSpot(context.Background(), connectionID, spotIdentifier)
+func (s *WebSocketService) UpdateConnectionSpot(ctx context.Context, connectionID, spotIdentifier string) error {
+	return s.connections.UpdateSpot(ctx, connectionID, spotIdentifier)
 }
 
-func (s *WebSocketService) SaveSubscription(spotIdentifier, userID, connectionID string) error {
-	return s.subscriptions.Save(context.Background(), spotIdentifier, userID, connectionID)
+func (s *WebSocketService) SaveSubscription(ctx context.Context, spotIdentifier, userID, connectionID string) error {
+	return s.subscriptions.Save(ctx, spotIdentifier, userID, connectionID)
 }
 
 // SendToConnection sends a message to a specific WebSocket client
@@ -139,9 +139,9 @@ func (s *WebSocketService) CreatePongResponse() *model.WebSocketResponse {
 }
 
 // BroadcastToUsers sends a message to multiple users via their WebSocket connections
-func (s *WebSocketService) BroadcastToUsers(userIDs []string, message interface{}) error {
+func (s *WebSocketService) BroadcastToUsers(ctx context.Context, userIDs []string, message interface{}) error {
 	// Get all connections for the given user IDs
-	connections, err := s.GetConnectionsByUserIDs(userIDs)
+	connections, err := s.GetConnectionsByUserIDs(ctx, userIDs)
 	if err != nil {
 		return fmt.Errorf("failed to get connections: %v", err)
 	}
@@ -154,7 +154,7 @@ func (s *WebSocketService) BroadcastToUsers(userIDs []string, message interface{
 
 	for _, conn := range connections {
 		if err := s.SendToConnection(conn.ConnectionID, string(messageJSON)); err != nil {
-			log.Printf("Failed to send message to connection %s: %v", conn.ConnectionID, err)
+			slog.Warn("failed to send message to connection", slog.String("connection_id", conn.ConnectionID), slog.Any("error", err))
 			// Continue with other connections
 		}
 	}
@@ -162,6 +162,6 @@ func (s *WebSocketService) BroadcastToUsers(userIDs []string, message interface{
 	return nil
 }
 
-func (s *WebSocketService) GetConnectionsByUserIDs(userIDs []string) ([]*model.ConnectionInfo, error) {
-	return s.connections.GetConnectionsByUserIDs(context.Background(), userIDs)
+func (s *WebSocketService) GetConnectionsByUserIDs(ctx context.Context, userIDs []string) ([]*model.ConnectionInfo, error) {
+	return s.connections.GetConnectionsByUserIDs(ctx, userIDs)
 }
