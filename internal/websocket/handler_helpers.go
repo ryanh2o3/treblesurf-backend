@@ -7,7 +7,6 @@ import (
 	"treblesurf-backend/internal/model"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/golang-jwt/jwt"
 )
 
 // validateWebSocketToken validates the WebSocket token and extracts user information.
@@ -21,21 +20,13 @@ func (h *Handler) validateWebSocketToken(token string) (userID, sessionID string
 		return "", "", err
 	}
 
-	claims, ok := wsToken.Claims.(jwt.MapClaims)
-	if !ok {
-		return "", "", nil
+	// Extract email from the new JWT-based WebSocket token
+	email, err := h.websocketService.GetEmailFromToken(wsToken)
+	if err != nil {
+		return "", "", err
 	}
 
-	var ok2 bool
-	userID, ok2 = claims["user_id"].(string)
-	if !ok2 {
-		return "", "", nil
-	}
-
-	if sessionIDVal, ok2 := claims["session_id"].(string); ok2 {
-		sessionID = sessionIDVal
-	}
-	return userID, sessionID, nil
+	return email, "", nil
 }
 
 // createConnectionInfo creates a ConnectionInfo from the request.

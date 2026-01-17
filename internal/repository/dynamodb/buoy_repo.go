@@ -81,7 +81,7 @@ func (r *BuoyRepo) GetDataRange(ctx context.Context, buoyName string, start, end
 		TableName:              aws.String(r.dataTableName),
 		KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime BETWEEN :start AND :end"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":rb": {S: aws.String(regionBuoy)},
+			":rb":    {S: aws.String(regionBuoy)},
 			":start": {S: aws.String(start.UTC().Format(time.RFC3339))},
 			":end":   {S: aws.String(end.UTC().Format(time.RFC3339))},
 		},
@@ -103,6 +103,39 @@ func (r *BuoyRepo) GetDataRange(ctx context.Context, buoyName string, start, end
 	}
 
 	return data, nil
+}
+
+func (r *BuoyRepo) GetBatchDataRanges(ctx context.Context, requests []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
+	// Group requests by buoy name and merge overlapping time ranges
+	buoyRanges := make(map[string]struct{ start, end time.Time })
+	for _, req := range requests {
+		existing, ok := buoyRanges[req.BuoyName]
+		if !ok {
+			buoyRanges[req.BuoyName] = struct{ start, end time.Time }{req.Start, req.End}
+			continue
+		}
+		// Merge ranges by taking min start and max end
+		if req.Start.Before(existing.start) {
+			existing.start = req.Start
+		}
+		if req.End.After(existing.end) {
+			existing.end = req.End
+		}
+		buoyRanges[req.BuoyName] = existing
+	}
+
+	// Fetch data for each buoy with merged ranges
+	results := make(map[string][]*model.BuoyData)
+	for buoyName, timeRange := range buoyRanges {
+		data, err := r.GetDataRange(ctx, buoyName, timeRange.start, timeRange.end)
+		if err != nil {
+			// Log but continue - some buoys may not have data
+			continue
+		}
+		results[buoyName] = data
+	}
+
+	return results, nil
 }
 
 func (r *BuoyRepo) GetLocations(ctx context.Context) (map[string]*model.BuoyLocation, error) {

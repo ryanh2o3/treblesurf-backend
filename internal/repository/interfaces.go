@@ -48,11 +48,19 @@ type ForecastDataRepository interface {
 	QueryBetween(ctx context.Context, spotID string, start, end time.Time, limit int) ([]map[string]interface{}, error)
 }
 
+// BuoyDataRequest represents a request for buoy data at a specific time range.
+type BuoyDataRequest struct {
+	BuoyName string
+	Start    time.Time
+	End      time.Time
+}
+
 // BuoyRepository handles buoy data persistence.
 type BuoyRepository interface {
 	GetLiveData(ctx context.Context, buoyName string) (*model.BuoyData, error)
 	GetDataAtTime(ctx context.Context, buoyName string, t time.Time) (*model.BuoyData, error)
 	GetDataRange(ctx context.Context, buoyName string, start, end time.Time) ([]*model.BuoyData, error)
+	GetBatchDataRanges(ctx context.Context, requests []BuoyDataRequest) (map[string][]*model.BuoyData, error)
 	GetLocations(ctx context.Context) (map[string]*model.BuoyLocation, error)
 }
 

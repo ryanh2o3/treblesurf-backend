@@ -9,6 +9,8 @@ import (
 	httphandler "treblesurf-backend/internal/api"
 	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/logging"
+	"treblesurf-backend/internal/service"
+	"treblesurf-backend/internal/websocket"
 )
 
 // App wires the application and exposes the HTTP handler.
@@ -49,4 +51,39 @@ func (a *App) GinEngine() *gin.Engine {
 // Shutdown allows cleanup when running as a server.
 func (a *App) Shutdown(_ context.Context) error {
 	return nil
+}
+
+// WebSocketApp provides the WebSocket handler built from the shared container.
+type WebSocketApp struct {
+	config    *config.Config
+	container *httphandler.Container
+	handler   *websocket.Handler
+}
+
+// NewWebSocket builds a WebSocket application from config, reusing the shared container.
+func NewWebSocket(cfg *config.Config) (*WebSocketApp, error) {
+	logging.Init(cfg)
+
+	container, err := httphandler.NewContainer(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	handler := websocket.NewHandler(container.WebSocketService)
+
+	return &WebSocketApp{
+		config:    cfg,
+		container: container,
+		handler:   handler,
+	}, nil
+}
+
+// Handler returns the WebSocket handler for Lambda.
+func (a *WebSocketApp) Handler() *websocket.Handler {
+	return a.handler
+}
+
+// WebSocketService returns the WebSocket service for direct access.
+func (a *WebSocketApp) WebSocketService() *service.WebSocketService {
+	return a.container.WebSocketService
 }

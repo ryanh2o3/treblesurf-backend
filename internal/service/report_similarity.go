@@ -11,7 +11,43 @@ import (
 	"time"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 )
+
+// buoyDataCache provides efficient lookup of pre-fetched buoy data by buoy name and time.
+type buoyDataCache struct {
+	data map[string][]*model.BuoyData // keyed by buoy name
+}
+
+// newBuoyDataCache creates a cache from batch-fetched buoy data.
+func newBuoyDataCache(data map[string][]*model.BuoyData) *buoyDataCache {
+	return &buoyDataCache{data: data}
+}
+
+// getDataAtTime finds the closest buoy data entry to the target time (within 6 hours).
+func (c *buoyDataCache) getDataAtTime(buoyName string, targetTime time.Time) *model.BuoyData {
+	entries, ok := c.data[buoyName]
+	if !ok || len(entries) == 0 {
+		return nil
+	}
+
+	// Find the entry closest to target time within 6 hours
+	var closest *model.BuoyData
+	var minDiff time.Duration = 6 * time.Hour
+
+	for _, entry := range entries {
+		diff := entry.Timestamp.Sub(targetTime)
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff < minDiff {
+			minDiff = diff
+			closest = entry
+		}
+	}
+
+	return closest
+}
 
 // GetSurfReportsWithSimilarBuoyData retrieves surf reports that had similar buoy conditions.
 // It takes buoy data parameters (waveHeight, waveDirection, period), a specific buoy name,
@@ -83,14 +119,6 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 		return []map[string]interface{}{}, nil
 	}
 
-	// For each report, get buoy data at that time and calculate similarity
-	type reportWithSimilarity struct {
-		report     map[string]interface{}
-		similarity float64
-	}
-
-	var reportsWithSimilarity []reportWithSimilarity
-
 	// Validate buoy name
 	if buoyName == "" {
 		return nil, fmt.Errorf("buoyName is required")
@@ -113,11 +141,33 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 		return nil, fmt.Errorf("invalid longitude for buoy %s", buoyName)
 	}
 
-	// Use only the specified buoy for data lookup
-	buoyPriority := []string{buoyName}
+	// Get spot location if provided
+	var spotLat, spotLon float64
+	if countryName != "" && regionName != "" && spotName != "" {
+		spotLoc, err := s.getSpotLocation(ctx, countryName, regionName, spotName)
+		if err == nil && spotLoc != nil {
+			if lat, ok := spotLoc["Latitude"].(float64); ok {
+				spotLat = lat
+			}
+			if lon, ok := spotLoc["Longitude"].(float64); ok {
+				spotLon = lon
+			}
+		}
+	}
+
+	// Phase 1: Collect all time ranges needed for batch fetching
+	type reportTimeInfo struct {
+		report          map[string]interface{}
+		reportTime      time.Time
+		targetBuoyTime  time.Time
+		travelTimeHours float64
+	}
+
+	var reportInfos []reportTimeInfo
+	var minTime, maxTime time.Time
+	first := true
 
 	for _, report := range reports {
-		// Parse report time
 		timeStr, ok := report["Time"].(string)
 		if !ok || timeStr == "" {
 			continue
@@ -129,119 +179,116 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 			continue
 		}
 
-		// Calculate travel time if spot location is available
+		// Calculate travel time and target buoy time
 		var travelTimeHours float64
-		var targetBuoyTime = reportTime
+		targetBuoyTime := reportTime
 
-		// Try to get spot location from report
-		// First try from report fields, then from query parameters
-		var spotLat, spotLon float64
-
-		// Extract spot location from report country_region_spot
-		if countryRegionSpot, ok := report["country_region_spot"].(string); ok {
-			// Format is "Country_Region_Spot"
-			parts := strings.Split(countryRegionSpot, "_")
-			if len(parts) == 3 {
-				spotLoc, err := s.getSpotLocation(ctx, parts[0], parts[1], parts[2])
-				if err == nil && spotLoc != nil {
-					if lat, ok := spotLoc["Latitude"].(float64); ok {
-						spotLat = lat
+		// Try to get spot location from report if not provided via parameters
+		reportSpotLat, reportSpotLon := spotLat, spotLon
+		if reportSpotLat == 0 && reportSpotLon == 0 {
+			if crs, ok := report["country_region_spot"].(string); ok {
+				parts := strings.Split(crs, "_")
+				if len(parts) == 3 {
+					spotLoc, err := s.getSpotLocation(ctx, parts[0], parts[1], parts[2])
+					if err == nil && spotLoc != nil {
+						if lat, ok := spotLoc["Latitude"].(float64); ok {
+							reportSpotLat = lat
+						}
+						if lon, ok := spotLoc["Longitude"].(float64); ok {
+							reportSpotLon = lon
+						}
 					}
-					if lon, ok := spotLoc["Longitude"].(float64); ok {
-						spotLon = lon
-					}
-				}
-			}
-		}
-
-		// Fallback to query parameters if not found in report
-		if spotLat == 0 && spotLon == 0 && countryName != "" && regionName != "" && spotName != "" {
-			spotLoc, err := s.getSpotLocation(ctx, countryName, regionName, spotName)
-			if err == nil && spotLoc != nil {
-				if lat, ok := spotLoc["Latitude"].(float64); ok {
-					spotLat = lat
-				}
-				if lon, ok := spotLoc["Longitude"].(float64); ok {
-					spotLon = lon
 				}
 			}
 		}
 
 		// Calculate travel time based on swell direction and spot location
-		if spotLat != 0 && spotLon != 0 {
-			// Calculate bearing from buoy to spot
-			bearingToSpot := s.calculateBearing(buoyLat, buoyLon, spotLat, spotLon)
-
-			// Check if spot is downwave from buoy (within reasonable angle of swell direction)
-			// Swell direction is where waves are coming FROM, so we need to check if the spot
-			// is in the direction the swell is traveling TO
-			swellTravelDirection := math.Mod(waveDirection+180, 360) // Direction waves are traveling TO
-
-			// Calculate angle difference between swell travel direction and bearing to spot
+		if reportSpotLat != 0 && reportSpotLon != 0 {
+			bearingToSpot := s.calculateBearing(buoyLat, buoyLon, reportSpotLat, reportSpotLon)
+			swellTravelDirection := math.Mod(waveDirection+180, 360)
 			angleDiff := math.Abs(swellTravelDirection - bearingToSpot)
 			if angleDiff > 180 {
-				angleDiff = 360 - angleDiff // Handle wraparound
+				angleDiff = 360 - angleDiff
 			}
 
-			// If angle difference is less than 45 degrees, spot is downwave - use travel time
-			// If angle difference is greater, spot is not in swell path - minimal/no travel time
 			if angleDiff < 45.0 {
-				// Spot is downwave - calculate normal travel time
-				distance := s.calculateDistance(buoyLat, buoyLon, spotLat, spotLon)
-
-				// Calculate travel time using phase velocity
-				// Phase velocity = 1.56 * sqrt(period) in m/s for deep water waves
-				phaseVelocity := 1.56 * math.Sqrt(period) // m/s
-
-				// Travel time in hours = distance (meters) / (phase_velocity * 3600)
+				distance := s.calculateDistance(buoyLat, buoyLon, reportSpotLat, reportSpotLon)
+				phaseVelocity := 1.56 * math.Sqrt(period)
 				travelTimeHours = distance / (phaseVelocity * 3600)
-
-				// Cap travel time between 1-8 hours (matching prediction service)
-				if travelTimeHours > 8.0 {
-					travelTimeHours = 8.0
-				}
-				if travelTimeHours < 1.0 {
-					travelTimeHours = 1.0
-				}
-
-				// Look for buoy data at (report_time - travel_time)
+				travelTimeHours = math.Min(8.0, math.Max(1.0, travelTimeHours))
 				targetBuoyTime = reportTime.Add(-time.Duration(travelTimeHours) * time.Hour)
-			} else {
-				// Spot is not directly downwave - use minimal travel time (or same time)
-				// For perpendicular/non-direct swells, look at buoy data closer to report time
-				targetBuoyTime = reportTime
-				travelTimeHours = 0.0
 			}
 		}
 
-		// Get buoy data at target time (accounting for travel time if calculated)
-		buoyData := s.getBuoyDataAtTime(ctx, targetBuoyTime, buoyPriority)
-		if buoyData == nil {
-			continue // Skip if no buoy data found
+		// Track min/max times for batch fetch
+		lookupStart := targetBuoyTime.Add(-6 * time.Hour)
+		lookupEnd := targetBuoyTime.Add(6 * time.Hour)
+		if first {
+			minTime = lookupStart
+			maxTime = lookupEnd
+			first = false
+		} else {
+			if lookupStart.Before(minTime) {
+				minTime = lookupStart
+			}
+			if lookupEnd.After(maxTime) {
+				maxTime = lookupEnd
+			}
 		}
 
-		// Calculate similarity
-		similarity := s.calculateBuoyConditionSimilarity(
-			waveHeight, waveDirection, period,
-			buoyData,
-		)
+		reportInfos = append(reportInfos, reportTimeInfo{
+			report:          report,
+			reportTime:      reportTime,
+			targetBuoyTime:  targetBuoyTime,
+			travelTimeHours: travelTimeHours,
+		})
+	}
 
-		// Only include reports with similarity > 0.7
+	if len(reportInfos) == 0 {
+		return []map[string]interface{}{}, nil
+	}
+
+	// Phase 2: Batch fetch all buoy data
+	batchRequests := []repository.BuoyDataRequest{{
+		BuoyName: buoyName,
+		Start:    minTime,
+		End:      maxTime,
+	}}
+
+	batchData, err := s.buoyRepo.GetBatchDataRanges(ctx, batchRequests)
+	if err != nil {
+		slog.Warn("failed to batch fetch buoy data", slog.Any("error", err))
+	}
+	cache := newBuoyDataCache(batchData)
+
+	// Phase 3: Calculate similarities using cached data
+	type reportWithSimilarity struct {
+		report     map[string]interface{}
+		similarity float64
+	}
+	var reportsWithSimilarity []reportWithSimilarity
+
+	for _, info := range reportInfos {
+		buoyData := cache.getDataAtTime(buoyName, info.targetBuoyTime)
+		if buoyData == nil {
+			continue
+		}
+
+		buoyDataMap := buoyDataToMap(buoyData)
+		similarity := s.calculateBuoyConditionSimilarity(waveHeight, waveDirection, period, buoyDataMap)
+
 		if similarity > 0.7 {
-			// Remove sensitive fields
-			delete(report, "UserEmail")
-
-			// Add similarity score and buoy data info
-			report["similarity"] = similarity
-			report["buoy_wave_height"] = buoyData["WaveHeight"]
-			report["buoy_wave_direction"] = buoyData["MeanWaveDirection"]
-			report["buoy_period"] = buoyData["MaxPeriod"]
-			if travelTimeHours > 0 {
-				report["travel_time_hours"] = travelTimeHours
+			delete(info.report, "UserEmail")
+			info.report["similarity"] = similarity
+			info.report["buoy_wave_height"] = buoyDataMap["WaveHeight"]
+			info.report["buoy_wave_direction"] = buoyDataMap["MeanWaveDirection"]
+			info.report["buoy_period"] = buoyDataMap["MaxPeriod"]
+			if info.travelTimeHours > 0 {
+				info.report["travel_time_hours"] = info.travelTimeHours
 			}
 
 			reportsWithSimilarity = append(reportsWithSimilarity, reportWithSimilarity{
-				report:     report,
+				report:     info.report,
 				similarity: similarity,
 			})
 		}
@@ -749,20 +796,25 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		return nil, err
 	}
 
-	// Step 6: Process each report and calculate similarity
-	type reportWithSimilarity struct {
-		report             map[string]interface{}
-		matchedBuoy        string
-		buoySimilarity     float64
-		windSimilarity     float64
-		combinedSimilarity float64
-		travelTimeHours    float64
+	if len(reports) == 0 {
+		return []map[string]interface{}{}, nil
 	}
 
-	var reportsWithSimilarity []reportWithSimilarity
+	// Step 6: First pass - collect time windows for batch fetch
+	type reportBuoyInfo struct {
+		report          map[string]interface{}
+		reportTime      time.Time
+		buoyTargetTimes map[string]struct {
+			targetTime  time.Time
+			travelTime  float64
+		}
+	}
+
+	var reportInfos []reportBuoyInfo
+	var minTime, maxTime time.Time
+	first := true
 
 	for _, report := range reports {
-		// Parse report time
 		timeStr, ok := report["Time"].(string)
 		if !ok || timeStr == "" {
 			continue
@@ -774,15 +826,10 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 			continue
 		}
 
-		// Try each buoy and find the best match
-		bestMatch := struct {
-			historicalData map[string]interface{}
-			buoyName       string
-			similarity     float64
-			travelTime     float64
-		}{
-			similarity: 0.0,
-		}
+		buoyTargetTimes := make(map[string]struct {
+			targetTime  time.Time
+			travelTime  float64
+		})
 
 		for _, buoyInfo := range buoyDataList {
 			buoyLat, ok1 := buoyInfo.location["Latitude"].(float64)
@@ -791,74 +838,127 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 				continue
 			}
 
-			// Calculate travel time independently for this buoy
 			var travelTimeHours float64
 			targetBuoyTime := reportTime
 
-			// Calculate bearing from buoy to spot
 			bearingToSpot := s.calculateBearing(buoyLat, buoyLon, spotLat, spotLon)
-
-			// Check if spot is downwave from buoy
-			swellTravelDirection := math.Mod(buoyInfo.waveDirection+180, 360) // Direction waves are traveling TO
+			swellTravelDirection := math.Mod(buoyInfo.waveDirection+180, 360)
 			angleDiff := math.Abs(swellTravelDirection - bearingToSpot)
 			if angleDiff > 180 {
-				angleDiff = 360 - angleDiff // Handle wraparound
+				angleDiff = 360 - angleDiff
 			}
 
 			if angleDiff < 45.0 {
-				// Spot is downwave - calculate travel time
 				distance := s.calculateDistance(buoyLat, buoyLon, spotLat, spotLon)
-				phaseVelocity := 1.56 * math.Sqrt(buoyInfo.period) // m/s
+				phaseVelocity := 1.56 * math.Sqrt(buoyInfo.period)
 				travelTimeHours = distance / (phaseVelocity * 3600)
-
-				// Cap travel time between 1-8 hours
-				if travelTimeHours > 8.0 {
-					travelTimeHours = 8.0
-				}
-				if travelTimeHours < 1.0 {
-					travelTimeHours = 1.0
-				}
-
+				travelTimeHours = math.Min(8.0, math.Max(1.0, travelTimeHours))
 				targetBuoyTime = reportTime.Add(-time.Duration(travelTimeHours) * time.Hour)
+			}
+
+			buoyTargetTimes[buoyInfo.name] = struct {
+				targetTime  time.Time
+				travelTime  float64
+			}{targetBuoyTime, travelTimeHours}
+
+			// Track min/max for batch fetch
+			lookupStart := targetBuoyTime.Add(-6 * time.Hour)
+			lookupEnd := targetBuoyTime.Add(6 * time.Hour)
+			if first {
+				minTime = lookupStart
+				maxTime = lookupEnd
+				first = false
 			} else {
-				// Spot is not directly downwave (targetBuoyTime already set to reportTime)
-				travelTimeHours = 0.0
-			}
-
-			// Get historical buoy data at target time
-			historicalBuoyData := s.getBuoyDataAtTime(ctx, targetBuoyTime, []string{buoyInfo.name})
-			if historicalBuoyData == nil {
-				continue // Skip if no buoy data found
-			}
-
-			// Calculate buoy similarity
-			buoySimilarity := s.calculateBuoyConditionSimilarity(
-				buoyInfo.waveHeight, buoyInfo.waveDirection, buoyInfo.period,
-				historicalBuoyData,
-			)
-
-			// Track the best matching buoy
-			if buoySimilarity > bestMatch.similarity {
-				bestMatch.buoyName = buoyInfo.name
-				bestMatch.similarity = buoySimilarity
-				bestMatch.travelTime = travelTimeHours
-				bestMatch.historicalData = historicalBuoyData
+				if lookupStart.Before(minTime) {
+					minTime = lookupStart
+				}
+				if lookupEnd.After(maxTime) {
+					maxTime = lookupEnd
+				}
 			}
 		}
 
-		// Only continue if buoy similarity is high enough
+		reportInfos = append(reportInfos, reportBuoyInfo{
+			report:          report,
+			reportTime:      reportTime,
+			buoyTargetTimes: buoyTargetTimes,
+		})
+	}
+
+	if len(reportInfos) == 0 {
+		return []map[string]interface{}{}, nil
+	}
+
+	// Step 7: Batch fetch buoy data for all buoys
+	var batchRequests []repository.BuoyDataRequest
+	for _, buoyInfo := range buoyDataList {
+		batchRequests = append(batchRequests, repository.BuoyDataRequest{
+			BuoyName: buoyInfo.name,
+			Start:    minTime,
+			End:      maxTime,
+		})
+	}
+
+	batchData, err := s.buoyRepo.GetBatchDataRanges(ctx, batchRequests)
+	if err != nil {
+		slog.Warn("failed to batch fetch buoy data", slog.Any("error", err))
+	}
+	cache := newBuoyDataCache(batchData)
+
+	// Step 8: Process reports using cached data
+	type reportWithSimilarity struct {
+		report             map[string]interface{}
+		matchedBuoy        string
+		buoySimilarity     float64
+		windSimilarity     float64
+		combinedSimilarity float64
+		travelTimeHours    float64
+	}
+
+	var reportsWithSimilarity []reportWithSimilarity
+
+	for _, info := range reportInfos {
+		bestMatch := struct {
+			historicalData map[string]interface{}
+			buoyName       string
+			similarity     float64
+			travelTime     float64
+		}{similarity: 0.0}
+
+		for _, buoyInfo := range buoyDataList {
+			targetInfo, ok := info.buoyTargetTimes[buoyInfo.name]
+			if !ok {
+				continue
+			}
+
+			historicalBuoyData := cache.getDataAtTime(buoyInfo.name, targetInfo.targetTime)
+			if historicalBuoyData == nil {
+				continue
+			}
+
+			historicalBuoyMap := buoyDataToMap(historicalBuoyData)
+			buoySimilarity := s.calculateBuoyConditionSimilarity(
+				buoyInfo.waveHeight, buoyInfo.waveDirection, buoyInfo.period,
+				historicalBuoyMap,
+			)
+
+			if buoySimilarity > bestMatch.similarity {
+				bestMatch.buoyName = buoyInfo.name
+				bestMatch.similarity = buoySimilarity
+				bestMatch.travelTime = targetInfo.travelTime
+				bestMatch.historicalData = historicalBuoyMap
+			}
+		}
+
 		if bestMatch.similarity < 0.7 {
 			continue
 		}
 
-		// Get historical forecast data at report time
-		historicalForecast := s.getForecastDataAtTime(ctx, countryName, regionName, spotName, reportTime)
+		historicalForecast := s.getForecastDataAtTime(ctx, countryName, regionName, spotName, info.reportTime)
 		if historicalForecast == nil {
-			// If no forecast data, skip wind matching but still include if buoy matches
 			continue
 		}
 
-		// Extract historical wind data
 		data, ok := historicalForecast["data"].(map[string]interface{})
 		if !ok {
 			continue
@@ -885,7 +985,6 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 			}
 		}
 
-		// Calculate wind similarity
 		var windSimilarity float64
 		if currentWindSpeed > 0 || currentWindDirection > 0 {
 			windSimilarity = s.calculateWindSimilarity(
@@ -893,37 +992,31 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 				historicalWindSpeed, historicalWindDirection,
 			)
 		} else {
-			// If we don't have current wind data, skip wind matching
-			windSimilarity = 1.0 // Neutral score
+			windSimilarity = 1.0
 		}
 
-		// Only include if wind similarity is reasonable (>= 0.5)
 		if windSimilarity < 0.5 {
 			continue
 		}
 
-		// Calculate combined similarity (70% buoy, 30% wind)
 		combinedSimilarity := 0.7*bestMatch.similarity + 0.3*windSimilarity
 
-		// Remove sensitive fields
-		delete(report, "UserEmail")
-
-		// Add similarity scores and metadata
-		report["buoy_similarity"] = bestMatch.similarity
-		report["wind_similarity"] = windSimilarity
-		report["combined_similarity"] = combinedSimilarity
-		report["matched_buoy"] = bestMatch.buoyName
-		report["historical_buoy_wave_height"] = bestMatch.historicalData["WaveHeight"]
-		report["historical_buoy_wave_direction"] = bestMatch.historicalData["MeanWaveDirection"]
-		report["historical_buoy_period"] = bestMatch.historicalData["MaxPeriod"]
-		report["historical_wind_speed"] = historicalWindSpeed
-		report["historical_wind_direction"] = historicalWindDirection
+		delete(info.report, "UserEmail")
+		info.report["buoy_similarity"] = bestMatch.similarity
+		info.report["wind_similarity"] = windSimilarity
+		info.report["combined_similarity"] = combinedSimilarity
+		info.report["matched_buoy"] = bestMatch.buoyName
+		info.report["historical_buoy_wave_height"] = bestMatch.historicalData["WaveHeight"]
+		info.report["historical_buoy_wave_direction"] = bestMatch.historicalData["MeanWaveDirection"]
+		info.report["historical_buoy_period"] = bestMatch.historicalData["MaxPeriod"]
+		info.report["historical_wind_speed"] = historicalWindSpeed
+		info.report["historical_wind_direction"] = historicalWindDirection
 		if bestMatch.travelTime > 0 {
-			report["travel_time_hours"] = bestMatch.travelTime
+			info.report["travel_time_hours"] = bestMatch.travelTime
 		}
 
 		reportsWithSimilarity = append(reportsWithSimilarity, reportWithSimilarity{
-			report:             report,
+			report:             info.report,
 			buoySimilarity:     bestMatch.similarity,
 			windSimilarity:     windSimilarity,
 			combinedSimilarity: combinedSimilarity,

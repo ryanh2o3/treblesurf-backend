@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"treblesurf-backend/internal/auth/store"
 	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
@@ -70,7 +71,7 @@ type Service struct {
 	userRepo       repository.UserRepository
 	sessionRepo    repository.SessionRepository
 	sessionService *sessions.Service
-	sessionStore   *DynamoDBStore
+	sessionStore   *store.DynamoDBStore
 	logger         *slog.Logger
 }
 
@@ -107,94 +108,10 @@ func NewService(
 
 	return service, nil
 }
-// DynamoDBStore implements the session store interface using a session repository.
-type DynamoDBStore struct {
-	sessions repository.SessionRepository
-}
 
-func NewDynamoDBStore(sessionsRepo repository.SessionRepository) *DynamoDBStore {
-	return &DynamoDBStore{
-		sessions: sessionsRepo,
-	}
-}
-
-func (s *DynamoDBStore) SaveUserSession(userSession *user.Session) error {
-	if s.sessions == nil {
-		return fmt.Errorf("session repository not initialized")
-	}
-	sessionItem := &model.Session{
-		SessionID: userSession.ID,
-		UserID:    userSession.UserID,
-		ExpiresAt: userSession.ExpiresAt,
-		JSON:      userSession.JSON,
-		TTL:       userSession.ExpiresAt.Unix(),
-	}
-	return s.sessions.Save(context.Background(), sessionItem)
-}
-
-func (s *DynamoDBStore) DeleteUserSession(sessionID string) error {
-	if s.sessions == nil {
-		return fmt.Errorf("session repository not initialized")
-	}
-	return s.sessions.Delete(context.Background(), sessionID)
-}
-
-func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, error) {
-	if s.sessions == nil {
-		return nil, fmt.Errorf("session repository not initialized")
-	}
-	sessionItem, err := s.sessions.Get(context.Background(), sessionID)
-	if err != nil {
-		return nil, err
-	}
-	if sessionItem == nil || time.Now().After(sessionItem.ExpiresAt) {
-		return nil, nil
-	}
-
-	return &user.Session{
-		ID:        sessionItem.SessionID,
-		UserID:    sessionItem.UserID,
-		ExpiresAt: sessionItem.ExpiresAt,
-		JSON:      sessionItem.JSON,
-	}, nil
-}
-
-func (s *DynamoDBStore) EnableTTL() error {
-	return nil
-}
-
-func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, error) {
-	if s.sessions == nil {
-		return nil, fmt.Errorf("session repository not initialized")
-	}
-	sessionItems, err := s.sessions.GetByUserID(context.Background(), userID)
-	if err != nil {
-		return nil, err
-	}
-
-	userSessions := make([]*user.Session, 0, len(sessionItems))
-	now := time.Now()
-	for _, sessionItem := range sessionItems {
-		if sessionItem == nil || now.After(sessionItem.ExpiresAt) {
-			continue
-		}
-		userSessions = append(userSessions, &user.Session{
-			ID:        sessionItem.SessionID,
-			UserID:    sessionItem.UserID,
-			ExpiresAt: sessionItem.ExpiresAt,
-			JSON:      sessionItem.JSON,
-		})
-	}
-
-	return userSessions, nil
-}
-
-func (s *DynamoDBStore) EnsureSessionsTable() error {
-	return nil
-}
 
 func (s *Service) initSessionService() error {
-	sessionStore := NewDynamoDBStore(s.sessionRepo)
+	sessionStore := store.NewDynamoDBStore(s.sessionRepo)
 	s.sessionStore = sessionStore
 
 	if err := sessionStore.EnsureSessionsTable(); err != nil {
@@ -633,11 +550,28 @@ func (s *Service) GetWebSocketTokenHandler(c *gin.Context) {
 		return
 	}
 
-	token := fmt.Sprintf("ws_%s_%d", emailStr, time.Now().Unix())
+	// Generate secure WebSocket token using JWT with short expiry
+	expiresAt := time.Now().Add(5 * time.Minute)
+	claims := TokenClaims{
+		Email: emailStr,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Subject:   "websocket",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedToken, err := token.SignedString(s.jwtSecret)
+	if err != nil {
+		s.logger.Error("failed to sign websocket token", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"token":      token,
-		"expires_at": time.Now().Add(time.Hour).Format(time.RFC3339),
+		"token":      signedToken,
+		"expires_at": expiresAt.Format(time.RFC3339),
 	})
 }
 

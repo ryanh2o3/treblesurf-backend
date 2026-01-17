@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/apigatewaymanagementapi"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type WebSocketService struct {
@@ -41,7 +41,27 @@ func (s *WebSocketService) ValidateWebSocketToken(token string) (*jwt.Token, err
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return s.jwtSecret, nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}))
+}
+
+// GetEmailFromToken extracts the email claim from a validated WebSocket token.
+func (s *WebSocketService) GetEmailFromToken(token *jwt.Token) (string, error) {
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("invalid token claims")
+	}
+
+	// Check subject is "websocket"
+	if sub, ok := claims["sub"].(string); !ok || sub != "websocket" {
+		return "", fmt.Errorf("invalid token subject")
+	}
+
+	email, ok := claims["email"].(string)
+	if !ok || email == "" {
+		return "", fmt.Errorf("email claim not found in token")
+	}
+
+	return email, nil
 }
 
 func (s *WebSocketService) SaveConnection(ctx context.Context, conn *model.ConnectionInfo) error {

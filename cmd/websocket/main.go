@@ -2,12 +2,9 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"os"
-	repodynamo "treblesurf-backend/internal/repository/dynamodb"
-	"treblesurf-backend/internal/service"
-	"treblesurf-backend/internal/storage"
+	"treblesurf-backend/internal/app"
+	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/websocket"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -17,33 +14,14 @@ import (
 var websocketHandler *websocket.Handler
 
 func initialize() error {
-	// Get configuration from environment
-	region := os.Getenv("AWS_REGION")
-	if region == "" {
-		region = "eu-west-1" // default
-	}
+	cfg := config.MustLoad()
 
-	// Initialize storage
-	dbStorage, err := storage.NewDynamoDBStorage(region)
+	application, err := app.NewWebSocket(cfg)
 	if err != nil {
-		return fmt.Errorf("failed to initialize DynamoDB storage: %w", err)
-	}
-	dynamoClient := dbStorage.GetDynamoDBClient()
-
-	// Get JWT secret from environment
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		return fmt.Errorf("JWT_SECRET environment variable is required")
+		return err
 	}
 
-	// Initialize WebSocket repositories/service
-	websocketRepo := repodynamo.NewWebSocketRepo(dynamoClient, "WebSocketConnections")
-	subscriptionRepo := repodynamo.NewSpotSubscriptionRepo(dynamoClient, "SpotSubscriptions")
-	websocketService := service.NewWebSocketService(websocketRepo, subscriptionRepo, []byte(jwtSecret))
-
-	// Initialize WebSocket handler
-	websocketHandler = websocket.NewHandler(websocketService)
-
+	websocketHandler = application.Handler()
 	log.Println("WebSocket handler initialized successfully")
 	return nil
 }
