@@ -41,6 +41,13 @@ type Container struct {
 	// Controllers
 	ForecastController *controller.ForecastController
 	SwellPredictionController *controller.SwellPredictionController
+	UserController *controller.UserController
+	ReportController *controller.ReportController
+	LocationController *controller.LocationController
+	APIKeyController *controller.APIKeyController
+	BuoyController *controller.BuoyController
+	StreamController *controller.StreamController
+	SnapshotController *controller.SnapshotController
 }
 
 type containerConfig struct {
@@ -72,6 +79,13 @@ type containerServices struct {
 type containerControllers struct {
 	forecastController        *controller.ForecastController
 	swellPredictionController *controller.SwellPredictionController
+	userController            *controller.UserController
+	reportController          *controller.ReportController
+	locationController        *controller.LocationController
+	apiKeyController          *controller.APIKeyController
+	buoyController            *controller.BuoyController
+	streamController          *controller.StreamController
+	snapshotController        *controller.SnapshotController
 }
 
 func NewContainer(cfg *config.Config) (*Container, error) {
@@ -90,7 +104,7 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 		return nil, err
 	}
 	
-	controllers := initializeControllers(services)
+	controllers := initializeControllers(services, storage, containerCfg)
 	
 	setupGlobalDependencies(storage, services, containerCfg)
 	
@@ -200,10 +214,17 @@ func initializeServices(storage *containerStorage, cfg containerConfig) (*contai
 	return services, nil
 }
 
-func initializeControllers(services *containerServices) *containerControllers {
+func initializeControllers(services *containerServices, storage *containerStorage, cfg containerConfig) *containerControllers {
 	return &containerControllers{
 		forecastController:        controller.NewForecastController(services.forecastService, services.tideService),
 		swellPredictionController: controller.NewSwellPredictionController(services.swellPredictionService),
+		userController:            controller.NewUserController(services.userService),
+		reportController:          controller.NewReportController(services.reportService, services.userService),
+		locationController:        controller.NewLocationController(services.locationService),
+		apiKeyController:          controller.NewAPIKeyController(services.apiKeyService),
+		buoyController:            controller.NewBuoyController(repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations")),
+		streamController:          controller.NewStreamController(storage.dynamoDBClient),
+		snapshotController:        controller.NewSnapshotController(storage.dynamoDBClient, storage.s3Client, cfg.bucketName),
 	}
 }
 
@@ -218,14 +239,7 @@ func setupGlobalDependencies(storage *containerStorage, services *containerServi
 		log.Printf("Warning: Failed to initialize session service: %v", err)
 	}
 	
-	s3ClientForControllers := getS3ClientForControllers(cfg)
-	controller.SetGlobalDependencies(storage.dynamoDBClient, s3ClientForControllers, storage.rekognitionClient)
-	
-	controller.SetUserService(services.userService)
-	controller.SetReportService(services.reportService)
-	controller.SetLocationService(services.locationService)
-	controller.SetAPIKeyService(services.apiKeyService)
-	controller.SetWebSocketService(services.websocketService)
+	_ = services
 }
 
 func getS3ClientForControllers(cfg containerConfig) *s3.S3 {
@@ -256,6 +270,13 @@ func buildContainer(
 		SwellPredictionService:  services.swellPredictionService,
 		ForecastController:      controllers.forecastController,
 		SwellPredictionController: controllers.swellPredictionController,
+		UserController:          controllers.userController,
+		ReportController:        controllers.reportController,
+		LocationController:      controllers.locationController,
+		APIKeyController:        controllers.apiKeyController,
+		BuoyController:          controllers.buoyController,
+		StreamController:        controllers.streamController,
+		SnapshotController:      controllers.snapshotController,
 	}
 }
 

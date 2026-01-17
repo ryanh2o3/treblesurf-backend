@@ -3,19 +3,28 @@ package controller
 import (
 	"net/http"
 
+	"treblesurf-backend/internal/service"
+
 	"github.com/gin-gonic/gin"
 )
 
-// This controller uses the shared service registry
+// LocationController handles location routes.
+type LocationController struct {
+	locations *service.LocationService
+}
 
-func GetRegions(c *gin.Context) {
+func NewLocationController(locations *service.LocationService) *LocationController {
+	return &LocationController{locations: locations}
+}
+
+func (lc *LocationController) GetRegions(c *gin.Context) {
 	countryName := c.Query("country")
 	if countryName == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "country parameter is required"})
 		return
 	}
 
-	regions, err := LocationService.GetRegions(countryName)
+	regions, err := lc.locations.GetRegions(countryName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -24,7 +33,7 @@ func GetRegions(c *gin.Context) {
 	c.JSON(http.StatusOK, regions)
 }
 
-func GetSpots(c *gin.Context) {
+func (lc *LocationController) GetSpots(c *gin.Context) {
 	regionName := c.Query("region")
 	countryName := c.Query("country")
 	
@@ -33,7 +42,7 @@ func GetSpots(c *gin.Context) {
 		return
 	}
 
-	spots, err := LocationService.GetSpots(countryName, regionName)
+	spots, err := lc.locations.GetSpots(countryName, regionName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -42,7 +51,7 @@ func GetSpots(c *gin.Context) {
 	c.JSON(http.StatusOK, spots)
 }
 
-func GetLocationInfo(c *gin.Context) {
+func (lc *LocationController) GetLocationInfo(c *gin.Context) {
 	spotName := c.Query("spot")
 	regionName := c.Query("region")
 	countryName := c.Query("country")
@@ -52,7 +61,7 @@ func GetLocationInfo(c *gin.Context) {
 		return
 	}
 
-	location, err := LocationService.GetLocationInfo(countryName, regionName, spotName)
+	location, err := lc.locations.GetLocationInfo(countryName, regionName, spotName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -61,7 +70,7 @@ func GetLocationInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, location)
 }
 
-func GetCoordinates(c *gin.Context) {
+func (lc *LocationController) GetCoordinates(c *gin.Context) {
 	spotName := c.Query("spot")
 	regionName := c.Query("region")
 	countryName := c.Query("country")
@@ -71,7 +80,7 @@ func GetCoordinates(c *gin.Context) {
 		return
 	}
 
-	coordinates, err := LocationService.GetCoordinates(countryName, regionName, spotName)
+	coordinates, err := lc.locations.GetCoordinates(countryName, regionName, spotName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

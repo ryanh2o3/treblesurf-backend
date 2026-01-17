@@ -16,11 +16,24 @@ import (
 	"github.com/google/uuid"
 )
 
-// This controller uses the shared dependencies from dependencies.go
+// SnapshotController handles snapshot routes.
+type SnapshotController struct {
+	db        *dynamodb.DynamoDB
+	s3Client  *s3.S3
+	bucketName string
+}
+
+func NewSnapshotController(db *dynamodb.DynamoDB, s3Client *s3.S3, bucketName string) *SnapshotController {
+	return &SnapshotController{
+		db:         db,
+		s3Client:   s3Client,
+		bucketName: bucketName,
+	}
+}
 
 // UploadSnapshotHandler handles image uploads from devices
-func UploadSnapshotHandler(c *gin.Context) {
-	spotID, timestamp, file := validateSnapshotUpload(c)
+func (sc *SnapshotController) UploadSnapshotHandler(c *gin.Context) {
+	spotID, timestamp, file := sc.validateSnapshotUpload(c)
 	if spotID == "" {
 		return
 	}
@@ -37,13 +50,13 @@ func UploadSnapshotHandler(c *gin.Context) {
 	}()
 
 	s3Key := generateSnapshotS3Key(spotID, file.Filename)
-	if err := uploadSnapshotToS3(src, s3Key, file.Header.Get("Content-Type"), spotID, timestamp); err != nil {
+	if err := sc.uploadSnapshotToS3(src, s3Key, file.Header.Get("Content-Type"), spotID, timestamp); err != nil {
 		log.Printf("S3 upload error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
 		return
 	}
 
-	if err := storeSnapshotMetadata(spotID, s3Key, timestamp); err != nil {
+	if err := sc.storeSnapshotMetadata(spotID, s3Key, timestamp); err != nil {
 		log.Printf("Failed to store snapshot metadata: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store snapshot metadata"})
 		return
@@ -56,7 +69,7 @@ func UploadSnapshotHandler(c *gin.Context) {
 }
 
 // validateSnapshotUpload validates and extracts snapshot upload parameters.
-func validateSnapshotUpload(c *gin.Context) (string, time.Time, *multipart.FileHeader) {
+func (sc *SnapshotController) validateSnapshotUpload(c *gin.Context) (string, time.Time, *multipart.FileHeader) {
 	spotID := c.PostForm("spot_id")
 	if spotID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "spot_id is required"})
@@ -85,9 +98,9 @@ func validateSnapshotUpload(c *gin.Context) (string, time.Time, *multipart.FileH
 }
 
 // uploadSnapshotToS3 uploads a snapshot file to S3.
-func uploadSnapshotToS3(src multipart.File, s3Key, contentType, spotID string, timestamp time.Time) error {
-	_, err := S3Client.PutObject(&s3.PutObjectInput{
-		Bucket:      aws.String("treblesurf-images"),
+func (sc *SnapshotController) uploadSnapshotToS3(src multipart.File, s3Key, contentType, spotID string, timestamp time.Time) error {
+	_, err := sc.s3Client.PutObject(&s3.PutObjectInput{
+		Bucket:      aws.String(sc.bucketName),
 		Key:         aws.String(s3Key),
 		Body:        src,
 		ContentType: aws.String(contentType),
@@ -107,7 +120,7 @@ func generateSnapshotS3Key(spotID, filename string) string {
 }
 
 // storeSnapshotMetadata stores snapshot metadata in DynamoDB.
-func storeSnapshotMetadata(spotID, s3Key string, timestamp time.Time) error {
+func (sc *SnapshotController) storeSnapshotMetadata(spotID, s3Key string, timestamp time.Time) error {
 	snapshot := SpotSnapshot{
 		SpotID:     spotID,
 		ImageKey:   s3Key,
@@ -120,7 +133,7 @@ func storeSnapshotMetadata(spotID, s3Key string, timestamp time.Time) error {
 		return fmt.Errorf("failed to marshal snapshot: %w", err)
 	}
 
-	_, err = DB.PutItem(&dynamodb.PutItemInput{
+	_, err = sc.db.PutItem(&dynamodb.PutItemInput{
 		TableName: aws.String("SpotSnapshots"),
 		Item:      item,
 	})
@@ -133,7 +146,7 @@ func storeSnapshotMetadata(spotID, s3Key string, timestamp time.Time) error {
 }
 
 // GetLatestSnapshotHandler retrieves the latest snapshot for a spot
-func GetLatestSnapshotHandler(c *gin.Context) {
+func (sc *SnapshotController) GetLatestSnapshotHandler(c *gin.Context) {
 	spotID := c.Query("spot_id")
 	if spotID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "spot_id parameter is required"})
@@ -141,7 +154,7 @@ func GetLatestSnapshotHandler(c *gin.Context) {
 	}
 
 	// Query DynamoDB for the latest snapshot using Query instead of GetItem
-	result, err := DB.Query(&dynamodb.QueryInput{
+	result, err := sc.db.Query(&dynamodb.QueryInput{
 		TableName:              aws.String("SpotSnapshots"),
 		KeyConditionExpression: aws.String("spot_id = :spotId"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
@@ -172,8 +185,8 @@ func GetLatestSnapshotHandler(c *gin.Context) {
 	}
 
 	// Generate presigned URL for the image
-	req, _ := S3Client.GetObjectRequest(&s3.GetObjectInput{
-		Bucket: aws.String("treblesurf-images"),
+	req, _ := sc.s3Client.GetObjectRequest(&s3.GetObjectInput{
+		Bucket: aws.String(sc.bucketName),
 		Key:    aws.String(snapshot.ImageKey),
 	})
 

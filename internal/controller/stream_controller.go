@@ -15,10 +15,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// This controller uses the shared dependencies from dependencies.go
+// StreamController handles streaming routes.
+type StreamController struct {
+	db *dynamodb.DynamoDB
+}
+
+func NewStreamController(db *dynamodb.DynamoDB) *StreamController {
+	return &StreamController{db: db}
+}
 
 // GetStreamingCredentials generates temporary AWS credentials for streaming
-func GetStreamingCredentials(c *gin.Context) {
+func (sc *StreamController) GetStreamingCredentials(c *gin.Context) {
 	apiKey, exists := c.Get("apiKey")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "API key required"})
@@ -58,7 +65,7 @@ func GetStreamingCredentials(c *gin.Context) {
 }
 
 // GetStreamPlaybackURL generates a signed URL for viewing the stream
-func GetStreamPlaybackURL(c *gin.Context) {
+func (sc *StreamController) GetStreamPlaybackURL(c *gin.Context) {
 	// Only authenticated users can access this endpoint
 	email, exists := c.Get("email")
 	if !exists {
@@ -112,7 +119,7 @@ func GetStreamPlaybackURL(c *gin.Context) {
 }
 
 // RequestStreamHandler handles stream requests
-func RequestStreamHandler(c *gin.Context) {
+func (sc *StreamController) RequestStreamHandler(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
@@ -150,7 +157,7 @@ func RequestStreamHandler(c *gin.Context) {
 		return
 	}
 
-	_, err = DB.PutItem(&dynamodb.PutItemInput{
+	_, err = sc.db.PutItem(&dynamodb.PutItemInput{
 		TableName: aws.String("StreamRequests"),
 		Item:      item,
 	})
@@ -167,7 +174,7 @@ func RequestStreamHandler(c *gin.Context) {
 }
 
 // CheckStreamRequestHandler checks if a stream has been requested
-func CheckStreamRequestHandler(c *gin.Context) {
+func (sc *StreamController) CheckStreamRequestHandler(c *gin.Context) {
 	spotID := c.Query("spot_id")
 	if spotID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing spot_id parameter"})
@@ -175,7 +182,7 @@ func CheckStreamRequestHandler(c *gin.Context) {
 	}
 
 	// Query DynamoDB for this spot ID
-	result, err := DB.GetItem(&dynamodb.GetItemInput{
+	result, err := sc.db.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String("StreamRequests"),
 		Key: map[string]*dynamodb.AttributeValue{
 			"spot_id": {S: aws.String(spotID)},

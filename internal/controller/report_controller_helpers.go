@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -37,54 +38,54 @@ func validateReportLocation(c *gin.Context, country, region, spot string) bool {
 }
 
 // validateReportFields validates all surf report fields using the report service.
-func validateReportFields(c *gin.Context, report *model.ReportWithImage) bool {
-	if err := validateSurfSize(c, report.SurfSize); err != nil {
+func validateReportFields(reportSvc *service.ReportService, c *gin.Context, report *model.ReportWithImage) bool {
+	if err := validateSurfSize(reportSvc, c, report.SurfSize); err != nil {
 		return false
 	}
-	if err := validateWindAmount(c, report.WindAmount); err != nil {
+	if err := validateWindAmount(reportSvc, c, report.WindAmount); err != nil {
 		return false
 	}
-	if err := validateWindDirection(c, report.WindDirection); err != nil {
+	if err := validateWindDirection(reportSvc, c, report.WindDirection); err != nil {
 		return false
 	}
-	if err := validateConsistency(c, report.Consistency); err != nil {
+	if err := validateConsistency(reportSvc, c, report.Consistency); err != nil {
 		return false
 	}
-	if err := validateQuality(c, report.Quality); err != nil {
+	if err := validateQuality(reportSvc, c, report.Quality); err != nil {
 		return false
 	}
-	if err := validateMessiness(c, report.Messiness); err != nil {
+	if err := validateMessiness(reportSvc, c, report.Messiness); err != nil {
 		return false
 	}
 	return true
 }
 
 // validateS3ReportFields validates all surf report fields for S3 image reports.
-func validateS3ReportFields(c *gin.Context, report *model.ReportWithS3Image) bool {
-	if err := validateSurfSize(c, report.SurfSize); err != nil {
+func validateS3ReportFields(reportSvc *service.ReportService, c *gin.Context, report *model.ReportWithS3Image) bool {
+	if err := validateSurfSize(reportSvc, c, report.SurfSize); err != nil {
 		return false
 	}
-	if err := validateWindAmount(c, report.WindAmount); err != nil {
+	if err := validateWindAmount(reportSvc, c, report.WindAmount); err != nil {
 		return false
 	}
-	if err := validateWindDirection(c, report.WindDirection); err != nil {
+	if err := validateWindDirection(reportSvc, c, report.WindDirection); err != nil {
 		return false
 	}
-	if err := validateConsistency(c, report.Consistency); err != nil {
+	if err := validateConsistency(reportSvc, c, report.Consistency); err != nil {
 		return false
 	}
-	if err := validateQuality(c, report.Quality); err != nil {
+	if err := validateQuality(reportSvc, c, report.Quality); err != nil {
 		return false
 	}
-	if err := validateMessiness(c, report.Messiness); err != nil {
+	if err := validateMessiness(reportSvc, c, report.Messiness); err != nil {
 		return false
 	}
 	return true
 }
 
 // validateSurfSize validates the surf size field.
-func validateSurfSize(c *gin.Context, surfSize string) error {
-	if surfSize != "" && !ReportService.IsValidSurfSize(surfSize) {
+func validateSurfSize(reportSvc *service.ReportService, c *gin.Context, surfSize string) error {
+	if surfSize != "" && !reportSvc.IsValidSurfSize(surfSize) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid surf size",
 			"message": fmt.Sprintf("Surf size '%s' is not valid", surfSize),
@@ -96,8 +97,8 @@ func validateSurfSize(c *gin.Context, surfSize string) error {
 }
 
 // validateWindAmount validates the wind amount field.
-func validateWindAmount(c *gin.Context, windAmount string) error {
-	if windAmount != "" && !ReportService.IsValidWindAmount(windAmount) {
+func validateWindAmount(reportSvc *service.ReportService, c *gin.Context, windAmount string) error {
+	if windAmount != "" && !reportSvc.IsValidWindAmount(windAmount) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid wind amount",
 			"message": fmt.Sprintf("Wind amount '%s' is not valid", windAmount),
@@ -109,8 +110,8 @@ func validateWindAmount(c *gin.Context, windAmount string) error {
 }
 
 // validateWindDirection validates the wind direction field.
-func validateWindDirection(c *gin.Context, windDirection string) error {
-	if windDirection != "" && !ReportService.IsValidWindDirection(windDirection) {
+func validateWindDirection(reportSvc *service.ReportService, c *gin.Context, windDirection string) error {
+	if windDirection != "" && !reportSvc.IsValidWindDirection(windDirection) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid wind direction",
 			"message": fmt.Sprintf("Wind direction '%s' is not valid", windDirection),
@@ -122,8 +123,8 @@ func validateWindDirection(c *gin.Context, windDirection string) error {
 }
 
 // validateConsistency validates the consistency field.
-func validateConsistency(c *gin.Context, consistency string) error {
-	if consistency != "" && !ReportService.IsValidSurfDifficulty(consistency) {
+func validateConsistency(reportSvc *service.ReportService, c *gin.Context, consistency string) error {
+	if consistency != "" && !reportSvc.IsValidSurfDifficulty(consistency) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid consistency",
 			"message": fmt.Sprintf("Consistency '%s' is not valid", consistency),
@@ -135,8 +136,8 @@ func validateConsistency(c *gin.Context, consistency string) error {
 }
 
 // validateQuality validates the quality field.
-func validateQuality(c *gin.Context, quality string) error {
-	if quality != "" && !ReportService.IsValidSurfConditions(quality) {
+func validateQuality(reportSvc *service.ReportService, c *gin.Context, quality string) error {
+	if quality != "" && !reportSvc.IsValidSurfConditions(quality) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid quality",
 			"message": fmt.Sprintf("Quality '%s' is not valid", quality),
@@ -148,8 +149,8 @@ func validateQuality(c *gin.Context, quality string) error {
 }
 
 // validateMessiness validates the messiness field.
-func validateMessiness(c *gin.Context, messiness string) error {
-	if messiness != "" && !ReportService.IsValidMessiness(messiness) {
+func validateMessiness(reportSvc *service.ReportService, c *gin.Context, messiness string) error {
+	if messiness != "" && !reportSvc.IsValidMessiness(messiness) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid messiness",
 			"message": fmt.Sprintf("Messiness '%s' is not valid", messiness),
@@ -197,23 +198,23 @@ func handleReportBindingError(c *gin.Context, err error) {
 }
 
 // validateIOSReportFields validates all surf report fields for iOS validated reports.
-func validateIOSReportFields(c *gin.Context, report *model.ReportWithIOSValidation) bool {
-	if err := validateSurfSize(c, report.SurfSize); err != nil {
+func validateIOSReportFields(reportSvc *service.ReportService, c *gin.Context, report *model.ReportWithIOSValidation) bool {
+	if err := validateSurfSize(reportSvc, c, report.SurfSize); err != nil {
 		return false
 	}
-	if err := validateWindAmount(c, report.WindAmount); err != nil {
+	if err := validateWindAmount(reportSvc, c, report.WindAmount); err != nil {
 		return false
 	}
-	if err := validateWindDirection(c, report.WindDirection); err != nil {
+	if err := validateWindDirection(reportSvc, c, report.WindDirection); err != nil {
 		return false
 	}
-	if err := validateConsistency(c, report.Consistency); err != nil {
+	if err := validateConsistency(reportSvc, c, report.Consistency); err != nil {
 		return false
 	}
-	if err := validateQuality(c, report.Quality); err != nil {
+	if err := validateQuality(reportSvc, c, report.Quality); err != nil {
 		return false
 	}
-	if err := validateMessiness(c, report.Messiness); err != nil {
+	if err := validateMessiness(reportSvc, c, report.Messiness); err != nil {
 		return false
 	}
 	return true
@@ -413,8 +414,8 @@ func validateMediaDeletionRequest(c *gin.Context, mediaKey, mediaType string) bo
 }
 
 // verifyMediaAccess verifies that the user has permission to access the media.
-func verifyMediaAccess(c *gin.Context, email, mediaKey, mediaType string) (*model.User, bool) {
-	user, err := getUserByEmail(email)
+func verifyMediaAccess(userSvc *service.UserService, c *gin.Context, email, mediaKey, mediaType string) (*model.User, bool) {
+	user, err := userSvc.GetUserByEmail(email)
 	if err != nil {
 		log.Printf("Failed to fetch user information: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -464,6 +465,7 @@ func handleReportSubmissionCommon(
 	c *gin.Context,
 	country, region, spot string,
 	validateFunc func(*gin.Context) bool,
+	userSvc *service.UserService,
 ) (string, *model.User, bool) {
 	email, ok := getAuthenticatedUserEmail(c)
 	if !ok {
@@ -471,7 +473,7 @@ func handleReportSubmissionCommon(
 	}
 
 	log.Printf("User email from context: %s", email)
-	user, err := getUserByEmail(email)
+	user, err := userSvc.GetUserByEmail(email)
 	if err != nil {
 		log.Printf("Failed to fetch user information: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{

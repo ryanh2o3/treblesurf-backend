@@ -8,7 +8,6 @@ import (
 	"time"
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/config"
-	"treblesurf-backend/internal/controller"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -120,10 +119,10 @@ func setupAuthRoutes(r gin.IRouter, cfg *config.Config) {
 // setupLocationAndForecastRoutes configures location, forecast, and buoy data routes.
 func setupLocationAndForecastRoutes(r gin.IRouter, container *Container) {
 	// Location routes
-	r.GET("/regions", controller.GetRegions)
-	r.GET("/spots", controller.GetSpots)
-	r.GET("/location", controller.GetCoordinates)
-	r.GET("/locationInfo", controller.GetLocationInfo)
+	r.GET("/regions", container.LocationController.GetRegions)
+	r.GET("/spots", container.LocationController.GetSpots)
+	r.GET("/location", container.LocationController.GetCoordinates)
+	r.GET("/locationInfo", container.LocationController.GetLocationInfo)
 
 	// Forecast routes
 	r.GET("/listSpotsForecast", container.ForecastController.GetListSpotsForecast)
@@ -134,14 +133,14 @@ func setupLocationAndForecastRoutes(r gin.IRouter, container *Container) {
 	r.GET("/forecast", container.ForecastController.GetSpotForecast)
 
 	// Buoy data routes
-	r.GET("/getLiveBuoyData", controller.GetLiveBuoyData)
-	r.GET("/getSingleBuoyData", controller.GetSingleBuoyData)
-	r.GET("/getLast24BuoyData", controller.GetLast24HoursBuoyData)
-	r.GET("/getBuoyDataRange", controller.GetBuoyDataRange)
-	r.GET("/getMultipleBuoyData", controller.GetMultipleBuoyData)
-	r.GET("/buoyLocationInfo", controller.BuoyLocationInfo)
-	r.GET("/regionBuoys", controller.GetRegionBuoys)
-	r.GET("/individualBuoyLocation", controller.IndividualBuoyLocationInfo)
+	r.GET("/getLiveBuoyData", container.BuoyController.GetLiveBuoyData)
+	r.GET("/getSingleBuoyData", container.BuoyController.GetSingleBuoyData)
+	r.GET("/getLast24BuoyData", container.BuoyController.GetLast24HoursBuoyData)
+	r.GET("/getBuoyDataRange", container.BuoyController.GetBuoyDataRange)
+	r.GET("/getMultipleBuoyData", container.BuoyController.GetMultipleBuoyData)
+	r.GET("/buoyLocationInfo", container.BuoyController.BuoyLocationInfo)
+	r.GET("/regionBuoys", container.BuoyController.GetRegionBuoys)
+	r.GET("/individualBuoyLocation", container.BuoyController.IndividualBuoyLocationInfo)
 }
 
 // setupSwellPredictionRoutes configures swell prediction routes.
@@ -181,37 +180,37 @@ func setupProtectedRoutes(r gin.IRouter, cfg *config.Config, container *Containe
 }
 
 // setupReportModificationRoutes configures routes that modify surf reports.
-func setupReportModificationRoutes(g *gin.RouterGroup, _ *Container) {
-	g.POST("/submitSurfReport", controller.SubmitCurrentSurfReport)
-	g.POST("/submitSurfReportWithS3Image", controller.SubmitSurfReportWithS3Image)
-	g.POST("/submitSurfReportWithIOSValidation", controller.SubmitSurfReportWithIOSValidation)
-	g.GET("/generateImageUploadURL", controller.GenerateImageUploadURL)
-	g.GET("/generateVideoUploadURL", controller.GenerateVideoUploadURL)
-	g.DELETE("/deleteUploadedMedia", controller.DeleteUploadedMedia)
-	g.DELETE("/deleteMyAccount", controller.DeleteMyAccount)
-	g.PUT("/setTheme", controller.SetUserTheme)
+func setupReportModificationRoutes(g *gin.RouterGroup, container *Container) {
+	g.POST("/submitSurfReport", container.ReportController.SubmitCurrentSurfReport)
+	g.POST("/submitSurfReportWithS3Image", container.ReportController.SubmitSurfReportWithS3Image)
+	g.POST("/submitSurfReportWithIOSValidation", container.ReportController.SubmitSurfReportWithIOSValidation)
+	g.GET("/generateImageUploadURL", container.ReportController.GenerateImageUploadURL)
+	g.GET("/generateVideoUploadURL", container.ReportController.GenerateVideoUploadURL)
+	g.DELETE("/deleteUploadedMedia", container.ReportController.DeleteUploadedMedia)
+	g.DELETE("/deleteMyAccount", container.UserController.DeleteMyAccount)
+	g.PUT("/setTheme", container.UserController.SetUserTheme)
 	g.DELETE("/sessions/:sessionId", auth.TerminateSessionHandler)
 }
 
 // setupUserRoutes configures user-related read routes.
-func setupUserRoutes(g *gin.RouterGroup, _ *Container) {
+func setupUserRoutes(g *gin.RouterGroup, container *Container) {
 	g.GET("/sessions", auth.GetUserSessionsHandler)
-	g.GET("/getTheme", controller.GetUserTheme)
-	g.GET("/getTodaySpotReports", controller.RetrieveTodaysSurfReports)
-	g.GET("/getAllSpotReports", controller.GetAllSpotSurfReports)
-	g.GET("/getSurfReportsWithSimilarBuoyData", controller.GetSurfReportsWithSimilarBuoyData)
-	g.GET("/getSurfReportsWithMatchingConditions", controller.GetSurfReportsWithMatchingConditions)
-	g.GET("getReportImage", controller.GetReportImage)
-	g.GET("/getReportVideo", controller.GetReportVideo)
-	g.GET("/generateVideoViewURL", controller.GenerateVideoViewURL)
+	g.GET("/getTheme", container.UserController.GetUserTheme)
+	g.GET("/getTodaySpotReports", container.ReportController.RetrieveTodaysSurfReports)
+	g.GET("/getAllSpotReports", container.ReportController.GetAllSpotSurfReports)
+	g.GET("/getSurfReportsWithSimilarBuoyData", container.ReportController.GetSurfReportsWithSimilarBuoyData)
+	g.GET("/getSurfReportsWithMatchingConditions", container.ReportController.GetSurfReportsWithMatchingConditions)
+	g.GET("getReportImage", container.ReportController.GetReportImage)
+	g.GET("/getReportVideo", container.ReportController.GetReportVideo)
+	g.GET("/generateVideoViewURL", container.ReportController.GenerateVideoViewURL)
 	g.GET("/ws-token", auth.GetWebSocketTokenHandler)
-	g.GET("/streamUrl", controller.GetStreamPlaybackURL)
-	g.GET("/latestSnapshot", controller.GetLatestSnapshotHandler)
-	g.POST("/requestStream", controller.RequestStreamHandler)
+	g.GET("/streamUrl", container.StreamController.GetStreamPlaybackURL)
+	g.GET("/latestSnapshot", container.SnapshotController.GetLatestSnapshotHandler)
+	g.POST("/requestStream", container.StreamController.RequestStreamHandler)
 }
 
 // setupAPIKeyRoutes configures routes that require API key authentication.
-func setupAPIKeyRoutes(r gin.IRouter, cfg *config.Config, _ *Container) {
+func setupAPIKeyRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 	isLocal := cfg.IsDevelopment()
 
 	apiKeyRoutes := r.Group("/")
@@ -221,13 +220,13 @@ func setupAPIKeyRoutes(r gin.IRouter, cfg *config.Config, _ *Container) {
 		apiKeyRoutes.Use(APIKeyAuthMiddleware("stream"))
 	}
 
-	apiKeyRoutes.POST("/streaming-credentials", controller.GetStreamingCredentials)
-	apiKeyRoutes.GET("/check-streaming-requested", controller.CheckStreamRequestHandler)
-	apiKeyRoutes.POST("/upload-snapshot", controller.UploadSnapshotHandler)
+	apiKeyRoutes.POST("/streaming-credentials", container.StreamController.GetStreamingCredentials)
+	apiKeyRoutes.GET("/check-streaming-requested", container.StreamController.CheckStreamRequestHandler)
+	apiKeyRoutes.POST("/upload-snapshot", container.SnapshotController.UploadSnapshotHandler)
 }
 
 // setupAdminRoutes configures admin-only routes.
-func setupAdminRoutes(r gin.IRouter, cfg *config.Config, _ *Container) {
+func setupAdminRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 	isLocal := cfg.IsDevelopment()
 
 	adminRoutes := r.Group("/admin")
@@ -238,7 +237,7 @@ func setupAdminRoutes(r gin.IRouter, cfg *config.Config, _ *Container) {
 		adminRoutes.Use(auth.Middleware(), AdminMiddleware())
 	}
 
-	adminRoutes.POST("/api-keys", controller.CreateAPIKeyHandler)
-	adminRoutes.GET("/api-keys", controller.ListAPIKeysHandler)
-	adminRoutes.DELETE("/api-keys/:keyID", controller.RevokeAPIKeyHandler)
+	adminRoutes.POST("/api-keys", container.APIKeyController.CreateAPIKeyHandler)
+	adminRoutes.GET("/api-keys", container.APIKeyController.ListAPIKeysHandler)
+	adminRoutes.DELETE("/api-keys/:keyID", container.APIKeyController.RevokeAPIKeyHandler)
 }
