@@ -106,7 +106,7 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	
 	controllers := initializeControllers(services, storage, containerCfg)
 	
-	setupGlobalDependencies(storage, services, containerCfg)
+	setupGlobalDependencies(storage, containerCfg)
 	
 	return buildContainer(storage, services, controllers), nil
 }
@@ -228,7 +228,7 @@ func initializeControllers(services *containerServices, storage *containerStorag
 	}
 }
 
-func setupGlobalDependencies(storage *containerStorage, services *containerServices, cfg containerConfig) {
+func setupGlobalDependencies(storage *containerStorage, cfg containerConfig) {
 	if err := auth.InitJWTSecret(cfg.jwtSecret); err != nil {
 		log.Printf("Warning: Failed to initialize JWT secret: %v", err)
 	}
@@ -238,19 +238,6 @@ func setupGlobalDependencies(storage *containerStorage, services *containerServi
 	if err := auth.InitSessionService(); err != nil {
 		log.Printf("Warning: Failed to initialize session service: %v", err)
 	}
-	
-	_ = services
-}
-
-func getS3ClientForControllers(cfg containerConfig) *s3.S3 {
-	if cfg.isLocal {
-		return getLocalS3Client()
-	}
-	
-	sess := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(cfg.region),
-	}))
-	return s3.New(sess)
 }
 
 func buildContainer(

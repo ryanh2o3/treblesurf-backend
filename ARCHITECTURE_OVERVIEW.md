@@ -143,7 +143,7 @@ treblesurf-backend/
 │
 ├── internal/
 │   ├── api/
-│   │   ├── container.go         ⚠️ DI container (partially used)
+│   │   ├── container.go         ✅ DI container
 │   │   ├── middleware.go        ✅ HTTP middleware
 │   │   └── router.go            ✅ Route registration
 │   │
@@ -156,13 +156,8 @@ treblesurf-backend/
 │   │   └── constants.go         ✅ App constants
 │   │
 │   ├── controller/
-│   │   ├── dependencies.go      ❌ Global AWS clients
-│   │   ├── service_registry.go  ❌ Global service singletons
-│   │   ├── *_controller.go      ⚠️ Package functions (not structs)
+│   │   ├── *_controller.go      ✅ Controller structs
 │   │   └── *_helpers.go
-│   │
-│   ├── middleware/
-│   │   └── middleware.go        ⚠️ Duplicate location?
 │   │
 │   ├── model/
 │   │   ├── user.go              ✅ Domain types
@@ -191,9 +186,6 @@ treblesurf-backend/
 │   ├── storage/                 ✅ Local DynamoDB/S3 mocks
 │   └── scripts/
 │
-├── models/
-│   └── awsRegistry.go           ❌ Duplicate location, has global
-│
 ├── scripts/
 │   └── deploy.sh
 │
@@ -207,10 +199,8 @@ treblesurf-backend/
 
 | Issue                      | Location                                  | Severity |
 | -------------------------- | ----------------------------------------- | -------- |
-| Duplicate `models/` folder | Root vs `internal/model/`                 | Medium   |
 | Dockerfile is Python Flask | `Dockerfile`                              | High     |
 | Global state               | Multiple locations                        | High     |
-| Duplicate middleware       | `internal/api/` vs `internal/middleware/` | Low      |
 | Large files                | `report_service.go` (1600+ lines)         | Medium   |
 
 ---
@@ -230,8 +220,7 @@ treblesurf-backend/
 ┌──────────────────────────────────────────────────────────────────┐
 │                       Controller Layer                            │
 │                   (internal/controller/*.go)                      │
-│    Package-level functions that handle HTTP request/response      │
-│    Access services via GLOBAL service registry                    │
+│    Controller structs with injected services                      │
 └─────────────────────────────┬────────────────────────────────────┘
                               │
                               ▼
@@ -489,27 +478,10 @@ if isLocal {
 **Problem:** Multiple global variable declarations scattered across packages.
 
 ```go
-// internal/controller/dependencies.go
-var (
-    DB                *dynamodb.DynamoDB      // GLOBAL
-    S3Client          *s3.S3                  // GLOBAL
-    RekognitionClient *rekognition.Rekognition // GLOBAL
-)
-
-// internal/controller/service_registry.go
-var (
-    UserService      *service.UserService     // GLOBAL
-    ReportService    *service.ReportService   // GLOBAL
-    LocationService  *service.LocationService // GLOBAL
-)
-
 // internal/auth/service.go
 var jwtSecret []byte                          // GLOBAL
 var db *dynamodb.DynamoDB                     // GLOBAL
 var sessionService *sessions.Service         // GLOBAL
-
-// models/awsRegistry.go
-var Registry AWSClientRegistry               // GLOBAL
 ```
 
 **Impact:**
