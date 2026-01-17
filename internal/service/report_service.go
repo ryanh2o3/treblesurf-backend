@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
@@ -11,35 +12,40 @@ import (
 
 	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/model"
-	"treblesurf-backend/internal/storage"
+	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/validation"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/rekognition"
 )
 
 type ReportService struct {
-	dbStorage         storage.DynamoDBStorage
-	s3Storage         storage.S3Storage
+	mediaRepo         repository.MediaRepository
+	reportRepo        repository.ReportRepository
+	buoyRepo          repository.BuoyRepository
+	locationRepo      repository.LocationRepository
+	forecastDataRepo  repository.ForecastDataRepository
 	rekognitionClient *rekognition.Rekognition
 	userService       *UserService
-	bucketName        string
 }
 
 func NewReportService(
-	dbStorage storage.DynamoDBStorage,
-	s3Storage storage.S3Storage,
+	mediaRepo repository.MediaRepository,
+	reportRepo repository.ReportRepository,
+	buoyRepo repository.BuoyRepository,
+	locationRepo repository.LocationRepository,
+	forecastDataRepo repository.ForecastDataRepository,
 	rekognitionClient *rekognition.Rekognition,
-	bucketName string,
 	userService *UserService,
 ) *ReportService {
 	return &ReportService{
-		dbStorage:         dbStorage,
-		s3Storage:         s3Storage,
+		mediaRepo:         mediaRepo,
+		reportRepo:        reportRepo,
+		buoyRepo:          buoyRepo,
+		locationRepo:      locationRepo,
+		forecastDataRepo:  forecastDataRepo,
 		rekognitionClient: rekognitionClient,
-		bucketName:        bucketName,
 		userService:       userService,
 	}
 }
@@ -196,7 +202,7 @@ func (s *ReportService) GenerateImageUploadURL(
 	)
 
 	// Generate presigned URL valid for 15 minutes
-	presignedURL, err := s.s3Storage.GeneratePresignedUploadURL(s.bucketName, imageKey, params.expiration)
+	presignedURL, err := s.mediaRepo.GenerateUploadURL(context.Background(), imageKey, params.expiration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
@@ -228,7 +234,7 @@ func (s *ReportService) GenerateVideoUploadURL(
 	)
 
 	// Generate presigned URL valid for 15 minutes
-	presignedURL, err := s.s3Storage.GeneratePresignedUploadURL(s.bucketName, videoKey, params.expiration)
+	presignedURL, err := s.mediaRepo.GenerateUploadURL(context.Background(), videoKey, params.expiration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
@@ -256,25 +262,26 @@ func (s *ReportService) GetSpotSurfReports(
 	limit int,
 	lastEvaluatedKey map[string]*dynamodb.AttributeValue,
 ) ([]map[string]interface{}, error) {
-	countryRegionSpot := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
+	if lastEvaluatedKey != nil {
+		log.Printf("pagination token ignored by repository-backed report lookup")
+	}
 
-	input := s.buildSpotReportsQueryInput(countryRegionSpot, limit, lastEvaluatedKey)
-	result, err := s.dbStorage.Query(input)
+	reports, err := s.reportRepo.GetBySpot(context.Background(), countryName, regionName, spotName, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query reports: %w", err)
 	}
 
-	reports, err := s.unmarshalSpotReports(result.Items)
+	reportMaps, err := s.convertReportsToMaps(reports)
 	if err != nil {
 		return nil, err
 	}
 
-	s.normalizeSpotReports(reports)
-	return reports, nil
+	s.normalizeSpotReports(reportMaps)
+	return reportMaps, nil
 }
 
 func (s *ReportService) GetReportImage(imageKey string) (imageData []byte, contentType string, err error) {
-	imageData, err = s.s3Storage.GetObject(s.bucketName, imageKey)
+	imageData, err = s.mediaRepo.Download(context.Background(), imageKey)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read image data: %v", err)
 	}
@@ -287,7 +294,7 @@ func (s *ReportService) GetReportImage(imageKey string) (imageData []byte, conte
 }
 
 func (s *ReportService) GetReportVideo(videoKey string) (videoData []byte, contentType string, err error) {
-	videoData, err = s.s3Storage.GetObject(s.bucketName, videoKey)
+	videoData, err = s.mediaRepo.Download(context.Background(), videoKey)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read video data: %v", err)
 	}
@@ -315,7 +322,7 @@ func (s *ReportService) GenerateVideoViewURL(videoKey, userEmail string) (*model
 		return nil, fmt.Errorf("user does not have a UUID")
 	}
 
-	_, err = s.s3Storage.GetObject(s.bucketName, videoKey)
+	_, err = s.mediaRepo.Download(context.Background(), videoKey)
 	if err != nil {
 		return nil, fmt.Errorf("video not found or not accessible: %v", err)
 	}
@@ -326,7 +333,7 @@ func (s *ReportService) GenerateVideoViewURL(videoKey, userEmail string) (*model
 	}
 
 	expires := 1 * time.Hour
-	viewURL, err := s.s3Storage.GeneratePresignedViewURL(s.bucketName, videoKey, expires)
+	viewURL, err := s.mediaRepo.GenerateViewURL(context.Background(), videoKey, expires)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate presigned view URL: %v", err)
 	}
@@ -426,7 +433,7 @@ func (s *ReportService) validateImageWithRekognition(imageData []byte) (bool, er
 }
 
 func (s *ReportService) uploadImageToS3(imageData []byte, key string) (string, error) {
-	err := s.s3Storage.PutObject(s.bucketName, key, imageData, "image/jpeg")
+	err := s.mediaRepo.Upload(context.Background(), key, imageData, "image/jpeg")
 	if err != nil {
 		return "", model.NewImageValidationError(err, "failed to upload image to S3")
 	}
@@ -440,7 +447,7 @@ func (s *ReportService) ValidateImageKeyExists(imageKey string) (bool, error) {
 	}
 
 	// Try to get the object metadata to check if it exists
-	_, err := s.s3Storage.GetObject(s.bucketName, imageKey)
+	_, err := s.mediaRepo.Download(context.Background(), imageKey)
 	if err != nil {
 		return false, fmt.Errorf("image key %s does not exist or is not accessible: %v", imageKey, err)
 	}
@@ -490,7 +497,7 @@ func (s *ReportService) CleanupOrphanedImage(imageKey string) error {
 	}
 
 	log.Printf("Cleaning up orphaned image: %s", imageKey)
-	err := s.s3Storage.DeleteObject(s.bucketName, imageKey)
+	err := s.mediaRepo.Delete(context.Background(), imageKey)
 	if err != nil {
 		log.Printf("Failed to cleanup orphaned image %s: %v", imageKey, err)
 		return fmt.Errorf("failed to cleanup orphaned image: %v", err)
@@ -506,7 +513,7 @@ func (s *ReportService) DeleteMediaFromS3(mediaKey string) error {
 	}
 
 	log.Printf("🗑️ [CLEANUP] Deleting media: %s", mediaKey)
-	err := s.s3Storage.DeleteObject(s.bucketName, mediaKey)
+	err := s.mediaRepo.Delete(context.Background(), mediaKey)
 	if err != nil {
 		log.Printf("❌ [CLEANUP] Failed to delete media %s: %v", mediaKey, err)
 		return fmt.Errorf("failed to delete media from S3: %v", err)
@@ -589,74 +596,41 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 
 	// Calculate cutoff time
 	cutoffTime := time.Now().Add(-time.Duration(daysBack) * 24 * time.Hour)
-	cutoffStr := cutoffTime.UTC().Format("2006-01-02T15:04:05Z")
 
 	// Query surf reports
-	var result *dynamodb.QueryOutput
-	var scanResult *dynamodb.ScanOutput
 	var err error
+	var reports []map[string]interface{}
 
 	if countryRegionSpot != "" {
-		// Query for specific spot
-		queryInput := &dynamodb.QueryInput{
-			TableName:              aws.String("SurfReports"),
-			KeyConditionExpression: aws.String("country_region_spot = :crs"),
-			FilterExpression:       aws.String("#Time > :cutoff"),
-			ExpressionAttributeNames: map[string]*string{
-				"#Time": aws.String("Time"), // Escape reserved keyword
-			},
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":crs": {
-					S: aws.String(countryRegionSpot),
-				},
-				":cutoff": {
-					S: aws.String(cutoffStr),
-				},
-			},
-			ScanIndexForward: aws.Bool(false), // Most recent first
+		reportsBySpot, repoErr := s.reportRepo.GetBySpotAndTimeRange(
+			context.Background(),
+			countryName,
+			regionName,
+			spotName,
+			cutoffTime,
+			time.Now(),
+		)
+		if repoErr != nil {
+			return nil, fmt.Errorf("failed to query surf reports: %v", repoErr)
 		}
-
-		result, err = s.dbStorage.Query(queryInput)
+		reports, err = s.convertReportsToMaps(reportsBySpot)
 		if err != nil {
-			return nil, fmt.Errorf("failed to query surf reports: %v", err)
+			return nil, err
 		}
 	} else {
 		// Scan all reports (filtered by time)
-		scanInput := &dynamodb.ScanInput{
-			TableName:        aws.String("SurfReports"),
-			FilterExpression: aws.String("#Time > :cutoff"),
-			ExpressionAttributeNames: map[string]*string{
-				"#Time": aws.String("Time"),
-			},
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":cutoff": {
-					S: aws.String(cutoffStr),
-				},
-			},
-			Limit: aws.Int64(int64(maxResults * 10)), // Get more reports to filter
+		reportList, repoErr := s.reportRepo.ScanSince(context.Background(), cutoffTime, maxResults*10)
+		if repoErr != nil {
+			return nil, fmt.Errorf("failed to scan surf reports: %v", repoErr)
 		}
-
-		scanResult, err = s.dbStorage.Scan(scanInput)
+		reports, err = s.convertReportsToMaps(reportList)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan surf reports: %v", err)
+			return nil, err
 		}
 	}
 
-	// Unmarshal reports
-	var reports []map[string]interface{}
-	var items []map[string]*dynamodb.AttributeValue
-	switch {
-	case result != nil:
-		items = result.Items
-	case scanResult != nil:
-		items = scanResult.Items
-	default:
-		return []map[string]interface{}{}, nil // No results
-	}
-
-	err = dynamodbattribute.UnmarshalListOfMaps(items, &reports)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal reports: %v", err)
+	if len(reports) == 0 {
+		return []map[string]interface{}{}, nil
 	}
 
 	// For each report, get buoy data at that time and calculate similarity
@@ -850,43 +824,16 @@ func (s *ReportService) getBuoyDataAtTime(targetTime time.Time, buoyPriority []s
 	// Look for data within 6 hours of target time
 	startTime := targetTime.Add(-6 * time.Hour)
 	endTime := targetTime.Add(6 * time.Hour)
-	startStr := startTime.UTC().Format("2006-01-02T15:04:05Z")
-	endStr := endTime.UTC().Format("2006-01-02T15:04:05Z")
 
 	// Try multiple buoys in order of priority
 	for _, buoyName := range buoyPriority {
-		regionBuoy := fmt.Sprintf("Ireland_%s", buoyName)
-
-		input := &dynamodb.QueryInput{
-			TableName:              aws.String("BuoyData"),
-			KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime BETWEEN :start AND :end"),
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":rb": {
-					S: aws.String(regionBuoy),
-				},
-				":start": {
-					S: aws.String(startStr),
-				},
-				":end": {
-					S: aws.String(endStr),
-				},
-			},
-			ScanIndexForward: aws.Bool(true),
-			Limit:            aws.Int64(1),
-		}
-
-		result, err := s.dbStorage.Query(input)
+		data, err := s.buoyRepo.GetDataRange(context.Background(), buoyName, startTime, endTime)
 		if err != nil {
 			log.Printf("Error querying buoy data for %s at %s: %v", buoyName, targetTime.Format(time.RFC3339), err)
 			continue
 		}
-
-		if len(result.Items) > 0 {
-			var buoyData map[string]interface{}
-			err := dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
-			if err == nil {
-				return buoyData
-			}
+		if len(data) > 0 {
+			return buoyDataToMap(data[0])
 		}
 	}
 
@@ -998,65 +945,36 @@ func parseReportTime(timeStr string) (time.Time, error) {
 }
 
 func (s *ReportService) getSpotLocation(countryName, regionName, spotName string) (map[string]interface{}, error) {
-	locationKey := fmt.Sprintf("%s/%s/%s", countryName, regionName, spotName)
-
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("LocationData"),
-		KeyConditionExpression: aws.String("country_region_spot = :location"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":location": {
-				S: aws.String(locationKey),
-			},
-		},
-	}
-
-	result, err := s.dbStorage.Query(input)
+	location, err := s.locationRepo.GetLocationInfo(context.Background(), countryName, regionName, spotName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query location: %v", err)
 	}
-
-	if len(result.Items) == 0 {
+	if location == nil {
 		return nil, fmt.Errorf("no location found")
 	}
 
-	var location map[string]interface{}
-	err = dynamodbattribute.UnmarshalMap(result.Items[0], &location)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal location: %v", err)
-	}
-
-	return location, nil
+	return map[string]interface{}{
+		"Latitude":  location.Latitude,
+		"Longitude": location.Longitude,
+	}, nil
 }
 
 func (s *ReportService) getBuoyLocations() map[string]map[string]interface{} {
-	input := &dynamodb.ScanInput{
-		TableName: aws.String("BuoyLocations"),
-	}
-
-	result, err := s.dbStorage.Scan(input)
-	if err != nil {
-		log.Printf("Error scanning buoy locations: %v", err)
-		return make(map[string]map[string]interface{})
-	}
-
 	buoyLocations := make(map[string]map[string]interface{})
-	for _, item := range result.Items {
-		var buoy map[string]interface{}
-		err := dynamodbattribute.UnmarshalMap(item, &buoy)
-		if err != nil {
+	locations, err := s.buoyRepo.GetLocations(context.Background())
+	if err != nil {
+		log.Printf("Error loading buoy locations: %v", err)
+		return buoyLocations
+	}
+
+	for name, location := range locations {
+		if location == nil {
 			continue
 		}
-
-		// Extract buoy name from region_buoy (format: "Ireland_M4")
-		if regionBuoy, ok := buoy["region_buoy"].(string); ok {
-			parts := strings.Split(regionBuoy, "_")
-			if len(parts) > 1 {
-				buoyName := parts[len(parts)-1] // Get "M4" from "Ireland_M4"
-				buoyLocations[buoyName] = buoy
-			}
-		} else if name, ok := buoy["Name"].(string); ok {
-			// Fallback to Name field if region_buoy not available
-			buoyLocations[name] = buoy
+		buoyLocations[name] = map[string]interface{}{
+			"Name":      location.Name,
+			"Latitude":  location.Latitude,
+			"Longitude": location.Longitude,
 		}
 	}
 
@@ -1152,68 +1070,41 @@ func (s *ReportService) calculateBearing(lat1, lon1, lat2, lon2 float64) float64
 }
 
 func (s *ReportService) getCurrentBuoyData(buoyName string) map[string]interface{} {
-	// Start from current time rounded down to the nearest hour
-	now := time.Now()
-	currentTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
-
-	// Search backwards up to 12 hours to find the most recent data
-	for i := 0; i < 12; i++ {
-		searchTime := currentTime.Add(time.Duration(-i) * time.Hour)
-		dateStr := searchTime.UTC().Format("2006-01-02T15:00:00Z")
-
-		regionBuoy := fmt.Sprintf("Ireland_%s", buoyName)
-		input := &dynamodb.QueryInput{
-			TableName:              aws.String("BuoyData"),
-			KeyConditionExpression: aws.String("region_buoy = :rb AND dataDateTime = :dt"),
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":rb": {
-					S: aws.String(regionBuoy),
-				},
-				":dt": {
-					S: aws.String(dateStr),
-				},
-			},
-			ScanIndexForward: aws.Bool(false),
-			Limit:            aws.Int64(1),
-		}
-
-		result, err := s.dbStorage.Query(input)
-		if err != nil {
-			log.Printf("Error querying current buoy data for %s at %s: %v", buoyName, dateStr, err)
-			continue
-		}
-
-		if len(result.Items) > 0 {
-			var buoyData map[string]interface{}
-			err := dynamodbattribute.UnmarshalMap(result.Items[0], &buoyData)
-			if err == nil {
-				return buoyData
-			}
-		}
+	data, err := s.buoyRepo.GetLiveData(context.Background(), buoyName)
+	if err != nil {
+		log.Printf("Error querying current buoy data for %s: %v", buoyName, err)
+		return nil
 	}
 
-	return nil
+	return buoyDataToMap(data)
+}
+
+func buoyDataToMap(data *model.BuoyData) map[string]interface{} {
+	if data == nil {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"WaveHeight":        data.WaveHeight,
+		"MeanWaveDirection": data.WaveDirection,
+		"MaxPeriod":         data.MaxPeriod,
+		"dataDateTime":      data.Timestamp.UTC().Format(time.RFC3339),
+	}
 }
 
 func (s *ReportService) getCurrentWindConditions(
 	countryName, regionName, spotName string,
 ) (windSpeed, windDirection float64, err error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
-	result, err := s.queryCurrentForecast(spotID)
+	forecast, err := s.queryCurrentForecast(spotID)
 	if err != nil {
 		return 0, 0, err
 	}
-
-	if len(result.Items) == 0 {
-		result, err = s.queryHistoricalForecast(spotID)
-		if err != nil || len(result.Items) == 0 {
+	if forecast == nil {
+		forecast, err = s.queryHistoricalForecast(spotID)
+		if err != nil || forecast == nil {
 			return 0, 0, fmt.Errorf("no forecast data found for spot")
 		}
-	}
-
-	forecast, err := s.unmarshalForecast(result.Items[0])
-	if err != nil {
-		return 0, 0, err
 	}
 
 	return s.extractWindData(forecast)
@@ -1223,48 +1114,20 @@ func (s *ReportService) getForecastDataAtTime(
 	countryName, regionName, spotName string, targetTime time.Time,
 ) map[string]interface{} {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
-	targetEpoch := targetTime.Unix()
-
 	// Search within ±3 hours window
-	startEpoch := targetEpoch - 3*3600
-	endEpoch := targetEpoch + 3*3600
+	startTime := targetTime.Add(-3 * time.Hour)
+	endTime := targetTime.Add(3 * time.Hour)
 
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("SpotForecastData"),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp BETWEEN :start_time AND :end_time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":start_time": {
-				S: aws.String(fmt.Sprintf("%d", startEpoch)),
-			},
-			":end_time": {
-				S: aws.String(fmt.Sprintf("%d", endEpoch)),
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
-		Limit:            aws.Int64(1),
-	}
-
-	result, err := s.dbStorage.Query(input)
+	forecasts, err := s.forecastDataRepo.QueryBetween(context.Background(), spotID, startTime, endTime, 1)
 	if err != nil {
 		log.Printf("Error querying forecast data for %s at %s: %v", spotID, targetTime.Format(time.RFC3339), err)
 		return nil
 	}
-
-	if len(result.Items) == 0 {
+	if len(forecasts) == 0 {
 		return nil
 	}
 
-	var forecast map[string]interface{}
-	err = dynamodbattribute.UnmarshalMap(result.Items[0], &forecast)
-	if err != nil {
-		log.Printf("Error unmarshaling forecast data: %v", err)
-		return nil
-	}
-
-	return forecast
+	return forecasts[0]
 }
 
 func (s *ReportService) calculateWindSimilarity(
@@ -1423,37 +1286,22 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	}
 
 	// Step 5: Query historical surf reports
-	countryRegionSpot := fmt.Sprintf("%s_%s_%s", countryName, regionName, spotName)
 	cutoffTime := time.Now().Add(-time.Duration(daysBack) * 24 * time.Hour)
-	cutoffStr := cutoffTime.UTC().Format("2006-01-02T15:04:05Z")
-
-	queryInput := &dynamodb.QueryInput{
-		TableName:              aws.String("SurfReports"),
-		KeyConditionExpression: aws.String("country_region_spot = :crs"),
-		FilterExpression:       aws.String("#Time > :cutoff"),
-		ExpressionAttributeNames: map[string]*string{
-			"#Time": aws.String("Time"),
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":crs": {
-				S: aws.String(countryRegionSpot),
-			},
-			":cutoff": {
-				S: aws.String(cutoffStr),
-			},
-		},
-		ScanIndexForward: aws.Bool(false), // Most recent first
-	}
-
-	result, err := s.dbStorage.Query(queryInput)
+	reportsBySpot, err := s.reportRepo.GetBySpotAndTimeRange(
+		context.Background(),
+		countryName,
+		regionName,
+		spotName,
+		cutoffTime,
+		time.Now(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query surf reports: %v", err)
 	}
 
-	var reports []map[string]interface{}
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &reports)
+	reports, err := s.convertReportsToMaps(reportsBySpot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal reports: %v", err)
+		return nil, err
 	}
 
 	// Step 6: Process each report and calculate similarity

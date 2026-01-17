@@ -1,0 +1,20 @@
+package mock
+
+import (
+	"context"
+
+	"treblesurf-backend/internal/repository"
+)
+
+var _ repository.SpotSubscriptionRepository = (*SpotSubscriptionRepo)(nil)
+
+type SpotSubscriptionRepo struct {
+	SaveFn func(ctx context.Context, spotIdentifier, userID, connectionID string) error
+}
+
+func (m *SpotSubscriptionRepo) Save(ctx context.Context, spotIdentifier, userID, connectionID string) error {
+	if m.SaveFn != nil {
+		return m.SaveFn(ctx, spotIdentifier, userID, connectionID)
+	}
+	return nil
+}

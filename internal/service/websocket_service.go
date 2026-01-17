@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,25 +9,29 @@ import (
 	"strings"
 	"time"
 	"treblesurf-backend/internal/model"
-	"treblesurf-backend/internal/storage"
+	"treblesurf-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/apigatewaymanagementapi"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/golang-jwt/jwt"
 )
 
 type WebSocketService struct {
-	dbStorage storage.DynamoDBStorage
-	jwtSecret []byte
+	connections   repository.WebSocketRepository
+	subscriptions repository.SpotSubscriptionRepository
+	jwtSecret     []byte
 }
 
-func NewWebSocketService(dbStorage storage.DynamoDBStorage, jwtSecret []byte) *WebSocketService {
+func NewWebSocketService(
+	connections repository.WebSocketRepository,
+	subscriptions repository.SpotSubscriptionRepository,
+	jwtSecret []byte,
+) *WebSocketService {
 	return &WebSocketService{
-		dbStorage: dbStorage,
-		jwtSecret: jwtSecret,
+		connections:   connections,
+		subscriptions: subscriptions,
+		jwtSecret:     jwtSecret,
 	}
 }
 
@@ -40,138 +45,30 @@ func (s *WebSocketService) ValidateWebSocketToken(token string) (*jwt.Token, err
 }
 
 func (s *WebSocketService) SaveConnection(conn *model.ConnectionInfo) error {
-	conn.TTL = time.Now().Add(24 * time.Hour).Unix()
-
-	item, err := dynamodbattribute.MarshalMap(conn)
-	if err != nil {
-		return err
+	if conn.TTL == 0 {
+		conn.TTL = time.Now().Add(24 * time.Hour).Unix()
 	}
-
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Item:      item,
-	}
-
-	_, err = s.dbStorage.PutItem(input)
-	return err
+	return s.connections.SaveConnection(context.Background(), conn)
 }
 
 func (s *WebSocketService) DeleteConnection(connectionID string) error {
-	input := &dynamodb.DeleteItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
-	}
-
-	_, err := s.dbStorage.DeleteItem(input)
-	return err
+	return s.connections.DeleteConnection(context.Background(), connectionID)
 }
 
 func (s *WebSocketService) UpdateConnectionLastActive(connectionID string) error {
-	newTTL := time.Now().Add(24 * time.Hour).Unix()
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
-		UpdateExpression: aws.String("SET LastActive = :time, ttl = :ttl"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":time": {
-				S: aws.String(time.Now().Format(time.RFC3339)),
-			},
-			":ttl": {
-				N: aws.String(fmt.Sprintf("%d", newTTL)),
-			},
-		},
-	}
-
-	_, err := s.dbStorage.UpdateItem(input)
-	return err
+	return s.connections.UpdateLastActive(context.Background(), connectionID)
 }
 
 func (s *WebSocketService) GetConnection(connectionID string) (*model.ConnectionInfo, error) {
-	input := &dynamodb.GetItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
-	}
-
-	result, err := s.dbStorage.GetItem(input)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(result.Item) == 0 {
-		return nil, fmt.Errorf("connection not found")
-	}
-
-	var connection model.ConnectionInfo
-	err = dynamodbattribute.UnmarshalMap(result.Item, &connection)
-	if err != nil {
-		return nil, err
-	}
-
-	return &connection, nil
+	return s.connections.GetConnection(context.Background(), connectionID)
 }
 
 func (s *WebSocketService) UpdateConnectionSpot(connectionID, spotIdentifier string) error {
-	newTTL := time.Now().Add(24 * time.Hour).Unix()
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
-		UpdateExpression: aws.String("SET CurrentSpot = :spot, LastActive = :time, ttl = :ttl"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot": {
-				S: aws.String(spotIdentifier),
-			},
-			":time": {
-				S: aws.String(time.Now().Format(time.RFC3339)),
-			},
-			":ttl": {
-				N: aws.String(fmt.Sprintf("%d", newTTL)),
-			},
-		},
-	}
-
-	_, err := s.dbStorage.UpdateItem(input)
-	return err
+	return s.connections.UpdateSpot(context.Background(), connectionID, spotIdentifier)
 }
 
 func (s *WebSocketService) SaveSubscription(spotIdentifier, userID, connectionID string) error {
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("SpotSubscriptions"),
-		Item: map[string]*dynamodb.AttributeValue{
-			"spot_id": {
-				S: aws.String(spotIdentifier),
-			},
-			"user_id": {
-				S: aws.String(userID),
-			},
-			"subscribed_at": {
-				S: aws.String(time.Now().Format(time.RFC3339)),
-			},
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
-	}
-
-	_, err := s.dbStorage.PutItem(input)
-	return err
+	return s.subscriptions.Save(context.Background(), spotIdentifier, userID, connectionID)
 }
 
 // SendToConnection sends a message to a specific WebSocket client
@@ -266,34 +163,5 @@ func (s *WebSocketService) BroadcastToUsers(userIDs []string, message interface{
 }
 
 func (s *WebSocketService) GetConnectionsByUserIDs(userIDs []string) ([]*model.ConnectionInfo, error) {
-	var allConnections []*model.ConnectionInfo
-
-	for _, userID := range userIDs {
-		input := &dynamodb.ScanInput{
-			TableName:        aws.String("WebSocketConnections"),
-			FilterExpression: aws.String("user_id = :user_id"),
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":user_id": {
-					S: aws.String(userID),
-				},
-			},
-		}
-
-		result, err := s.dbStorage.Scan(input)
-		if err != nil {
-			log.Printf("Error scanning connections for user %s: %v", userID, err)
-			continue
-		}
-
-		for _, item := range result.Items {
-			var conn model.ConnectionInfo
-			if err := dynamodbattribute.UnmarshalMap(item, &conn); err != nil {
-				log.Printf("Error unmarshalling connection: %v", err)
-				continue
-			}
-			allConnections = append(allConnections, &conn)
-		}
-	}
-
-	return allConnections, nil
+	return s.connections.GetConnectionsByUserIDs(context.Background(), userIDs)
 }

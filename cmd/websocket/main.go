@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	repodynamo "treblesurf-backend/internal/repository/dynamodb"
 	"treblesurf-backend/internal/service"
 	"treblesurf-backend/internal/storage"
 	"treblesurf-backend/internal/websocket"
@@ -27,6 +28,7 @@ func initialize() error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize DynamoDB storage: %w", err)
 	}
+	dynamoClient := dbStorage.GetDynamoDBClient()
 
 	// Get JWT secret from environment
 	jwtSecret := os.Getenv("JWT_SECRET")
@@ -34,8 +36,10 @@ func initialize() error {
 		return fmt.Errorf("JWT_SECRET environment variable is required")
 	}
 
-	// Initialize WebSocket service
-	websocketService := service.NewWebSocketService(dbStorage, []byte(jwtSecret))
+	// Initialize WebSocket repositories/service
+	websocketRepo := repodynamo.NewWebSocketRepo(dynamoClient, "WebSocketConnections")
+	subscriptionRepo := repodynamo.NewSpotSubscriptionRepo(dynamoClient, "SpotSubscriptions")
+	websocketService := service.NewWebSocketService(websocketRepo, subscriptionRepo, []byte(jwtSecret))
 
 	// Initialize WebSocket handler
 	websocketHandler = websocket.NewHandler(websocketService)

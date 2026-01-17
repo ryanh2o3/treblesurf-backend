@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -37,7 +38,7 @@ func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
 		return
 	}
 	
-	if forecast != nil {
+	if len(forecast) > 0 {
 		ctx.JSON(http.StatusOK, forecast)
 		return
 	}
@@ -84,12 +85,7 @@ func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 
 	// Sort the forecasts by country, region, and spot
 	sort.Slice(forecasts, func(i, j int) bool {
-		spotI, okI := forecasts[i]["country_region_spot"].(string)
-		spotJ, okJ := forecasts[j]["country_region_spot"].(string)
-		if !okI || !okJ {
-			return false
-		}
-		return spotI < spotJ
+		return compareSpot(forecasts[i], forecasts[j])
 	})
 
 	ctx.JSON(http.StatusOK, forecasts)
@@ -106,12 +102,25 @@ func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
 		return
 	}
 	
-	if forecast != nil {
+	if len(forecast) > 0 {
 		ctx.JSON(http.StatusOK, forecast)
 		return
 	}
 
 	ctx.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
+}
+
+func compareSpot(a, b *model.Forecast) bool {
+	if a == nil && b == nil {
+		return false
+	}
+	if a == nil {
+		return false
+	}
+	if b == nil {
+		return true
+	}
+	return a.CountryRegionSpot < b.CountryRegionSpot
 }
 
 func (c *ForecastController) GetBeforeAfterTides(ctx *gin.Context) {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"log"
@@ -157,13 +158,12 @@ func (s *ReportService) createBaseReportItem(
 }
 
 func (s *ReportService) storeReport(item map[string]*dynamodb.AttributeValue) error {
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("SurfReports"),
-		Item:      item,
+	var report model.SurfReport
+	if err := dynamodbattribute.UnmarshalMap(item, &report); err != nil {
+		return fmt.Errorf("failed to unmarshal report: %w", err)
 	}
 
-	_, err := s.dbStorage.PutItem(input)
-	if err != nil {
+	if err := s.reportRepo.Create(context.Background(), &report); err != nil {
 		return fmt.Errorf("failed to store report: %w", err)
 	}
 
@@ -233,10 +233,10 @@ func (s *ReportService) processS3ImageForReport(
 		return "", nil
 	}
 
-	imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
+	imageData, err := s.mediaRepo.Download(context.Background(), imageKey)
 	if err != nil {
 		log.Printf("Failed to retrieve pre-uploaded image %s: %v", imageKey, err)
-		if delErr := s.s3Storage.DeleteObject(s.bucketName, imageKey); delErr != nil {
+		if delErr := s.mediaRepo.Delete(context.Background(), imageKey); delErr != nil {
 			log.Printf("Failed to cleanup image %s: %v", imageKey, delErr)
 		}
 		return "", model.ErrImageRetrievalFailed
@@ -245,14 +245,14 @@ func (s *ReportService) processS3ImageForReport(
 	valid, err := s.validateImageWithRekognition(imageData)
 	if err != nil {
 		log.Printf("Failed to validate pre-uploaded image %s: %v", imageKey, err)
-		if delErr := s.s3Storage.DeleteObject(s.bucketName, imageKey); delErr != nil {
+		if delErr := s.mediaRepo.Delete(context.Background(), imageKey); delErr != nil {
 			log.Printf("Failed to cleanup image %s: %v", imageKey, delErr)
 		}
 		return "", err
 	}
 	if !valid {
 		log.Printf("Pre-uploaded image %s failed validation, deleting", imageKey)
-		if delErr := s.s3Storage.DeleteObject(s.bucketName, imageKey); delErr != nil {
+		if delErr := s.mediaRepo.Delete(context.Background(), imageKey); delErr != nil {
 			log.Printf("Failed to cleanup image %s: %v", imageKey, delErr)
 		}
 		return "", model.ErrImageNotSurfRelated
@@ -266,7 +266,7 @@ func (s *ReportService) storeReportWithCleanup(item map[string]*dynamodb.Attribu
 	err := s.storeReport(item)
 	if err != nil && s3Key != "" {
 		log.Printf("Database insertion failed, cleaning up image %s", s3Key)
-		if delErr := s.s3Storage.DeleteObject(s.bucketName, s3Key); delErr != nil {
+		if delErr := s.mediaRepo.Delete(context.Background(), s3Key); delErr != nil {
 			log.Printf("Failed to cleanup image %s: %v", s3Key, delErr)
 		}
 	}
@@ -293,40 +293,25 @@ func (s *ReportService) processIOSMediaKeys(
 }
 
 // buildSpotReportsQueryInput builds a DynamoDB query input for retrieving spot reports.
-func (s *ReportService) buildSpotReportsQueryInput(
-	countryRegionSpot string,
-	limit int,
-	lastEvaluatedKey map[string]*dynamodb.AttributeValue,
-) *dynamodb.QueryInput {
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("SurfReports"),
-		KeyConditionExpression: aws.String("country_region_spot = :crs"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":crs": {S: aws.String(countryRegionSpot)},
-		},
-		ScanIndexForward: aws.Bool(false), // Sort in descending order
-	}
-
-	if limit > 0 {
-		input.Limit = aws.Int64(int64(limit))
-	}
-	if lastEvaluatedKey != nil {
-		input.ExclusiveStartKey = lastEvaluatedKey
-	}
-
-	return input
-}
-
-// unmarshalSpotReports unmarshals DynamoDB items into report maps.
-func (s *ReportService) unmarshalSpotReports(
-	items []map[string]*dynamodb.AttributeValue,
+func (s *ReportService) convertReportsToMaps(
+	reports []*model.SurfReport,
 ) ([]map[string]interface{}, error) {
-	var reports []map[string]interface{}
-	err := dynamodbattribute.UnmarshalListOfMaps(items, &reports)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal reports: %w", err)
+	out := make([]map[string]interface{}, 0, len(reports))
+	for _, report := range reports {
+		if report == nil {
+			continue
+		}
+		item, err := dynamodbattribute.MarshalMap(report)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal report: %w", err)
+		}
+		var reportMap map[string]interface{}
+		if err := dynamodbattribute.UnmarshalMap(item, &reportMap); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal report: %w", err)
+		}
+		out = append(out, reportMap)
 	}
-	return reports, nil
+	return out, nil
 }
 
 // normalizeSpotReports normalizes report maps by removing sensitive fields and adding defaults.
@@ -358,66 +343,33 @@ func setDefaultIfMissing(m map[string]interface{}, key string, defaultValue inte
 }
 
 // queryCurrentForecast queries for the most recent forecast data.
-func (s *ReportService) queryCurrentForecast(spotID string) (*dynamodb.QueryOutput, error) {
-	currentEpoch := time.Now().Unix()
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("SpotForecastData"),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":current_time": {
-				S: aws.String(fmt.Sprintf("%d", currentEpoch-3600)), // 1 hour ago
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
-		Limit:            aws.Int64(1),
+func (s *ReportService) queryCurrentForecast(spotID string) (map[string]interface{}, error) {
+	currentTime := time.Now().Add(-1 * time.Hour)
+	forecasts, err := s.forecastDataRepo.QuerySince(context.Background(), spotID, currentTime, 1)
+	if err != nil {
+		return nil, err
 	}
-
-	return s.dbStorage.Query(input)
+	if len(forecasts) == 0 {
+		return nil, nil
+	}
+	return forecasts[0], nil
 }
 
 // queryHistoricalForecast queries for forecast data looking backwards up to 24 hours.
 //
 //nolint:unparam // Error return maintained for API consistency
-func (s *ReportService) queryHistoricalForecast(spotID string) (*dynamodb.QueryOutput, error) {
-	currentEpoch := time.Now().Unix()
+func (s *ReportService) queryHistoricalForecast(spotID string) (map[string]interface{}, error) {
+	currentTime := time.Now()
 
 	for i := 1; i <= 24; i++ {
-		pastEpoch := currentEpoch - int64(i*3600)
-		input := &dynamodb.QueryInput{
-			TableName:              aws.String("SpotForecastData"),
-			KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":spot_id": {
-					S: aws.String(spotID),
-				},
-				":current_time": {
-					S: aws.String(fmt.Sprintf("%d", pastEpoch)),
-				},
-			},
-			ScanIndexForward: aws.Bool(true),
-			Limit:            aws.Int64(1),
-		}
-
-		result, err := s.dbStorage.Query(input)
-		if err == nil && len(result.Items) > 0 {
-			return result, nil
+		pastTime := currentTime.Add(-time.Duration(i) * time.Hour)
+		forecasts, err := s.forecastDataRepo.QuerySince(context.Background(), spotID, pastTime, 1)
+		if err == nil && len(forecasts) > 0 {
+			return forecasts[0], nil
 		}
 	}
 
-	return &dynamodb.QueryOutput{}, nil
-}
-
-// unmarshalForecast unmarshals a DynamoDB item into a forecast map.
-func (s *ReportService) unmarshalForecast(item map[string]*dynamodb.AttributeValue) (map[string]interface{}, error) {
-	var forecast map[string]interface{}
-	err := dynamodbattribute.UnmarshalMap(item, &forecast)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal forecast: %w", err)
-	}
-	return forecast, nil
+	return nil, nil
 }
 
 // extractWindData extracts wind speed and direction from forecast data.

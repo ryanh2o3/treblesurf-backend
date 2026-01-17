@@ -2,26 +2,24 @@
 package service
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"time"
-	"treblesurf-backend/internal/model"
-	"treblesurf-backend/internal/storage"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 )
 
 type APIKeyService struct {
-	dbStorage storage.DynamoDBStorage
+	apiKeys repository.APIKeyRepository
 }
 
 // NewAPIKeyService creates a new API key service instance.
-func NewAPIKeyService(dbStorage storage.DynamoDBStorage) *APIKeyService {
+func NewAPIKeyService(apiKeys repository.APIKeyRepository) *APIKeyService {
 	return &APIKeyService{
-		dbStorage: dbStorage,
+		apiKeys: apiKeys,
 	}
 }
 
@@ -68,58 +66,27 @@ func (s *APIKeyService) GenerateAPIKey(
 	return apiKey, nil
 }
 
-// StoreAPIKey stores an API key in DynamoDB
+// StoreAPIKey stores an API key using the repository.
 func (s *APIKeyService) StoreAPIKey(apiKey *model.APIKey) error {
-	item, err := dynamodbattribute.MarshalMap(apiKey)
-	if err != nil {
-		return err
-	}
-	
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("ApiKeys"),
-		Item:      item,
-	}
-	
-	_, err = s.dbStorage.PutItem(input)
-	return err
+	return s.apiKeys.Create(context.Background(), apiKey)
 }
 
-// ValidateAPIKey validates an API key against DynamoDB
+// ValidateAPIKey validates an API key using the repository.
 func (s *APIKeyService) ValidateAPIKey(keyValue, requiredScope string) (*model.APIKey, bool) {
-	// Query by key value
-	input := &dynamodb.ScanInput{
-		TableName:        aws.String("ApiKeys"),
-		FilterExpression: aws.String("key_value = :keyValue"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":keyValue": {
-				S: aws.String(keyValue),
-			},
-		},
-	}
-	
-	result, err := s.dbStorage.Scan(input)
-	if err != nil || len(result.Items) == 0 {
-		fmt.Print("nothing found for key")
-		return nil, false
-	}
-	
-	var apiKey model.APIKey
-	err = dynamodbattribute.UnmarshalMap(result.Items[0], &apiKey)
+	apiKey, err := s.apiKeys.GetByKey(context.Background(), keyValue)
 	if err != nil {
-		fmt.Print("error unmarshalling")
 		return nil, false
 	}
 	
 	// Check if the key is expired
 	if time.Now().After(apiKey.ExpiresAt) {
-		fmt.Print("key expired")
 		return nil, false
 	}
 	
 	// Check if the key has the required scope
 	for _, scope := range apiKey.Scopes {
 		if scope == requiredScope {
-			return &apiKey, true
+			return apiKey, true
 		}
 	}
 	
@@ -128,44 +95,20 @@ func (s *APIKeyService) ValidateAPIKey(keyValue, requiredScope string) (*model.A
 
 // ListAPIKeys retrieves all API keys for a user
 func (s *APIKeyService) ListAPIKeys(createdBy string) ([]*model.APIKey, error) {
-	input := &dynamodb.ScanInput{
-		TableName:        aws.String("ApiKeys"),
-		FilterExpression: aws.String("created_by = :createdBy"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":createdBy": {
-				S: aws.String(createdBy),
-			},
-		},
-	}
-	
-	result, err := s.dbStorage.Scan(input)
+	apiKeys, err := s.apiKeys.List(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	
-	var apiKeys []*model.APIKey
-	for _, item := range result.Items {
-		var apiKey model.APIKey
-		if err := dynamodbattribute.UnmarshalMap(item, &apiKey); err != nil {
-			continue
+	filtered := make([]*model.APIKey, 0, len(apiKeys))
+	for _, key := range apiKeys {
+		if key.CreatedBy == createdBy {
+			filtered = append(filtered, key)
 		}
-		apiKeys = append(apiKeys, &apiKey)
 	}
-	
-	return apiKeys, nil
+	return filtered, nil
 }
 
 // RevokeAPIKey deletes an API key
 func (s *APIKeyService) RevokeAPIKey(keyID string) error {
-	input := &dynamodb.DeleteItemInput{
-		TableName: aws.String("ApiKeys"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"key_id": {
-				S: aws.String(keyID),
-			},
-		},
-	}
-	
-	_, err := s.dbStorage.DeleteItem(input)
-	return err
+	return s.apiKeys.Revoke(context.Background(), keyID)
 }

@@ -1,205 +1,122 @@
 package service
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"strings"
-	"treblesurf-backend/internal/model"
-	"treblesurf-backend/internal/storage"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 )
 
 type LocationService struct {
-	dbStorage  storage.DynamoDBStorage
-	s3Storage  storage.S3Storage
-	bucketName string
+	locations repository.LocationRepository
+	media     repository.MediaRepository
 }
 
 func NewLocationService(
-	dbStorage storage.DynamoDBStorage,
-	s3Storage storage.S3Storage,
-	bucketName string,
+	locations repository.LocationRepository,
+	media repository.MediaRepository,
 ) *LocationService {
 	return &LocationService{
-		dbStorage:  dbStorage,
-		s3Storage:  s3Storage,
-		bucketName: bucketName,
+		locations: locations,
+		media:     media,
 	}
 }
 
 func (s *LocationService) GetRegions(countryName string) ([]string, error) {
-	input := &dynamodb.ScanInput{
-		TableName: aws.String("LocationData"),
-	}
+	return s.GetRegionsWithContext(context.Background(), countryName)
+}
 
-	result, err := s.dbStorage.Scan(input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan locations: %v", err)
-	}
-
-	var locations []map[string]interface{}
-	err = storage.UnmarshalListOfMaps(result.Items, &locations)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal locations: %v", err)
-	}
-
-	var regions []string
-	for _, location := range locations {
-		countryRegionSpot, ok := location["country_region_spot"].(string)
-		if !ok {
-			continue
-		}
-		parts := strings.Split(countryRegionSpot, "/")
-		if parts[0] == countryName && len(parts) > 1 {
-			region := parts[1]
-			if !contains(regions, region) {
-				regions = append(regions, region)
-			}
-		}
-	}
-
-	return regions, nil
+func (s *LocationService) GetRegionsWithContext(ctx context.Context, countryName string) ([]string, error) {
+	return s.locations.GetRegions(ctx, countryName)
 }
 
 func (s *LocationService) GetSpots(countryName, regionName string) ([]model.LocationInfo, error) {
-	input := &dynamodb.ScanInput{
-		TableName: aws.String("LocationData"),
-		FilterExpression: aws.String("begins_with(country_region_spot, :location)"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":location": {
-				S: aws.String(fmt.Sprintf("%s/%s/", countryName, regionName)),
-			},
-		},
-	}
+	return s.GetSpotsWithContext(context.Background(), countryName, regionName)
+}
 
-	result, err := s.dbStorage.Scan(input)
+func (s *LocationService) GetSpotsWithContext(ctx context.Context, countryName, regionName string) ([]model.LocationInfo, error) {
+	spots, err := s.locations.GetSpots(ctx, countryName, regionName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan spots: %v", err)
+		return nil, err
 	}
 
-	var locations []model.LocationInfo
-	err = storage.UnmarshalListOfMaps(result.Items, &locations)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal spots: %v", err)
-	}
-
-	// Fetch and encode images for each location
-	for i := range locations {
-		// Extract spot name from CountryRegionSpot field
-		// Format: country/region/spot
-		parts := strings.Split(locations[i].CountryRegionSpot, "/")
-		if len(parts) >= 3 {
-			spotName := parts[2]
-			
-			// Construct the S3 key for the image
-			// Format: spot-images/country_region_spot.jpg
-			// Remove all spaces from input strings since S3 image names have no spaces
-			imageKey := fmt.Sprintf("spot-images/%s_%s_%s.jpg", 
-				strings.ReplaceAll(countryName, " ", ""), 
-				strings.ReplaceAll(regionName, " ", ""), 
-				strings.ReplaceAll(spotName, " ", ""))
-			
-			// Try to fetch the image from S3
-			imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
-			if err != nil {
-				// Log error but don't fail the request
-				// locations[i].ImageString will remain empty
-				fmt.Printf("Failed to fetch image for %s: %v\n", imageKey, err)
-			} else {
-				// Encode the image data as base64
-				locations[i].ImageString = base64.StdEncoding.EncodeToString(imageData)
-			}
+	locations := make([]model.LocationInfo, 0, len(spots))
+	for _, spot := range spots {
+		if spot == nil {
+			continue
 		}
+		location := *spot
+		s.populateImage(ctx, &location, countryName, regionName)
+		locations = append(locations, location)
 	}
 
 	return locations, nil
 }
 
 func (s *LocationService) GetLocationInfo(countryName, regionName, spotName string) (*model.LocationInfo, error) {
-	input := &dynamodb.QueryInput{
-		TableName: aws.String("LocationData"),
-		KeyConditionExpression: aws.String("country_region_spot = :location"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":location": {
-				S: aws.String(fmt.Sprintf("%s/%s/%s", countryName, regionName, spotName)),
-			},
-		},
-	}
+	return s.GetLocationInfoWithContext(context.Background(), countryName, regionName, spotName)
+}
 
-	result, err := s.dbStorage.Query(input)
+func (s *LocationService) GetLocationInfoWithContext(
+	ctx context.Context,
+	countryName, regionName, spotName string,
+) (*model.LocationInfo, error) {
+	location, err := s.locations.GetLocationInfo(ctx, countryName, regionName, spotName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query location: %v", err)
+		return nil, err
 	}
 
-	if len(result.Items) == 0 {
-		return nil, fmt.Errorf("no location found")
-	}
-
-	var location model.LocationInfo
-	err = storage.UnmarshalMap(result.Items[0], &location)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal location: %v", err)
-	}
-
-	// Get image from S3 if available
-	// Construct the S3 key for the image
-	// Format: spot-images/country_region_spot.jpg
-	// Remove all spaces from input strings since S3 image names have no spaces
-	imageKey := fmt.Sprintf("spot-images/%s_%s_%s.jpg", 
-		strings.ReplaceAll(countryName, " ", ""), 
-		strings.ReplaceAll(regionName, " ", ""), 
-		strings.ReplaceAll(spotName, " ", ""))
-	
-	imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
-	if err != nil {
-		// Log error but don't fail the request
-		// location.ImageString will remain empty
-		fmt.Printf("Failed to fetch image for %s: %v\n", imageKey, err)
-	} else {
-		// Encode the image data as base64
-		location.ImageString = base64.StdEncoding.EncodeToString(imageData)
-	}
-
-	return &location, nil
+	s.populateImage(ctx, location, countryName, regionName)
+	return location, nil
 }
 
 func (s *LocationService) GetCoordinates(countryName, regionName, spotName string) ([]float64, error) {
-	input := &dynamodb.QueryInput{
-		TableName: aws.String("LocationData"),
-		KeyConditionExpression: aws.String("country_region_spot = :location"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":location": {
-				S: aws.String(fmt.Sprintf("%s/%s/%s", countryName, regionName, spotName)),
-			},
-		},
-	}
+	return s.GetCoordinatesWithContext(context.Background(), countryName, regionName, spotName)
+}
 
-	result, err := s.dbStorage.Query(input)
+func (s *LocationService) GetCoordinatesWithContext(
+	ctx context.Context,
+	countryName, regionName, spotName string,
+) ([]float64, error) {
+	lat, lon, err := s.locations.GetCoordinates(ctx, countryName, regionName, spotName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query coordinates: %v", err)
+		return nil, err
+	}
+	return []float64{lat, lon}, nil
+}
+
+func (s *LocationService) populateImage(
+	ctx context.Context,
+	location *model.LocationInfo,
+	countryName, regionName string,
+) {
+	if location == nil || location.CountryRegionSpot == "" {
+		return
 	}
 
-	if len(result.Items) == 0 {
-		return nil, fmt.Errorf("no coordinates found")
+	parts := strings.Split(location.CountryRegionSpot, "/")
+	if len(parts) < 3 {
+		return
 	}
+	spotName := parts[2]
 
-	var location map[string]interface{}
-	err = storage.UnmarshalMap(result.Items[0], &location)
+	imageKey := fmt.Sprintf(
+		"spot-images/%s_%s_%s.jpg",
+		strings.ReplaceAll(countryName, " ", ""),
+		strings.ReplaceAll(regionName, " ", ""),
+		strings.ReplaceAll(spotName, " ", ""),
+	)
+
+	imageData, err := s.media.Download(ctx, imageKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal coordinates: %v", err)
+		fmt.Printf("Failed to fetch image for %s: %v\n", imageKey, err)
+		return
 	}
 
-	lat, ok1 := location["Latitude"].(float64)
-	lon, ok2 := location["Longitude"].(float64)
-	if !ok1 || !ok2 {
-		return nil, fmt.Errorf("invalid coordinate types")
-	}
-	
-	coordinates := []float64{lat, lon}
-
-	return coordinates, nil
+	location.ImageString = base64.StdEncoding.EncodeToString(imageData)
 }
 
 // Helper function

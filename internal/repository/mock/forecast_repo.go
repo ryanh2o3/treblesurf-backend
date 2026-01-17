@@ -14,6 +14,9 @@ type ForecastRepo struct {
 	GetSpotForecastFn    func(ctx context.Context, country, region, spot string) ([]*model.Forecast, error)
 	GetCurrentConditionsFn func(ctx context.Context, country, region, spot string) (*model.Forecast, error)
 	GetForecastAtTimeFn  func(ctx context.Context, country, region, spot string, t time.Time) (*model.Forecast, error)
+	GetRegionForecastFn  func(ctx context.Context, country, region string, forecastDate time.Time) ([]*model.Forecast, error)
+	QuerySinceFn         func(ctx context.Context, spotID string, since time.Time, limit int) ([]map[string]interface{}, error)
+	QueryBetweenFn       func(ctx context.Context, spotID string, start, end time.Time, limit int) ([]map[string]interface{}, error)
 }
 
 func (m *ForecastRepo) GetSpotForecast(ctx context.Context, country, region, spot string) ([]*model.Forecast, error) {
@@ -33,6 +36,27 @@ func (m *ForecastRepo) GetCurrentConditions(ctx context.Context, country, region
 func (m *ForecastRepo) GetForecastAtTime(ctx context.Context, country, region, spot string, t time.Time) (*model.Forecast, error) {
 	if m.GetForecastAtTimeFn != nil {
 		return m.GetForecastAtTimeFn(ctx, country, region, spot, t)
+	}
+	return nil, nil
+}
+
+func (m *ForecastRepo) GetRegionForecast(ctx context.Context, country, region string, forecastDate time.Time) ([]*model.Forecast, error) {
+	if m.GetRegionForecastFn != nil {
+		return m.GetRegionForecastFn(ctx, country, region, forecastDate)
+	}
+	return nil, nil
+}
+
+func (m *ForecastRepo) QuerySince(ctx context.Context, spotID string, since time.Time, limit int) ([]map[string]interface{}, error) {
+	if m.QuerySinceFn != nil {
+		return m.QuerySinceFn(ctx, spotID, since, limit)
+	}
+	return nil, nil
+}
+
+func (m *ForecastRepo) QueryBetween(ctx context.Context, spotID string, start, end time.Time, limit int) ([]map[string]interface{}, error) {
+	if m.QueryBetweenFn != nil {
+		return m.QueryBetweenFn(ctx, spotID, start, end, limit)
 	}
 	return nil, nil
 }

@@ -33,14 +33,19 @@ func (r *ReportRepo) Create(ctx context.Context, report *model.SurfReport) error
 		return fmt.Errorf("marshaling report: %w", err)
 	}
 
-	if report.Country != "" && report.Region != "" && report.Spot != "" {
+	if report.CountryRegionSpot == "" && report.Country != "" && report.Region != "" && report.Spot != "" {
 		item["country_region_spot"] = &dynamodb.AttributeValue{
 			S: aws.String(fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)),
 		}
 	}
-	if !report.Timestamp.IsZero() {
+	if report.DateReported == "" && !report.Timestamp.IsZero() {
 		item["dateReported"] = &dynamodb.AttributeValue{
 			S: aws.String(report.Timestamp.UTC().Format(time.RFC3339)),
+		}
+	}
+	if report.Time == "" && !report.Timestamp.IsZero() {
+		item["Time"] = &dynamodb.AttributeValue{
+			S: aws.String(report.Timestamp.String()),
 		}
 	}
 
@@ -122,6 +127,41 @@ func (r *ReportRepo) GetBySpotAndTimeRange(
 	result, err := r.client.QueryWithContext(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("querying reports by time: %w", err)
+	}
+
+	reports := make([]*model.SurfReport, 0, len(result.Items))
+	for _, item := range result.Items {
+		var report model.SurfReport
+		if err := dynamodbattribute.UnmarshalMap(item, &report); err != nil {
+			return nil, fmt.Errorf("unmarshaling report: %w", err)
+		}
+		reports = append(reports, &report)
+	}
+
+	return reports, nil
+}
+
+func (r *ReportRepo) ScanSince(ctx context.Context, since time.Time, limit int) ([]*model.SurfReport, error) {
+	input := &dynamodb.ScanInput{
+		TableName:        aws.String(r.tableName),
+		FilterExpression: aws.String("#Time > :cutoff"),
+		ExpressionAttributeNames: map[string]*string{
+			"#Time": aws.String("Time"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":cutoff": {
+				S: aws.String(since.UTC().Format("2006-01-02T15:04:05Z")),
+			},
+		},
+	}
+
+	if limit > 0 {
+		input.Limit = aws.Int64(int64(limit))
+	}
+
+	result, err := r.client.ScanWithContext(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("scanning reports: %w", err)
 	}
 
 	reports := make([]*model.SurfReport, 0, len(result.Items))

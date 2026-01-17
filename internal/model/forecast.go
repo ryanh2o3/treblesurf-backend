@@ -3,6 +3,8 @@ package model
 import "time"
 
 type Forecast struct {
+	CountryRegionSpot string    `json:"country_region_spot" dynamodbav:"country_region_spot"`
+	ForecastDate      string    `json:"forecast_date" dynamodbav:"ForecastDate"`
 	Date              time.Time `json:"date" dynamodbav:"date"`
 	Conditions        string    `json:"conditions" dynamodbav:"conditions"`
 	Country           string    `json:"country" dynamodbav:"country"`

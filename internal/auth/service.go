@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -12,14 +13,13 @@ import (
 	"time"
 
 	"treblesurf-backend/internal/constants"
+	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 
 	"github.com/adam-hanna/sessions"
 	"github.com/adam-hanna/sessions/auth"
 	"github.com/adam-hanna/sessions/transport"
 	"github.com/adam-hanna/sessions/user"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -64,90 +64,47 @@ type SessionInfo struct {
 	Current    bool      `json:"current"`
 }
 
-// DynamoDBStore implements the session store interface using DynamoDB
+// DynamoDBStore implements the session store interface using a session repository.
 type DynamoDBStore struct {
-	db        *dynamodb.DynamoDB
-	tableName string
+	sessions repository.SessionRepository
 }
 
-func NewDynamoDBStore(db *dynamodb.DynamoDB, tableName string) *DynamoDBStore {
+func NewDynamoDBStore(sessionsRepo repository.SessionRepository) *DynamoDBStore {
 	return &DynamoDBStore{
-		db:        db,
-		tableName: tableName,
+		sessions: sessionsRepo,
 	}
 }
 
-type SessionItem struct {
-	SessionID string    `json:"session_id"`
-	UserID    string    `json:"user_id"`
-	ExpiresAt time.Time `json:"expires_at"`
-	JSON      string    `json:"json_data"`
-	TTL       int64     `json:"ttl"`
-}
-
 func (s *DynamoDBStore) SaveUserSession(userSession *user.Session) error {
-	sessionItem := SessionItem{
+	if s.sessions == nil {
+		return fmt.Errorf("session repository not initialized")
+	}
+	sessionItem := &model.Session{
 		SessionID: userSession.ID,
 		UserID:    userSession.UserID,
 		ExpiresAt: userSession.ExpiresAt,
 		JSON:      userSession.JSON,
 		TTL:       userSession.ExpiresAt.Unix(),
 	}
-
-	item, err := dynamodbattribute.MarshalMap(sessionItem)
-	if err != nil {
-		return err
-	}
-
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String(s.tableName),
-		Item:      item,
-	}
-
-	_, err = s.db.PutItem(input)
-	return err
+	return s.sessions.Save(context.Background(), sessionItem)
 }
 
 func (s *DynamoDBStore) DeleteUserSession(sessionID string) error {
-	input := &dynamodb.DeleteItemInput{
-		TableName: aws.String(s.tableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"session_id": {
-				S: aws.String(sessionID),
-			},
-		},
+	if s.sessions == nil {
+		return fmt.Errorf("session repository not initialized")
 	}
-
-	_, err := s.db.DeleteItem(input)
-	return err
+	return s.sessions.Delete(context.Background(), sessionID)
 }
 
 func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, error) {
-	input := &dynamodb.GetItemInput{
-		TableName: aws.String(s.tableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"session_id": {
-				S: aws.String(sessionID),
-			},
-		},
+	if s.sessions == nil {
+		return nil, fmt.Errorf("session repository not initialized")
 	}
-
-	result, err := s.db.GetItem(input)
+	sessionItem, err := s.sessions.Get(context.Background(), sessionID)
 	if err != nil {
 		return nil, err
 	}
-
-	if result.Item == nil {
-		return nil, nil
-	}
-
-	var sessionItem SessionItem
-	err = dynamodbattribute.UnmarshalMap(result.Item, &sessionItem)
-	if err != nil {
-		return nil, err
-	}
-
-	if time.Now().After(sessionItem.ExpiresAt) {
+	if sessionItem == nil || time.Now().After(sessionItem.ExpiresAt) {
 		return nil, nil
 	}
 
@@ -160,98 +117,42 @@ func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, 
 }
 
 func (s *DynamoDBStore) EnableTTL() error {
-	input := &dynamodb.UpdateTimeToLiveInput{
-		TableName: aws.String(s.tableName),
-		TimeToLiveSpecification: &dynamodb.TimeToLiveSpecification{
-			AttributeName: aws.String("ttl"),
-			Enabled:       aws.Bool(true),
-		},
-	}
-
-	_, err := s.db.UpdateTimeToLive(input)
-	return err
+	return nil
 }
 
 func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, error) {
-	input := &dynamodb.ScanInput{
-		TableName:        aws.String(s.tableName),
-		FilterExpression: aws.String("user_id = :uid"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":uid": {
-				S: aws.String(userID),
-			},
-		},
+	if s.sessions == nil {
+		return nil, fmt.Errorf("session repository not initialized")
 	}
-
-	result, err := s.db.Scan(input)
+	sessionItems, err := s.sessions.GetByUserID(context.Background(), userID)
 	if err != nil {
 		return nil, err
 	}
 
-	userSessions := make([]*user.Session, 0)
+	userSessions := make([]*user.Session, 0, len(sessionItems))
 	now := time.Now()
-
-	for _, item := range result.Items {
-		sessionItem := &SessionItem{}
-		if err := dynamodbattribute.UnmarshalMap(item, sessionItem); err != nil {
+	for _, sessionItem := range sessionItems {
+		if sessionItem == nil || now.After(sessionItem.ExpiresAt) {
 			continue
 		}
-
-		if now.After(sessionItem.ExpiresAt) {
-			continue
-		}
-
-		userSession := &user.Session{
+		userSessions = append(userSessions, &user.Session{
 			ID:        sessionItem.SessionID,
 			UserID:    sessionItem.UserID,
 			ExpiresAt: sessionItem.ExpiresAt,
 			JSON:      sessionItem.JSON,
-		}
-
-		userSessions = append(userSessions, userSession)
+		})
 	}
 
 	return userSessions, nil
 }
 
 func (s *DynamoDBStore) EnsureSessionsTable() error {
-	tables, err := s.db.ListTables(&dynamodb.ListTablesInput{})
-	if err != nil {
-		return err
-	}
-
-	for _, tableName := range tables.TableNames {
-		if *tableName == s.tableName {
-			return nil
-		}
-	}
-
-	input := &dynamodb.CreateTableInput{
-		AttributeDefinitions: []*dynamodb.AttributeDefinition{
-			{
-				AttributeName: aws.String("session_id"),
-				AttributeType: aws.String("S"),
-			},
-		},
-		KeySchema: []*dynamodb.KeySchemaElement{
-			{
-				AttributeName: aws.String("session_id"),
-				KeyType:       aws.String("HASH"),
-			},
-		},
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(5),
-			WriteCapacityUnits: aws.Int64(5),
-		},
-		TableName: aws.String(s.tableName),
-	}
-
-	_, err = s.db.CreateTable(input)
-	return err
+	return nil
 }
 
 var jwtSecret []byte
-var db *dynamodb.DynamoDB
+var userRepo repository.UserRepository
+var sessionRepo repository.SessionRepository
 var sessionService *sessions.Service
 var sessionStoreDB *DynamoDBStore
 
@@ -263,16 +164,20 @@ func InitJWTSecret(secretKey string) error {
 	return nil
 }
 
-func SetDynamoDB(dynamoDB *dynamodb.DynamoDB) {
-	db = dynamoDB
+func SetUserRepository(repo repository.UserRepository) {
+	userRepo = repo
+}
+
+func SetSessionRepository(repo repository.SessionRepository) {
+	sessionRepo = repo
 }
 
 func InitSessionService() error {
-	if db == nil {
-		return fmt.Errorf("DynamoDB client not initialized")
+	if sessionRepo == nil {
+		return fmt.Errorf("session repository not initialized")
 	}
 
-	sessionStore := NewDynamoDBStore(db, "Sessions")
+	sessionStore := NewDynamoDBStore(sessionRepo)
 	sessionStoreDB = sessionStore
 
 	if err := sessionStore.EnsureSessionsTable(); err != nil {
@@ -305,41 +210,25 @@ func InitSessionService() error {
 }
 
 func getUserByEmail(email string) (*User, error) {
-	if db == nil {
-		return nil, fmt.Errorf("DynamoDB client not initialized")
+	if userRepo == nil {
+		return nil, fmt.Errorf("user repository not initialized")
 	}
 
-	input := &dynamodb.GetItemInput{
-		TableName: aws.String("Users"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
-		},
-	}
-
-	result, err := db.GetItem(input)
+	userData, err := userRepo.GetByEmail(context.Background(), email)
 	if err != nil {
+		if err == model.ErrUserNotFound {
+			return nil, nil
+		}
 		return nil, err
 	}
 
-	if result.Item == nil {
-		return nil, nil
-	}
-
-	userData := &User{}
-	err = dynamodbattribute.UnmarshalMap(result.Item, userData)
-	if err != nil {
-		return nil, err
-	}
-
-	return userData, nil
+	return toAuthUser(userData), nil
 }
 
 //nolint:gocritic // User struct size is acceptable for this use case
 func createUser(user User) error {
-	if db == nil {
-		return fmt.Errorf("DynamoDB client not initialized")
+	if userRepo == nil {
+		return fmt.Errorf("user repository not initialized")
 	}
 
 	userUUID, err := uuid.NewRandom()
@@ -352,50 +241,20 @@ func createUser(user User) error {
 	user.CreatedAt = now
 	user.LastLogin = now
 	user.Theme = constants.DefaultUserTheme
-
-	item, err := dynamodbattribute.MarshalMap(user)
-	if err != nil {
-		return err
-	}
-
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("Users"),
-		Item:      item,
-	}
-
-	_, err = db.PutItem(input)
-	return err
+	return userRepo.Create(context.Background(), toModelUser(user))
 }
 
 func updateUserLastLogin(email string) error {
-	if db == nil {
-		return fmt.Errorf("DynamoDB client not initialized")
+	if userRepo == nil {
+		return fmt.Errorf("user repository not initialized")
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String("Users"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
-		},
-		UpdateExpression: aws.String("set last_login = :time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":time": {
-				S: aws.String(now),
-			},
-		},
-	}
-
-	_, err := db.UpdateItem(input)
-	return err
+	return userRepo.UpdateLastLogin(context.Background(), email, time.Now())
 }
 
 func ensureUserHasUUID(email string) error {
-	if db == nil {
-		return fmt.Errorf("DynamoDB client not initialized")
+	if userRepo == nil {
+		return fmt.Errorf("user repository not initialized")
 	}
 
 	// Get the current user to check if they have a UUID
@@ -417,31 +276,45 @@ func ensureUserHasUUID(email string) error {
 		return fmt.Errorf("failed to generate UUID: %w", err)
 	}
 
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String("Users"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
-		},
-		UpdateExpression: aws.String("set #uuid = :uuid"),
-		ExpressionAttributeNames: map[string]*string{
-			"#uuid": aws.String("uuid"),
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":uuid": {
-				S: aws.String(newUUID.String()),
-			},
-		},
-	}
-
-	_, err = db.UpdateItem(input)
-	if err != nil {
+	modelUser := toModelUser(*userData)
+	modelUser.UUID = newUUID.String()
+	if err := userRepo.Update(context.Background(), modelUser); err != nil {
 		return fmt.Errorf("failed to update user with UUID: %w", err)
 	}
 
 	log.Printf("Generated and assigned UUID %s to user %s", newUUID.String(), email)
 	return nil
+}
+
+func toAuthUser(userData *model.User) *User {
+	if userData == nil {
+		return nil
+	}
+	return &User{
+		UUID:       userData.UUID,
+		Email:      userData.Email,
+		Name:       userData.Name,
+		Picture:    userData.Picture,
+		FamilyName: userData.FamilyName,
+		GivenName:  userData.GivenName,
+		CreatedAt:  userData.CreatedAt,
+		LastLogin:  userData.LastLogin,
+		Theme:      userData.Theme,
+	}
+}
+
+func toModelUser(userData User) *model.User {
+	return &model.User{
+		UUID:       userData.UUID,
+		Email:      userData.Email,
+		Name:       userData.Name,
+		Picture:    userData.Picture,
+		FamilyName: userData.FamilyName,
+		GivenName:  userData.GivenName,
+		CreatedAt:  userData.CreatedAt,
+		LastLogin:  userData.LastLogin,
+		Theme:      userData.Theme,
+	}
 }
 
 func GenerateCSRFToken() (string, error) {

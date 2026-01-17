@@ -11,6 +11,8 @@ import (
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/controller"
+	repodynamo "treblesurf-backend/internal/repository/dynamodb"
+	repos3 "treblesurf-backend/internal/repository/s3"
 	"treblesurf-backend/internal/service"
 	storagepkg "treblesurf-backend/internal/storage"
 	localstorage "treblesurf-backend/local/storage"
@@ -51,6 +53,7 @@ type containerConfig struct {
 type containerStorage struct {
 	dynamoDBClient   *dynamodb.DynamoDB
 	rekognitionClient *rekognition.Rekognition
+	s3Client         *s3.S3
 	dbStorage        storagepkg.DynamoDBStorage
 	s3Storage        storagepkg.S3Storage
 }
@@ -127,6 +130,7 @@ func initializeLocalStorage(storage *containerStorage) (*containerStorage, error
 	if localS3 == nil {
 		return nil, fmt.Errorf("local S3 client not initialized. Make sure to call storage.InitLocal() first")
 	}
+	storage.s3Client = localS3
 	storage.s3Storage = &localS3Wrapper{client: localS3}
 	
 	localRekognition := getLocalRekognitionClient()
@@ -145,6 +149,7 @@ func initializeProductionStorage(storage *containerStorage, region string) (*con
 	
 	storage.dynamoDBClient = dynamodb.New(sess)
 	storage.rekognitionClient = rekognition.New(sess)
+	storage.s3Client = s3.New(sess)
 	
 	var err error
 	storage.dbStorage, err = storagepkg.NewDynamoDBStorage(region)
@@ -161,24 +166,36 @@ func initializeProductionStorage(storage *containerStorage, region string) (*con
 }
 
 func initializeServices(storage *containerStorage, cfg containerConfig) (*containerServices, error) {
+	userRepo := repodynamo.NewUserRepo(storage.dynamoDBClient, "Users")
+	apiKeyRepo := repodynamo.NewAPIKeyRepo(storage.dynamoDBClient, "ApiKeys")
+	locationRepo := repodynamo.NewLocationRepo(storage.dynamoDBClient, "LocationData")
+	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, "SpotForecastData")
+	websocketRepo := repodynamo.NewWebSocketRepo(storage.dynamoDBClient, "WebSocketConnections")
+	subscriptionRepo := repodynamo.NewSpotSubscriptionRepo(storage.dynamoDBClient, "SpotSubscriptions")
+	swellPredictionRepo := repodynamo.NewSwellPredictionRepo(storage.dynamoDBClient, "SwellPredictions")
+	reportRepo := repodynamo.NewReportRepo(storage.dynamoDBClient, "SurfReports")
+	buoyRepo := repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations")
+	mediaRepo := repos3.NewMediaRepo(storage.s3Client, cfg.bucketName)
 	services := &containerServices{
-		forecastService:        service.NewForecastService(storage.dynamoDBClient),
+		forecastService:        service.NewForecastService(forecastRepo),
 		tideService:            service.NewTideService(),
-		locationService:        service.NewLocationService(storage.dbStorage, storage.s3Storage, cfg.bucketName),
-		userService:            service.NewUserService(storage.dynamoDBClient),
-		apiKeyService:          service.NewAPIKeyService(storage.dbStorage),
-		swellPredictionService: service.NewSwellPredictionService(storage.dynamoDBClient),
+		locationService:        service.NewLocationService(locationRepo, mediaRepo),
+		userService:            service.NewUserService(userRepo),
+		apiKeyService:          service.NewAPIKeyService(apiKeyRepo),
+		swellPredictionService: service.NewSwellPredictionService(swellPredictionRepo),
 	}
 	
 	services.reportService = service.NewReportService(
-		storage.dbStorage,
-		storage.s3Storage,
+		mediaRepo,
+		reportRepo,
+		buoyRepo,
+		locationRepo,
+		forecastRepo,
 		storage.rekognitionClient,
-		cfg.bucketName,
 		services.userService,
 	)
 	
-	services.websocketService = service.NewWebSocketService(storage.dbStorage, []byte(cfg.jwtSecret))
+	services.websocketService = service.NewWebSocketService(websocketRepo, subscriptionRepo, []byte(cfg.jwtSecret))
 	
 	return services, nil
 }
@@ -194,7 +211,8 @@ func setupGlobalDependencies(storage *containerStorage, services *containerServi
 	if err := auth.InitJWTSecret(cfg.jwtSecret); err != nil {
 		log.Printf("Warning: Failed to initialize JWT secret: %v", err)
 	}
-	auth.SetDynamoDB(storage.dynamoDBClient)
+	auth.SetUserRepository(repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"))
+	auth.SetSessionRepository(repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions"))
 	
 	if err := auth.InitSessionService(); err != nil {
 		log.Printf("Warning: Failed to initialize session service: %v", err)

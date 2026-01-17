@@ -23,6 +23,7 @@ type ReportRepository interface {
 	Create(ctx context.Context, report *model.SurfReport) error
 	GetBySpot(ctx context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error)
 	GetBySpotAndTimeRange(ctx context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error)
+	ScanSince(ctx context.Context, since time.Time, limit int) ([]*model.SurfReport, error)
 }
 
 // LocationRepository handles location data persistence.
@@ -38,6 +39,13 @@ type ForecastRepository interface {
 	GetSpotForecast(ctx context.Context, country, region, spot string) ([]*model.Forecast, error)
 	GetCurrentConditions(ctx context.Context, country, region, spot string) (*model.Forecast, error)
 	GetForecastAtTime(ctx context.Context, country, region, spot string, t time.Time) (*model.Forecast, error)
+	GetRegionForecast(ctx context.Context, country, region string, forecastDate time.Time) ([]*model.Forecast, error)
+}
+
+// ForecastDataRepository handles raw forecast data queries needed for report logic.
+type ForecastDataRepository interface {
+	QuerySince(ctx context.Context, spotID string, since time.Time, limit int) ([]map[string]interface{}, error)
+	QueryBetween(ctx context.Context, spotID string, start, end time.Time, limit int) ([]map[string]interface{}, error)
 }
 
 // BuoyRepository handles buoy data persistence.
@@ -80,4 +88,20 @@ type WebSocketRepository interface {
 	DeleteConnection(ctx context.Context, connectionID string) error
 	UpdateSpot(ctx context.Context, connectionID, spot string) error
 	GetConnectionsByUserIDs(ctx context.Context, userIDs []string) ([]*model.ConnectionInfo, error)
+	UpdateLastActive(ctx context.Context, connectionID string) error
+}
+
+// SpotSubscriptionRepository handles spot subscription persistence.
+type SpotSubscriptionRepository interface {
+	Save(ctx context.Context, spotIdentifier, userID, connectionID string) error
+}
+
+// SwellPredictionRepository handles swell prediction persistence.
+type SwellPredictionRepository interface {
+	GetSpotPredictions(ctx context.Context, spotID string, start time.Time, limit int) ([]map[string]interface{}, error)
+	GetListSpotsPredictions(ctx context.Context, spotIDs []string, start time.Time, limit int) ([][]map[string]interface{}, error)
+	GetRegionPredictions(ctx context.Context, country, region string, start time.Time, perSpotLimit int) ([]map[string]interface{}, error)
+	GetSpotPredictionRange(ctx context.Context, spotID string, start, end time.Time) ([]map[string]interface{}, error)
+	GetRecentPredictions(ctx context.Context, cutoff time.Time, perSpotLimit int) ([]map[string]interface{}, error)
+	GetClosestPrediction(ctx context.Context, spotID string, now time.Time) (map[string]interface{}, error)
 }

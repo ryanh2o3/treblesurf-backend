@@ -15,6 +15,7 @@ type WebSocketRepo struct {
 	DeleteConnectionFn      func(ctx context.Context, connectionID string) error
 	UpdateSpotFn            func(ctx context.Context, connectionID, spot string) error
 	GetConnectionsByUserIDsFn func(ctx context.Context, userIDs []string) ([]*model.ConnectionInfo, error)
+	UpdateLastActiveFn      func(ctx context.Context, connectionID string) error
 }
 
 func (m *WebSocketRepo) SaveConnection(ctx context.Context, conn *model.ConnectionInfo) error {
@@ -50,4 +51,11 @@ func (m *WebSocketRepo) GetConnectionsByUserIDs(ctx context.Context, userIDs []s
 		return m.GetConnectionsByUserIDsFn(ctx, userIDs)
 	}
 	return nil, nil
+}
+
+func (m *WebSocketRepo) UpdateLastActive(ctx context.Context, connectionID string) error {
+	if m.UpdateLastActiveFn != nil {
+		return m.UpdateLastActiveFn(ctx, connectionID)
+	}
+	return nil
 }

@@ -14,6 +14,7 @@ type ReportRepo struct {
 	CreateFn              func(ctx context.Context, report *model.SurfReport) error
 	GetBySpotFn           func(ctx context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error)
 	GetBySpotAndTimeRangeFn func(ctx context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error)
+	ScanSinceFn           func(ctx context.Context, since time.Time, limit int) ([]*model.SurfReport, error)
 }
 
 func (m *ReportRepo) Create(ctx context.Context, report *model.SurfReport) error {
@@ -37,6 +38,13 @@ func (m *ReportRepo) GetBySpotAndTimeRange(
 ) ([]*model.SurfReport, error) {
 	if m.GetBySpotAndTimeRangeFn != nil {
 		return m.GetBySpotAndTimeRangeFn(ctx, country, region, spot, start, end)
+	}
+	return nil, nil
+}
+
+func (m *ReportRepo) ScanSince(ctx context.Context, since time.Time, limit int) ([]*model.SurfReport, error) {
+	if m.ScanSinceFn != nil {
+		return m.ScanSinceFn(ctx, since, limit)
 	}
 	return nil, nil
 }

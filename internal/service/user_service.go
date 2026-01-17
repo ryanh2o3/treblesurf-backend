@@ -1,113 +1,70 @@
 package service
 
 import (
-	"treblesurf-backend/internal/model"
+	"context"
+	"errors"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 )
 
 type UserService struct {
-	db *dynamodb.DynamoDB
+	users repository.UserRepository
 }
 
-func NewUserService(db *dynamodb.DynamoDB) *UserService {
-	return &UserService{db: db}
+func NewUserService(users repository.UserRepository) *UserService {
+	return &UserService{users: users}
 }
 
-func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
-	input := &dynamodb.GetItemInput{
-		TableName: aws.String("Users"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
-		},
-	}
-
-	result, err := s.db.GetItem(input)
+// GetByEmail retrieves a user by email with context propagation.
+func (s *UserService) GetByEmail(ctx context.Context, email string) (*model.User, error) {
+	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
+	return user, nil
+}
 
-	if result.Item == nil {
+// GetByUUID retrieves a user by UUID with context propagation.
+func (s *UserService) GetByUUID(ctx context.Context, uuid string) (*model.User, error) {
+	user, err := s.users.GetByUUID(ctx, uuid)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// UpdateTheme updates a user's theme with context propagation.
+func (s *UserService) UpdateTheme(ctx context.Context, email, theme string) error {
+	return s.users.UpdateTheme(ctx, email, theme)
+}
+
+// Delete removes a user by email with context propagation.
+func (s *UserService) Delete(ctx context.Context, email string) error {
+	return s.users.Delete(ctx, email)
+}
+
+// Legacy helpers (no context) for existing callers.
+func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
+	user, err := s.GetByEmail(context.Background(), email)
+	if errors.Is(err, model.ErrUserNotFound) {
 		return nil, nil
 	}
-
-	var user model.User
-	err = dynamodbattribute.UnmarshalMap(result.Item, &user)
-	if err != nil {
-		return nil, err
-	}
-
-	return &user, nil
+	return user, err
 }
 
 func (s *UserService) GetUserByUUID(uuid string) (*model.User, error) {
-	// Since UUID is not the primary key, we need to scan the table
-	// In production, you might want to create a GSI on UUID
-	input := &dynamodb.ScanInput{
-		TableName:        aws.String("Users"),
-		FilterExpression: aws.String("#uuid = :uuid"),
-		ExpressionAttributeNames: map[string]*string{
-			"#uuid": aws.String("uuid"),
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":uuid": {
-				S: aws.String(uuid),
-			},
-		},
-	}
-
-	result, err := s.db.Scan(input)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(result.Items) == 0 {
+	user, err := s.GetByUUID(context.Background(), uuid)
+	if errors.Is(err, model.ErrUserNotFound) {
 		return nil, nil
 	}
-
-	var user model.User
-	err = dynamodbattribute.UnmarshalMap(result.Items[0], &user)
-	if err != nil {
-		return nil, err
-	}
-
-	return &user, nil
+	return user, err
 }
 
 func (s *UserService) UpdateUserTheme(email, theme string) error {
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String("Users"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
-		},
-		UpdateExpression: aws.String("SET theme = :theme"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":theme": {
-				S: aws.String(theme),
-			},
-		},
-	}
-
-	_, err := s.db.UpdateItem(input)
-	return err
+	return s.UpdateTheme(context.Background(), email, theme)
 }
 
 func (s *UserService) DeleteUser(email string) error {
-	input := &dynamodb.DeleteItemInput{
-		TableName: aws.String("Users"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
-		},
-	}
-
-	_, err := s.db.DeleteItem(input)
-	return err
+	return s.Delete(context.Background(), email)
 }

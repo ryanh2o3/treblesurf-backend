@@ -109,6 +109,26 @@ func (r *WebSocketRepo) UpdateSpot(ctx context.Context, connectionID, spot strin
 	return nil
 }
 
+func (r *WebSocketRepo) UpdateLastActive(ctx context.Context, connectionID string) error {
+	input := &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.tableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"connection_id": {S: aws.String(connectionID)},
+		},
+		UpdateExpression: aws.String("SET LastActive = :time, ttl = :ttl"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":time": {S: aws.String(time.Now().UTC().Format(time.RFC3339))},
+			":ttl":  {N: aws.String(fmt.Sprintf("%d", time.Now().Add(24 * time.Hour).Unix()))},
+		},
+	}
+
+	if _, err := r.client.UpdateItemWithContext(ctx, input); err != nil {
+		return fmt.Errorf("updating connection last active: %w", err)
+	}
+
+	return nil
+}
+
 func (r *WebSocketRepo) GetConnectionsByUserIDs(ctx context.Context, userIDs []string) ([]*model.ConnectionInfo, error) {
 	if len(userIDs) == 0 {
 		return []*model.ConnectionInfo{}, nil
