@@ -38,6 +38,8 @@ type Container struct {
 	WebSocketService *service.WebSocketService
 	SwellPredictionService *service.SwellPredictionService
 	AuthService *auth.Service
+	StreamService *service.StreamService
+	SnapshotService *service.SnapshotService
 	
 	// Controllers
 	ForecastController *controller.ForecastController
@@ -76,6 +78,8 @@ type containerServices struct {
 	swellPredictionService *service.SwellPredictionService
 	websocketService       *service.WebSocketService
 	authService            *auth.Service
+	streamService          *service.StreamService
+	snapshotService        *service.SnapshotService
 }
 
 type containerControllers struct {
@@ -191,6 +195,8 @@ func initializeServices(storage *containerStorage, cfg containerConfig) (*contai
 	reportRepo := repodynamo.NewReportRepo(storage.dynamoDBClient, "SurfReports")
 	buoyRepo := repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations")
 	mediaRepo := repos3.NewMediaRepo(storage.s3Client, cfg.bucketName)
+	streamRequestRepo := repodynamo.NewStreamRequestRepo(storage.dynamoDBClient, "StreamRequests")
+	snapshotRepo := repodynamo.NewSnapshotRepo(storage.dynamoDBClient, "SpotSnapshots")
 
 	authService, err := auth.NewService(cfg.jwtSecret, userRepo, sessionRepo, slog.Default())
 	if err != nil {
@@ -205,6 +211,8 @@ func initializeServices(storage *containerStorage, cfg containerConfig) (*contai
 		apiKeyService:          service.NewAPIKeyService(apiKeyRepo),
 		swellPredictionService: service.NewSwellPredictionService(swellPredictionRepo),
 		authService:            authService,
+		streamService:          service.NewStreamService(streamRequestRepo),
+		snapshotService:        service.NewSnapshotService(snapshotRepo),
 	}
 	
 	services.reportService = service.NewReportService(
@@ -231,8 +239,8 @@ func initializeControllers(services *containerServices, storage *containerStorag
 		locationController:        controller.NewLocationController(services.locationService),
 		apiKeyController:          controller.NewAPIKeyController(services.apiKeyService),
 		buoyController:            controller.NewBuoyController(repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations")),
-		streamController:          controller.NewStreamController(storage.dynamoDBClient),
-		snapshotController:        controller.NewSnapshotController(storage.dynamoDBClient, storage.s3Client, cfg.bucketName),
+		streamController:          controller.NewStreamController(services.streamService),
+		snapshotController:        controller.NewSnapshotController(services.snapshotService, storage.s3Client, cfg.bucketName),
 	}
 }
 
@@ -252,6 +260,8 @@ func buildContainer(
 		WebSocketService:        services.websocketService,
 		SwellPredictionService:  services.swellPredictionService,
 		AuthService:             services.authService,
+		StreamService:           services.streamService,
+		SnapshotService:         services.snapshotService,
 		ForecastController:      controllers.forecastController,
 		SwellPredictionController: controllers.swellPredictionController,
 		UserController:          controllers.userController,

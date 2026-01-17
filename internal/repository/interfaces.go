@@ -105,3 +105,15 @@ type SwellPredictionRepository interface {
 	GetRecentPredictions(ctx context.Context, cutoff time.Time, perSpotLimit int) ([]map[string]interface{}, error)
 	GetClosestPrediction(ctx context.Context, spotID string, now time.Time) (map[string]interface{}, error)
 }
+
+// StreamRequestRepository handles stream request persistence.
+type StreamRequestRepository interface {
+	Save(ctx context.Context, request *model.StreamRequest) error
+	GetBySpotID(ctx context.Context, spotID string) (*model.StreamRequest, error)
+}
+
+// SnapshotRepository handles snapshot metadata persistence.
+type SnapshotRepository interface {
+	Save(ctx context.Context, snapshot *model.SpotSnapshot) error
+	GetLatestBySpot(ctx context.Context, spotID string) (*model.SpotSnapshot, error)
+}

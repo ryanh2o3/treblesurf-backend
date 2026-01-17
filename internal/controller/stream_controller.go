@@ -5,10 +5,11 @@ import (
 	"net/http"
 	"time"
 
+	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/service"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/kinesisvideo"
 	"github.com/aws/aws-sdk-go/service/kinesisvideoarchivedmedia"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -17,11 +18,11 @@ import (
 
 // StreamController handles streaming routes.
 type StreamController struct {
-	db *dynamodb.DynamoDB
+	streams *service.StreamService
 }
 
-func NewStreamController(db *dynamodb.DynamoDB) *StreamController {
-	return &StreamController{db: db}
+func NewStreamController(streams *service.StreamService) *StreamController {
+	return &StreamController{streams: streams}
 }
 
 // GetStreamingCredentials generates temporary AWS credentials for streaming
@@ -32,7 +33,7 @@ func (sc *StreamController) GetStreamingCredentials(c *gin.Context) {
 		return
 	}
 
-	key, ok := apiKey.(*APIKey)
+	key, ok := apiKey.(*model.APIKey)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key in context"})
 		return
@@ -141,27 +142,7 @@ func (sc *StreamController) RequestStreamHandler(c *gin.Context) {
 		return
 	}
 
-	now := time.Now()
-	expiration := now.Add(5 * time.Minute).Unix()
-
-	streamRequest := StreamRequest{
-		SpotID:      request.SpotID,
-		RequestedBy: emailStr,
-		RequestedAt: now,
-		Expiration:  expiration,
-	}
-
-	item, err := dynamodbattribute.MarshalMap(streamRequest)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process request"})
-		return
-	}
-
-	_, err = sc.db.PutItem(&dynamodb.PutItemInput{
-		TableName: aws.String("StreamRequests"),
-		Item:      item,
-	})
-
+	streamRequest, err := sc.streams.RequestStream(c.Request.Context(), request.SpotID, emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save stream request"})
 		return
@@ -169,7 +150,7 @@ func (sc *StreamController) RequestStreamHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Stream requested successfully",
-		"expires_at": now.Add(5 * time.Minute).Format(time.RFC3339),
+		"expires_at": time.Unix(streamRequest.Expiration, 0).Format(time.RFC3339),
 	})
 }
 
@@ -181,28 +162,11 @@ func (sc *StreamController) CheckStreamRequestHandler(c *gin.Context) {
 		return
 	}
 
-	// Query DynamoDB for this spot ID
-	result, err := sc.db.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String("StreamRequests"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"spot_id": {S: aws.String(spotID)},
-		},
-	})
-
+	// Check if a stream request exists and is still valid.
+	streamRequested, err := sc.streams.IsStreamRequested(c.Request.Context(), spotID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check stream request status"})
 		return
-	}
-
-	streamRequested := len(result.Item) > 0
-
-	if streamRequested {
-		var request StreamRequest
-		if err := dynamodbattribute.UnmarshalMap(result.Item, &request); err == nil {
-			if time.Now().Unix() > request.Expiration {
-				streamRequested = false
-			}
-		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -210,16 +174,4 @@ func (sc *StreamController) CheckStreamRequestHandler(c *gin.Context) {
 	})
 }
 
-// StreamRequest represents a stream request
-type StreamRequest struct {
-	RequestedAt time.Time `json:"requested_at"`
-	SpotID      string    `json:"spot_id"`
-	RequestedBy string    `json:"requested_by"`
-	Expiration  int64     `json:"expiration"`
-}
-
-// APIKey represents an API key
-type APIKey struct {
-	KeyID string `json:"key_id"`
-	// Add other fields as needed
-}
+ 
