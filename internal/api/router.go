@@ -52,6 +52,11 @@ func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 	slog.Info("environment", slog.String("env", string(cfg.Env)))
 	isLocal := cfg.IsDevelopment()
 
+	// Health check endpoint for container orchestration
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
+	})
+
 	// Apply iOS headers to all API routes
 	r.Use(iOSHeadersMiddleware())
 

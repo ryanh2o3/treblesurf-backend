@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -68,12 +67,11 @@ func (sc *StreamController) GetStreamingCredentials(c *gin.Context) {
 // GetStreamPlaybackURL generates a signed URL for viewing the stream
 func (sc *StreamController) GetStreamPlaybackURL(c *gin.Context) {
 	// Only authenticated users can access this endpoint
-	email, exists := c.Get("email")
+	_, exists := c.Get("email")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
-	fmt.Print(email)
 
 	// You can add additional authorization checks here
 	// For example, check if the user has permission to view this camera

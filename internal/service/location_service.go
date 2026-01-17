@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"treblesurf-backend/internal/model"
@@ -96,7 +97,7 @@ func (s *LocationService) populateImage(
 
 	imageData, err := s.media.Download(ctx, imageKey)
 	if err != nil {
-		fmt.Printf("Failed to fetch image for %s: %v\n", imageKey, err)
+		slog.Debug("failed to fetch image", slog.String("key", imageKey), slog.Any("error", err))
 		return
 	}
 

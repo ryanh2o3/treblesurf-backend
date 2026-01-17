@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -50,14 +51,14 @@ func findClosestPrediction(
 	for i, item := range items {
 		var prediction map[string]interface{}
 		if err := dynamodbattribute.UnmarshalMap(item, &prediction); err != nil {
-			fmt.Printf("Failed to unmarshal item %d: %v\n", i, err)
+			slog.Debug("failed to unmarshal prediction item", slog.Int("index", i), slog.Any("error", err))
 			continue
 		}
 
 		if dataAttr, exists := item["data"]; exists {
 			var dataMap map[string]interface{}
 			if err := dynamodbattribute.Unmarshal(dataAttr, &dataMap); err != nil {
-				fmt.Printf("Failed to unmarshal data field for item %d: %v\n", i, err)
+				slog.Debug("failed to unmarshal data field", slog.Int("index", i), slog.Any("error", err))
 				continue
 			}
 
@@ -77,7 +78,7 @@ func findClosestPrediction(
 		}
 	}
 
-	fmt.Printf("Valid items processed: %d\n", validItems)
+	slog.Debug("processed prediction items", slog.Int("valid_count", validItems))
 	return closestPrediction, nil
 }
 
