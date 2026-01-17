@@ -255,12 +255,12 @@ var db *dynamodb.DynamoDB
 var sessionService *sessions.Service
 var sessionStoreDB *DynamoDBStore
 
-func InitJWTSecret() {
-	secretKey := os.Getenv("JWT_SECRET")
+func InitJWTSecret(secretKey string) error {
 	if secretKey == "" {
-		log.Fatal("JWT_SECRET environment variable must be set")
+		return fmt.Errorf("JWT secret must be set")
 	}
 	jwtSecret = []byte(secretKey)
+	return nil
 }
 
 func SetDynamoDB(dynamoDB *dynamodb.DynamoDB) {

@@ -5,10 +5,9 @@ package httphandler
 import (
 	"log"
 	"net/http"
-	"os"
 	"time"
 	"treblesurf-backend/internal/auth"
-	"treblesurf-backend/internal/constants"
+	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/controller"
 
 	"github.com/gin-contrib/cors"
@@ -16,10 +15,10 @@ import (
 )
 
 // SetupRouter creates and configures a Gin router with all application routes
-func SetupRouter(container *Container) *gin.Engine {
+func SetupRouter(cfg *config.Config, container *Container) *gin.Engine {
 	r := gin.Default()
 
-	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
+	isLocal := cfg.IsDevelopment()
 
 	// Apply CORS middleware before registering routes
 	if isLocal {
@@ -45,14 +44,14 @@ func SetupRouter(container *Container) *gin.Engine {
 
 	// Register routes - conditionally with /api prefix for local dev
 	// In production, Lambda handler strips /api before routing
-	setupRoutes(r, container)
+	setupRoutes(r, cfg, container)
 
 	return r
 }
 
-func setupRoutes(r gin.IRouter, container *Container) {
-	log.Print(os.Getenv("GO_ENV"))
-	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
+func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
+	log.Print(cfg.Env)
+	isLocal := cfg.IsDevelopment()
 
 	// Apply iOS headers to all API routes
 	r.Use(iOSHeadersMiddleware())
@@ -67,12 +66,12 @@ func setupRoutes(r gin.IRouter, container *Container) {
 	}
 
 	setupPublicRoutes(routeGroup)
-	setupAuthRoutes(routeGroup)
+	setupAuthRoutes(routeGroup, cfg)
 	setupLocationAndForecastRoutes(routeGroup, container)
 	setupSwellPredictionRoutes(routeGroup, container)
-	setupProtectedRoutes(routeGroup, container)
-	setupAPIKeyRoutes(routeGroup, container)
-	setupAdminRoutes(routeGroup, container)
+	setupProtectedRoutes(routeGroup, cfg, container)
+	setupAPIKeyRoutes(routeGroup, cfg, container)
+	setupAdminRoutes(routeGroup, cfg, container)
 }
 
 // setupPublicRoutes configures public authentication routes.
@@ -83,8 +82,8 @@ func setupPublicRoutes(r gin.IRouter) {
 }
 
 // setupAuthRoutes configures authenticated auth-related routes.
-func setupAuthRoutes(r gin.IRouter) {
-	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
+func setupAuthRoutes(r gin.IRouter, cfg *config.Config) {
+	isLocal := cfg.IsDevelopment()
 
 	// CSRF token refresh endpoint (requires authentication)
 	csrfRoutes := r.Group("/auth")
@@ -157,8 +156,8 @@ func setupSwellPredictionRoutes(r gin.IRouter, container *Container) {
 }
 
 // setupProtectedRoutes configures authenticated routes that require user authentication.
-func setupProtectedRoutes(r gin.IRouter, container *Container) {
-	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
+func setupProtectedRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
+	isLocal := cfg.IsDevelopment()
 
 	// Create authenticated route group
 	authorized := r.Group("/")
@@ -212,8 +211,8 @@ func setupUserRoutes(g *gin.RouterGroup, _ *Container) {
 }
 
 // setupAPIKeyRoutes configures routes that require API key authentication.
-func setupAPIKeyRoutes(r gin.IRouter, _ *Container) {
-	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
+func setupAPIKeyRoutes(r gin.IRouter, cfg *config.Config, _ *Container) {
+	isLocal := cfg.IsDevelopment()
 
 	apiKeyRoutes := r.Group("/")
 	if isLocal {
@@ -228,8 +227,8 @@ func setupAPIKeyRoutes(r gin.IRouter, _ *Container) {
 }
 
 // setupAdminRoutes configures admin-only routes.
-func setupAdminRoutes(r gin.IRouter, _ *Container) {
-	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
+func setupAdminRoutes(r gin.IRouter, cfg *config.Config, _ *Container) {
+	isLocal := cfg.IsDevelopment()
 
 	adminRoutes := r.Group("/admin")
 	if isLocal {

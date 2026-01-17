@@ -25,6 +25,11 @@ var (
 	ErrInvalidReportData = errors.New("invalid report data")
 )
 
+// Forecast errors
+var (
+	ErrForecastNotFound = errors.New("forecast not found")
+)
+
 // Image errors
 var (
 	ErrImageNotSurfRelated    = errors.New("image does not appear to be surf-related")
@@ -62,6 +67,17 @@ var (
 	ErrAPIKeyNotFound = errors.New("api key not found")
 	ErrAPIKeyRevoked  = errors.New("api key revoked")
 	ErrAPIKeyInvalid  = errors.New("api key invalid")
+)
+
+// Buoy errors
+var (
+	ErrBuoyDataNotFound = errors.New("buoy data not found")
+)
+
+// WebSocket errors
+var (
+	ErrWebSocketConnectionNotFound = errors.New("websocket connection not found")
+	ErrWebSocketActionInvalid      = errors.New("websocket action invalid")
 )
 
 // ImageValidationError wraps image validation errors with additional context

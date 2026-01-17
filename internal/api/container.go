@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"time"
 	"treblesurf-backend/internal/auth"
-	"treblesurf-backend/internal/constants"
+	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/controller"
 	"treblesurf-backend/internal/service"
 	storagepkg "treblesurf-backend/internal/storage"
@@ -46,6 +45,7 @@ type containerConfig struct {
 	region     string
 	bucketName string
 	isLocal    bool
+	jwtSecret  string
 }
 
 type containerStorage struct {
@@ -71,43 +71,35 @@ type containerControllers struct {
 	swellPredictionController *controller.SwellPredictionController
 }
 
-func NewContainer() (*Container, error) {
-	cfg := loadContainerConfig()
+func NewContainer(cfg *config.Config) (*Container, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is required")
+	}
+	containerCfg := loadContainerConfig(cfg)
 	
-	storage, err := initializeStorage(cfg)
+	storage, err := initializeStorage(containerCfg)
 	if err != nil {
 		return nil, err
 	}
 	
-	services, err := initializeServices(storage, cfg)
+	services, err := initializeServices(storage, containerCfg)
 	if err != nil {
 		return nil, err
 	}
 	
 	controllers := initializeControllers(services)
 	
-	setupGlobalDependencies(storage, services, cfg)
+	setupGlobalDependencies(storage, services, containerCfg)
 	
 	return buildContainer(storage, services, controllers), nil
 }
 
-func loadContainerConfig() containerConfig {
-	region := os.Getenv("AWS_REGION")
-	if region == "" {
-		region = "eu-west-1"
-	}
-	
-	bucketName := os.Getenv("S3_BUCKET_NAME")
-	if bucketName == "" {
-		bucketName = "treblesurf-images"
-	}
-	
-	isLocal := os.Getenv("GO_ENV") == constants.EnvDevelopment
-	
+func loadContainerConfig(cfg *config.Config) containerConfig {
 	return containerConfig{
-		region:     region,
-		bucketName: bucketName,
-		isLocal:    isLocal,
+		region:     cfg.AWS.Region,
+		bucketName: cfg.AWS.BucketName,
+		isLocal:    cfg.IsDevelopment(),
+		jwtSecret:  cfg.Auth.JWTSecret,
 	}
 }
 
@@ -186,29 +178,9 @@ func initializeServices(storage *containerStorage, cfg containerConfig) (*contai
 		services.userService,
 	)
 	
-	jwtSecret, err := getJWTSecret(cfg.isLocal)
-	if err != nil {
-		return nil, err
-	}
-	services.websocketService = service.NewWebSocketService(storage.dbStorage, []byte(jwtSecret))
+	services.websocketService = service.NewWebSocketService(storage.dbStorage, []byte(cfg.jwtSecret))
 	
 	return services, nil
-}
-
-func getJWTSecret(isLocal bool) (string, error) {
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		if isLocal {
-			jwtSecret = "default-jwt-secret" //nolint:gosec // Local development only
-			log.Println(
-				"WARNING: Using default JWT secret for local development. " +
-					"Set JWT_SECRET environment variable in production.",
-			)
-			return jwtSecret, nil
-		}
-		return "", fmt.Errorf("JWT_SECRET environment variable is required")
-	}
-	return jwtSecret, nil
 }
 
 func initializeControllers(services *containerServices) *containerControllers {
@@ -219,7 +191,9 @@ func initializeControllers(services *containerServices) *containerControllers {
 }
 
 func setupGlobalDependencies(storage *containerStorage, services *containerServices, cfg containerConfig) {
-	auth.InitJWTSecret()
+	if err := auth.InitJWTSecret(cfg.jwtSecret); err != nil {
+		log.Printf("Warning: Failed to initialize JWT secret: %v", err)
+	}
 	auth.SetDynamoDB(storage.dynamoDBClient)
 	
 	if err := auth.InitSessionService(); err != nil {

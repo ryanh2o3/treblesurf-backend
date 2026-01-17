@@ -6,8 +6,10 @@ import (
 	"os"
 	httphandler "treblesurf-backend/internal/api"
 	"treblesurf-backend/internal/auth"
+	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/constants"
-	"treblesurf-backend/local/config"
+	"treblesurf-backend/internal/logging"
+	localconfig "treblesurf-backend/local/config"
 	"treblesurf-backend/local/storage"
 
 	"github.com/joho/godotenv"
@@ -33,9 +35,13 @@ func main() {
 
 	log.Println("Starting Treble Surf backend in local development mode")
 
-	auth.InitJWTSecret()
+	appCfg := config.MustLoad()
+	logging.Init(appCfg)
+	if err := auth.InitJWTSecret(appCfg.Auth.JWTSecret); err != nil {
+		log.Fatalf("Failed to initialize JWT secret: %v", err)
+	}
 
-	cfg, err := config.Load(true)
+	cfg, err := localconfig.Load(true)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
@@ -44,7 +50,7 @@ func main() {
 		log.Fatalf("Failed to initialize storage: %v", initErr)
 	}
 
-	container, err := httphandler.NewContainer()
+	container, err := httphandler.NewContainer(appCfg)
 	if err != nil {
 		log.Fatalf("Failed to create container: %v", err)
 	}
@@ -53,7 +59,7 @@ func main() {
 		log.Printf("Failed to initialize session service: %v", err)
 	}
 
-	r := httphandler.SetupRouter(container)
+	r := httphandler.SetupRouter(appCfg, container)
 
 	port := cfg.Port
 	if err := r.Run(":" + port); err != nil {

@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	httphandler "treblesurf-backend/internal/api"
+	"treblesurf-backend/internal/config"
+	"treblesurf-backend/internal/logging"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -14,11 +16,14 @@ import (
 var ginLambda *ginadapter.GinLambda
 
 func initialize() error {
-	container, err := httphandler.NewContainer()
+	cfg := config.MustLoad()
+	logging.Init(cfg)
+
+	container, err := httphandler.NewContainer(cfg)
 	if err != nil {
 		return err
 	}
-	r := httphandler.SetupRouter(container)
+	r := httphandler.SetupRouter(cfg, container)
 	ginLambda = ginadapter.New(r)
 	return nil
 }
