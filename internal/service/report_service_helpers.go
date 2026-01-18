@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,7 +15,6 @@ import (
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
 
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/rwcarlsen/goexif/exif"
 )
 
@@ -130,15 +130,24 @@ func buildWebSocketMessage(
 	}
 }
 
-func (s *ReportService) broadcastReportMessage(country, region, spot string, message map[string]interface{}) {
-	subscribers, err := s.getSpotSubscribers(country, region, spot)
+func (s *ReportService) broadcastReportMessage(
+	ctx context.Context,
+	country, region, spot string,
+	message map[string]interface{},
+) {
+	subscribers, err := s.getSpotSubscribers(ctx, country, region, spot)
 	if err != nil {
 		slog.Warn("failed to get subscribers", slog.Any("error", err))
 		return
 	}
+	if len(subscribers) == 0 {
+		return
+	}
 
 	go func() {
-		s.broadcastToUsers(subscribers, message)
+		broadcastCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s.broadcastToUsers(broadcastCtx, subscribers, message)
 	}()
 }
 
@@ -148,12 +157,16 @@ func (s *ReportService) createBaseReport(
 	mediaType string,
 	iosValidated bool,
 ) *model.SurfReport {
+	normalizedTime := currentTime.UTC()
 	return &model.SurfReport{
 		CountryRegionSpot: countryRegionSpot,
 		DateReported:      dateReported,
+		Timestamp:         normalizedTime,
+		CreatedAt:         normalizedTime,
+		UpdatedAt:         normalizedTime,
 		UserEmail:         userEmail,
 		Reporter:          userName,
-		Time:              currentTime.String(),
+		Time:              normalizedTime.Format(time.RFC3339),
 		ReportedBy:        userUUID,
 		MediaType:         mediaType,
 		IOSValidated:      iosValidated,
@@ -301,7 +314,7 @@ func (s *ReportService) processIOSMediaKeys(
 	return s3KeyReport, videoKeyReport
 }
 
-// buildSpotReportsQueryInput builds a DynamoDB query input for retrieving spot reports.
+// convertReportsToMaps converts report structs into response-friendly maps.
 func (s *ReportService) convertReportsToMaps(
 	reports []*model.SurfReport,
 ) ([]map[string]interface{}, error) {
@@ -310,13 +323,13 @@ func (s *ReportService) convertReportsToMaps(
 		if report == nil {
 			continue
 		}
-		item, err := dynamodbattribute.MarshalMap(report)
+		item, err := json.Marshal(report)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal report: %w", err)
+			return nil, fmt.Errorf("failed to marshal report to json: %w", err)
 		}
 		var reportMap map[string]interface{}
-		if err := dynamodbattribute.UnmarshalMap(item, &reportMap); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal report: %w", err)
+		if err := json.Unmarshal(item, &reportMap); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal report json: %w", err)
 		}
 		out = append(out, reportMap)
 	}
@@ -326,21 +339,21 @@ func (s *ReportService) convertReportsToMaps(
 // normalizeSpotReports normalizes report maps by removing sensitive fields and adding defaults.
 func (s *ReportService) normalizeSpotReports(reports []map[string]interface{}) {
 	for _, report := range reports {
-		delete(report, "UserEmail") // Remove sensitive field
+		delete(report, "user_email") // Remove sensitive field
 
 		// Ensure new fields have defaults if missing
-		setDefaultIfMissing(report, "VideoKey", "")
-		setDefaultIfMissing(report, "MediaType", "image")
-		setDefaultIfMissing(report, "IOSValidated", false)
+		setDefaultIfMissing(report, "video_key", "")
+		setDefaultIfMissing(report, "media_type", "image")
+		setDefaultIfMissing(report, "ios_validated", false)
 
 		// Ensure all required fields have defaults
-		setDefaultIfMissing(report, "Consistency", "")
-		setDefaultIfMissing(report, "Messiness", "")
-		setDefaultIfMissing(report, "Quality", "")
-		setDefaultIfMissing(report, "SurfSize", "")
-		setDefaultIfMissing(report, "WindAmount", "")
-		setDefaultIfMissing(report, "WindDirection", "")
-		setDefaultIfMissing(report, "Reporter", "Anonymous")
+		setDefaultIfMissing(report, "consistency", "")
+		setDefaultIfMissing(report, "messiness", "")
+		setDefaultIfMissing(report, "quality", "")
+		setDefaultIfMissing(report, "surf_size", "")
+		setDefaultIfMissing(report, "wind_amount", "")
+		setDefaultIfMissing(report, "wind_direction", "")
+		setDefaultIfMissing(report, "reporter", "Anonymous")
 	}
 }
 
@@ -352,7 +365,7 @@ func setDefaultIfMissing(m map[string]interface{}, key string, defaultValue inte
 }
 
 // queryCurrentForecast queries for the most recent forecast data.
-func (s *ReportService) queryCurrentForecast(ctx context.Context, spotID string) (map[string]interface{}, error) {
+func (s *ReportService) queryCurrentForecast(ctx context.Context, spotID string) (*model.ForecastDataPoint, error) {
 	currentTime := time.Now().Add(-1 * time.Hour)
 	forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, currentTime, 1)
 	if err != nil {
@@ -367,7 +380,7 @@ func (s *ReportService) queryCurrentForecast(ctx context.Context, spotID string)
 // queryHistoricalForecast queries for forecast data looking backwards up to 24 hours.
 //
 //nolint:unparam // Error return maintained for API consistency
-func (s *ReportService) queryHistoricalForecast(ctx context.Context, spotID string) (map[string]interface{}, error) {
+func (s *ReportService) queryHistoricalForecast(ctx context.Context, spotID string) (*model.ForecastDataPoint, error) {
 	currentTime := time.Now()
 
 	for i := 1; i <= 24; i++ {
@@ -382,14 +395,13 @@ func (s *ReportService) queryHistoricalForecast(ctx context.Context, spotID stri
 }
 
 // extractWindData extracts wind speed and direction from forecast data.
-func (s *ReportService) extractWindData(forecast map[string]interface{}) (windSpeed, windDirection float64, err error) {
-	data, ok := forecast["data"].(map[string]interface{})
-	if !ok {
+func (s *ReportService) extractWindData(forecast *model.ForecastDataPoint) (windSpeed, windDirection float64, err error) {
+	if forecast == nil || forecast.Data == nil {
 		return 0, 0, fmt.Errorf("invalid forecast data structure")
 	}
 
-	windSpeed = extractFloatFromData(data, "windSpeed")
-	windDirection = extractFloatFromData(data, "windDirection")
+	windSpeed = extractFloatFromData(forecast.Data, "windSpeed")
+	windDirection = extractFloatFromData(forecast.Data, "windDirection")
 
 	return windSpeed, windDirection, nil
 }

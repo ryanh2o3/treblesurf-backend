@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"treblesurf-backend/internal/auth/store"
+	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
@@ -74,16 +74,22 @@ type Service struct {
 	sessionStore   *store.DynamoDBStore
 	logger         *slog.Logger
 	jwtSecret      []byte
+	googleClientIDs map[string]bool
+	cookieSecure    bool
+	isDevelopment   bool
 }
 
 // NewService constructs an auth service with its required dependencies.
 func NewService(
-	jwtSecret string,
+	cfg *config.Config,
 	users repository.UserRepository,
 	sessionsRepo repository.SessionRepository,
 	logger *slog.Logger,
 ) (*Service, error) {
-	if jwtSecret == "" {
+	if cfg == nil {
+		return nil, fmt.Errorf("config must be set")
+	}
+	if cfg.Auth.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT secret must be set")
 	}
 	if users == nil {
@@ -97,10 +103,13 @@ func NewService(
 	}
 
 	service := &Service{
-		jwtSecret:   []byte(jwtSecret),
-		userRepo:    users,
-		sessionRepo: sessionsRepo,
-		logger:      logger,
+		jwtSecret:       []byte(cfg.Auth.JWTSecret),
+		userRepo:        users,
+		sessionRepo:     sessionsRepo,
+		logger:          logger,
+		googleClientIDs: buildClientIDMap(cfg.Auth.GoogleClientIDs),
+		cookieSecure:    cfg.Auth.CookieSecure,
+		isDevelopment:   cfg.IsDevelopment(),
 	}
 
 	if err := service.initSessionService(); err != nil {
@@ -131,7 +140,7 @@ func (s *Service) initSessionService() error {
 
 	transportService := transport.New(transport.Options{
 		HTTPOnly:   true,
-		Secure:     true,
+		Secure:     s.cookieSecure,
 		CookiePath: "/",
 		CookieName: "session_id",
 	})
@@ -286,15 +295,14 @@ func (s *Service) validateAndExtractGoogleClaims(
 	c *gin.Context,
 	idToken string,
 ) (*idtoken.Payload, string, string, string, string, string) {
-	clientIDs, err := getGoogleClientIDs()
-	if err != nil || clientIDs == nil {
+	if len(s.googleClientIDs) == 0 {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Google OAuth not configured"})
 		return nil, "", "", "", "", ""
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
-	payload, err := validateGoogleIDToken(ctx, idToken, clientIDs)
+	payload, err := validateGoogleIDToken(ctx, idToken, s.googleClientIDs)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 		return nil, "", "", "", "", ""
@@ -347,15 +355,15 @@ func (s *Service) processGoogleAuthUser(
 }
 
 func (s *Service) setupAuthSession(email string, c *gin.Context) {
-	csrfToken := setupCSRFToken(c)
+	csrfToken := setupCSRFToken(c, s.cookieSecure)
 	s.createSession(email, csrfToken, c)
-	setAuthCookie(c)
+	setAuthCookie(c, s.cookieSecure)
 }
 
 func (s *Service) ValidateTokenHandler(c *gin.Context) {
 	setCacheControlHeaders(c)
 
-	if os.Getenv("GO_ENV") == constants.EnvDevelopment {
+	if s.isDevelopment {
 		s.logger.Info("development mode: returning mock user for validation")
 		c.JSON(http.StatusOK, gin.H{
 			"valid":     true,
@@ -412,7 +420,7 @@ func (s *Service) LogoutHandler(c *gin.Context) {
 		-1, // Expire immediately
 		"/",
 		"",
-		true,
+		s.cookieSecure,
 		true,
 	)
 
@@ -422,7 +430,7 @@ func (s *Service) LogoutHandler(c *gin.Context) {
 		-1,
 		"/",
 		"",
-		true,
+		s.cookieSecure,
 		false,
 	)
 

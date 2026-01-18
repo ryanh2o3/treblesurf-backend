@@ -32,7 +32,7 @@ func (r *SessionRepo) Save(ctx context.Context, session *model.Session) error {
 	if session.TTL == 0 && !session.ExpiresAt.IsZero() {
 		session.TTL = session.ExpiresAt.Unix()
 	}
-	item, err := dynamodbattribute.MarshalMap(session)
+	item, err := dynamodbattribute.MarshalMap(sessionItemFromModel(session))
 	if err != nil {
 		return fmt.Errorf("marshaling session: %w", err)
 	}
@@ -65,16 +65,17 @@ func (r *SessionRepo) Get(ctx context.Context, sessionID string) (*model.Session
 		return nil, model.ErrSessionNotFound
 	}
 
-	var session model.Session
-	if err := dynamodbattribute.UnmarshalMap(result.Item, &session); err != nil {
+	var sessionRecord sessionItem
+	if err := dynamodbattribute.UnmarshalMap(result.Item, &sessionRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling session: %w", err)
 	}
 
-	if !session.ExpiresAt.IsZero() && time.Now().After(session.ExpiresAt) {
+	sessionModel := sessionRecord.toModel()
+	if !sessionModel.ExpiresAt.IsZero() && time.Now().After(sessionModel.ExpiresAt) {
 		return nil, model.ErrSessionExpired
 	}
 
-	return &session, nil
+	return sessionModel, nil
 }
 
 func (r *SessionRepo) Delete(ctx context.Context, sessionID string) error {
@@ -108,12 +109,13 @@ func (r *SessionRepo) GetByUserID(ctx context.Context, userID string) ([]*model.
 
 	sessions := make([]*model.Session, 0, len(result.Items))
 	for _, item := range result.Items {
-		var session model.Session
-		if err := dynamodbattribute.UnmarshalMap(item, &session); err != nil {
+		var sessionRecord sessionItem
+		if err := dynamodbattribute.UnmarshalMap(item, &sessionRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling session: %w", err)
 		}
-		if session.ExpiresAt.IsZero() || time.Now().Before(session.ExpiresAt) {
-			sessions = append(sessions, &session)
+		sessionModel := sessionRecord.toModel()
+		if sessionModel.ExpiresAt.IsZero() || time.Now().Before(sessionModel.ExpiresAt) {
+			sessions = append(sessions, sessionModel)
 		}
 	}
 

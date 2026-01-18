@@ -27,7 +27,7 @@ func NewSnapshotRepo(client *dynamodb.DynamoDB, tableName string) *SnapshotRepo 
 }
 
 func (r *SnapshotRepo) Save(ctx context.Context, snapshot *model.SpotSnapshot) error {
-	item, err := dynamodbattribute.MarshalMap(snapshot)
+	item, err := dynamodbattribute.MarshalMap(spotSnapshotItemFromModel(snapshot))
 	if err != nil {
 		return fmt.Errorf("marshaling snapshot: %w", err)
 	}
@@ -61,10 +61,10 @@ func (r *SnapshotRepo) GetLatestBySpot(ctx context.Context, spotID string) (*mod
 		return nil, nil
 	}
 
-	var snapshot model.SpotSnapshot
-	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &snapshot); err != nil {
+	var snapshotRecord spotSnapshotItem
+	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &snapshotRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling snapshot: %w", err)
 	}
 
-	return &snapshot, nil
+	return snapshotRecord.toModel(), nil
 }

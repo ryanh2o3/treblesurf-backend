@@ -2,6 +2,8 @@ package auth
 
 import (
 	"testing"
+
+	"treblesurf-backend/internal/config"
 )
 
 func TestGenerateCSRFToken(t *testing.T) {
@@ -30,14 +32,18 @@ func TestGenerateCSRFToken(t *testing.T) {
 
 func TestNewService_NilDependencies(t *testing.T) {
 	t.Run("empty jwt secret", func(t *testing.T) {
-		_, err := NewService("", nil, nil, nil)
+		_, err := NewService(&config.Config{}, nil, nil, nil)
 		if err == nil {
 			t.Fatalf("expected error for empty jwt secret")
 		}
 	})
 
 	t.Run("nil user repository", func(t *testing.T) {
-		_, err := NewService("test-secret", nil, nil, nil)
+		cfg := &config.Config{
+			Env:  config.EnvDevelopment,
+			Auth: config.AuthConfig{JWTSecret: "test-secret"},
+		}
+		_, err := NewService(cfg, nil, nil, nil)
 		if err == nil {
 			t.Fatalf("expected error for nil user repository")
 		}

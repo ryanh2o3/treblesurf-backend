@@ -4,32 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/adam-hanna/sessions/user"
 	"github.com/gin-gonic/gin"
 	"google.golang.org/api/idtoken"
 )
-
-// getGoogleClientIDs retrieves Google OAuth client IDs from environment variables.
-//nolint:unparam // Error return maintained for API consistency
-func getGoogleClientIDs() (map[string]bool, error) {
-	clientID := os.Getenv("GOOGLE_CLIENT_ID")
-	if clientID == "" {
-		return nil, nil
-	}
-
-	clientIDs := make(map[string]bool)
-	clientIDs[clientID] = true
-
-	iosClientID := os.Getenv("GOOGLE_IOS_CLIENT_ID")
-	if iosClientID != "" {
-		clientIDs[iosClientID] = true
-	}
-
-	return clientIDs, nil
-}
 
 // validateGoogleIDToken validates a Google ID token against client IDs.
 func validateGoogleIDToken(ctx context.Context, idToken string, clientIDs map[string]bool) (*idtoken.Payload, error) {
@@ -111,7 +91,7 @@ func (s *Service) handleExistingUser(ctx context.Context, email string) (*User, 
 }
 
 // setupCSRFToken sets CSRF token cookie and header.
-func setupCSRFToken(c *gin.Context) string {
+func setupCSRFToken(c *gin.Context, secure bool) string {
 	csrfToken, err := GenerateCSRFToken()
 	if err != nil {
 		return ""
@@ -123,7 +103,7 @@ func setupCSRFToken(c *gin.Context) string {
 		int(24*time.Hour.Seconds()),
 		"/",
 		"",
-		true,  // Secure
+		secure, // Secure
 		false, // Not HTTP-only (JS needs to access it)
 	)
 	c.Header("X-CSRF-Token", csrfToken)
@@ -157,16 +137,33 @@ func (s *Service) createSession(email, csrfToken string, c *gin.Context) {
 }
 
 // setAuthCookie sets the authentication cookie.
-func setAuthCookie(c *gin.Context) {
+func setAuthCookie(c *gin.Context, secure bool) {
 	c.SetCookie(
 		"auth_token",
 		"authenticated",
 		int(24*time.Hour.Seconds()),
 		"/",
 		"",
-		true, // Secure (HTTPS only)
+		secure, // Secure (HTTPS only)
 		true, // HTTP-only
 	)
+}
+
+func buildClientIDMap(ids []string) map[string]bool {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		out[id] = true
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // buildUserResponse builds the user response object.

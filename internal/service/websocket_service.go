@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -25,17 +24,23 @@ type WebSocketService struct {
 	apiClient     *apigatewaymanagementapi.ApiGatewayManagementApi
 	jwtSecret     []byte
 	apiClientOnce sync.Once
+	endpoint      string
+	stage         string
 }
 
 func NewWebSocketService(
 	connections repository.WebSocketRepository,
 	subscriptions repository.SpotSubscriptionRepository,
 	jwtSecret []byte,
+	endpoint string,
+	stage string,
 ) *WebSocketService {
 	return &WebSocketService{
 		connections:   connections,
 		subscriptions: subscriptions,
 		jwtSecret:     jwtSecret,
+		endpoint:      endpoint,
+		stage:         stage,
 	}
 }
 
@@ -93,6 +98,13 @@ func (s *WebSocketService) UpdateConnectionSpot(ctx context.Context, connectionI
 
 func (s *WebSocketService) SaveSubscription(ctx context.Context, spotIdentifier, userID, connectionID string) error {
 	return s.subscriptions.Save(ctx, spotIdentifier, userID, connectionID)
+}
+
+func (s *WebSocketService) GetSubscribersBySpot(ctx context.Context, spotIdentifier string) ([]string, error) {
+	if s.subscriptions == nil {
+		return nil, fmt.Errorf("subscription repository not initialized")
+	}
+	return s.subscriptions.GetSubscribersBySpot(ctx, spotIdentifier)
 }
 
 // SendToConnection sends a message to a specific WebSocket client
@@ -180,13 +192,11 @@ func (s *WebSocketService) GetConnectionsByUserIDs(ctx context.Context, userIDs 
 
 func (s *WebSocketService) apiGatewayClient() (*apigatewaymanagementapi.ApiGatewayManagementApi, error) {
 	s.apiClientOnce.Do(func() {
-		endpoint := os.Getenv("WEBSOCKET_API_ENDPOINT")
-		if endpoint == "" {
+		if s.endpoint == "" {
 			s.apiClientErr = fmt.Errorf("WEBSOCKET_API_ENDPOINT not configured")
 			return
 		}
-
-		stage := os.Getenv("WEBSOCKET_API_STAGE")
+		stage := s.stage
 		if stage == "" {
 			stage = "production"
 		}
@@ -197,7 +207,7 @@ func (s *WebSocketService) apiGatewayClient() (*apigatewaymanagementapi.ApiGatew
 			return
 		}
 
-		apiEndpoint := fmt.Sprintf("https://%s/%s", endpoint, stage)
+		apiEndpoint := fmt.Sprintf("https://%s/%s", s.endpoint, stage)
 		s.apiClient = apigatewaymanagementapi.New(sess, aws.NewConfig().WithEndpoint(apiEndpoint))
 	})
 

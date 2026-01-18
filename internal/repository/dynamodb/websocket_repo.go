@@ -32,7 +32,7 @@ func (r *WebSocketRepo) SaveConnection(ctx context.Context, conn *model.Connecti
 	if conn.TTL == 0 {
 		conn.TTL = time.Now().Add(24 * time.Hour).Unix()
 	}
-	item, err := dynamodbattribute.MarshalMap(conn)
+	item, err := dynamodbattribute.MarshalMap(connectionItemFromModel(conn))
 	if err != nil {
 		return fmt.Errorf("marshaling connection: %w", err)
 	}
@@ -65,12 +65,12 @@ func (r *WebSocketRepo) GetConnection(ctx context.Context, connectionID string) 
 		return nil, model.ErrWebSocketConnectionNotFound
 	}
 
-	var conn model.ConnectionInfo
-	if err := dynamodbattribute.UnmarshalMap(result.Item, &conn); err != nil {
+	var connRecord connectionItem
+	if err := dynamodbattribute.UnmarshalMap(result.Item, &connRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling connection: %w", err)
 	}
 
-	return &conn, nil
+	return connRecord.toModel(), nil
 }
 
 func (r *WebSocketRepo) DeleteConnection(ctx context.Context, connectionID string) error {
@@ -155,11 +155,11 @@ func (r *WebSocketRepo) GetConnectionsByUserIDs(ctx context.Context, userIDs []s
 
 	connections := make([]*model.ConnectionInfo, 0, len(result.Items))
 	for _, item := range result.Items {
-		var conn model.ConnectionInfo
-		if err := dynamodbattribute.UnmarshalMap(item, &conn); err != nil {
+		var connRecord connectionItem
+		if err := dynamodbattribute.UnmarshalMap(item, &connRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling connection: %w", err)
 		}
-		connections = append(connections, &conn)
+		connections = append(connections, connRecord.toModel())
 	}
 
 	return connections, nil

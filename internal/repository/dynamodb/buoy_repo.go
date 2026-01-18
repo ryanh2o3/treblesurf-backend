@@ -52,12 +52,12 @@ func (r *BuoyRepo) GetLiveData(ctx context.Context, buoyName string) (*model.Buo
 		return nil, model.ErrBuoyDataNotFound
 	}
 
-	var data model.BuoyData
-	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &data); err != nil {
+	var dataRecord buoyDataItem
+	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &dataRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling buoy data: %w", err)
 	}
 
-	return &data, nil
+	return dataRecord.toModel(), nil
 }
 
 func (r *BuoyRepo) GetDataAtTime(ctx context.Context, buoyName string, t time.Time) (*model.BuoyData, error) {
@@ -95,11 +95,11 @@ func (r *BuoyRepo) GetDataRange(ctx context.Context, buoyName string, start, end
 
 	data := make([]*model.BuoyData, 0, len(result.Items))
 	for _, item := range result.Items {
-		var entry model.BuoyData
-		if err := dynamodbattribute.UnmarshalMap(item, &entry); err != nil {
+		var entryRecord buoyDataItem
+		if err := dynamodbattribute.UnmarshalMap(item, &entryRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling buoy data: %w", err)
 		}
-		data = append(data, &entry)
+		data = append(data, entryRecord.toModel())
 	}
 
 	return data, nil
@@ -150,11 +150,12 @@ func (r *BuoyRepo) GetLocations(ctx context.Context) (map[string]*model.BuoyLoca
 
 	locations := make(map[string]*model.BuoyLocation)
 	for _, item := range result.Items {
-		var location model.BuoyLocation
-		if err := dynamodbattribute.UnmarshalMap(item, &location); err != nil {
+		var locationRecord buoyLocationItem
+		if err := dynamodbattribute.UnmarshalMap(item, &locationRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling buoy location: %w", err)
 		}
-		key := location.Name
+		locationModel := locationRecord.toModel()
+		key := locationModel.Name
 		if key == "" {
 			if regionBuoyAttr, ok := item["region_buoy"]; ok && regionBuoyAttr.S != nil {
 				parts := strings.Split(*regionBuoyAttr.S, "_")
@@ -162,7 +163,7 @@ func (r *BuoyRepo) GetLocations(ctx context.Context) (map[string]*model.BuoyLoca
 			}
 		}
 		if key != "" {
-			locations[key] = &location
+			locations[key] = locationModel
 		}
 	}
 

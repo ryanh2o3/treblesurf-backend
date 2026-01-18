@@ -2,15 +2,22 @@ package service
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
+
+	"treblesurf-backend/internal/config"
 )
 
 type TideService struct {
-	// Add any dependencies here if needed
+	isDevelopment bool
 }
 
-func NewTideService() *TideService {
-	return &TideService{}
+func NewTideService(cfg *config.Config) *TideService {
+	isDevelopment := false
+	if cfg != nil && cfg.IsDevelopment() {
+		isDevelopment = true
+	}
+	return &TideService{isDevelopment: isDevelopment}
 }
 
 func (s *TideService) GetCurrentTides(locationName string) []map[string]interface{} {
@@ -129,9 +136,14 @@ func (s *TideService) GetDayTides(locationName, startDay string) map[string]inte
 }
 
 func (s *TideService) getTides(locationName, date string) map[string]interface{} {
-	// TODO: Implement the logic to get tides from DynamoDB
-	// This is a placeholder implementation that returns sample tide data
-	// In a real implementation, this would query DynamoDB for tide information
+	if !s.isDevelopment {
+		slog.Warn("tide data not configured; returning empty response",
+			slog.String("location", locationName),
+			slog.String("date", date),
+		)
+		return nil
+	}
+	// Development-only placeholder data until DynamoDB integration is available.
 	
 	// Generate sample tide times for the given date
 	sampleTides := []map[string]interface{}{

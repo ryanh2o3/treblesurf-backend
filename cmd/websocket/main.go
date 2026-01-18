@@ -2,7 +2,7 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"treblesurf-backend/internal/app"
 	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/websocket"
@@ -14,7 +14,10 @@ import (
 var websocketHandler *websocket.Handler
 
 func initialize() error {
-	cfg := config.MustLoad()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
 	application, err := app.NewWebSocket(cfg)
 	if err != nil {
@@ -22,7 +25,7 @@ func initialize() error {
 	}
 
 	websocketHandler = application.Handler()
-	log.Println("WebSocket handler initialized successfully")
+	slog.Info("websocket handler initialized")
 	return nil
 }
 
@@ -33,7 +36,8 @@ func Handler(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxy
 
 func main() {
 	if err := initialize(); err != nil {
-		log.Fatal(err)
+		slog.Error("failed to initialize websocket handler", slog.Any("error", err))
+		return
 	}
 	lambda.Start(Handler)
 }

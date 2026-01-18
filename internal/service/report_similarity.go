@@ -168,7 +168,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 	first := true
 
 	for _, report := range reports {
-		timeStr, ok := report["Time"].(string)
+		timeStr, ok := report["time"].(string)
 		if !ok || timeStr == "" {
 			continue
 		}
@@ -274,7 +274,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 		similarity := s.calculateBuoyConditionSimilarity(waveHeight, waveDirection, period, buoyDataMap)
 
 		if similarity > 0.7 {
-			delete(info.report, "UserEmail")
+			delete(info.report, "user_email")
 			info.report["similarity"] = similarity
 			info.report["buoy_wave_height"] = buoyDataMap["WaveHeight"]
 			info.report["buoy_wave_direction"] = buoyDataMap["MeanWaveDirection"]
@@ -569,7 +569,7 @@ func (s *ReportService) getCurrentWindConditions(
 func (s *ReportService) getForecastDataAtTime(
 	ctx context.Context,
 	countryName, regionName, spotName string, targetTime time.Time,
-) map[string]interface{} {
+) *model.ForecastDataPoint {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	// Search within ±3 hours window
 	startTime := targetTime.Add(-3 * time.Hour)
@@ -774,7 +774,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	first := true
 
 	for _, report := range reports {
-		timeStr, ok := report["Time"].(string)
+		timeStr, ok := report["time"].(string)
 		if !ok || timeStr == "" {
 			continue
 		}
@@ -918,31 +918,12 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 			continue
 		}
 
-		data, ok := historicalForecast["data"].(map[string]interface{})
-		if !ok {
+		if historicalForecast.Data == nil {
 			continue
 		}
 
-		historicalWindSpeed := 0.0
-		historicalWindDirection := 0.0
-
-		switch v := data["windSpeed"].(type) {
-		case float64:
-			historicalWindSpeed = v
-		case string:
-			if ws, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
-				historicalWindSpeed = ws
-			}
-		}
-
-		switch v := data["windDirection"].(type) {
-		case float64:
-			historicalWindDirection = v
-		case string:
-			if wd, parseErr := strconv.ParseFloat(v, 64); parseErr == nil {
-				historicalWindDirection = wd
-			}
-		}
+		historicalWindSpeed := extractFloatFromData(historicalForecast.Data, "windSpeed")
+		historicalWindDirection := extractFloatFromData(historicalForecast.Data, "windDirection")
 
 		var windSimilarity float64
 		if currentWindSpeed > 0 || currentWindDirection > 0 {
@@ -960,7 +941,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 
 		combinedSimilarity := 0.7*bestMatch.similarity + 0.3*windSimilarity
 
-		delete(info.report, "UserEmail")
+		delete(info.report, "user_email")
 		info.report["buoy_similarity"] = bestMatch.similarity
 		info.report["wind_similarity"] = windSimilarity
 		info.report["combined_similarity"] = combinedSimilarity

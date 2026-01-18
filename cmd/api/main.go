@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"treblesurf-backend/internal/app"
 	"treblesurf-backend/internal/config"
@@ -15,7 +16,10 @@ import (
 var ginLambda *ginadapter.GinLambda
 
 func initialize() error {
-	cfg := config.MustLoad()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
 	application, err := app.New(cfg)
 	if err != nil {
@@ -38,7 +42,8 @@ func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.API
 
 func main() {
 	if err := initialize(); err != nil {
-		panic(err)
+		slog.Error("failed to initialize api handler", slog.Any("error", err))
+		return
 	}
 	lambda.Start(Handler)
 }

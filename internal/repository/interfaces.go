@@ -77,8 +77,8 @@ type ForecastRepository interface {
 
 // ForecastDataRepository handles raw forecast data queries needed for report logic.
 type ForecastDataRepository interface {
-	QuerySince(ctx context.Context, spotID string, since time.Time, limit int) ([]map[string]interface{}, error)
-	QueryBetween(ctx context.Context, spotID string, start, end time.Time, limit int) ([]map[string]interface{}, error)
+	QuerySince(ctx context.Context, spotID string, since time.Time, limit int) ([]*model.ForecastDataPoint, error)
+	QueryBetween(ctx context.Context, spotID string, start, end time.Time, limit int) ([]*model.ForecastDataPoint, error)
 }
 
 // BuoyDataRequest represents a request for buoy data at a specific time range.
@@ -163,6 +163,7 @@ type WebSocketRepository interface {
 // SpotSubscriptionRepository handles spot subscription persistence.
 type SpotSubscriptionRepository interface {
 	Save(ctx context.Context, spotIdentifier, userID, connectionID string) error
+	GetSubscribersBySpot(ctx context.Context, spotIdentifier string) ([]string, error)
 }
 
 // SwellPredictionRepository handles swell prediction persistence.

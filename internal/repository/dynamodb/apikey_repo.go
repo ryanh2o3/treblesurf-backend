@@ -27,7 +27,7 @@ func NewAPIKeyRepo(client *dynamodb.DynamoDB, tableName string) *APIKeyRepo {
 }
 
 func (r *APIKeyRepo) Create(ctx context.Context, key *model.APIKey) error {
-	item, err := dynamodbattribute.MarshalMap(key)
+	item, err := dynamodbattribute.MarshalMap(apiKeyItemFromModel(key))
 	if err != nil {
 		return fmt.Errorf("marshaling api key: %w", err)
 	}
@@ -62,12 +62,12 @@ func (r *APIKeyRepo) GetByKey(ctx context.Context, keyValue string) (*model.APIK
 		return nil, model.ErrAPIKeyNotFound
 	}
 
-	var apiKey model.APIKey
-	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &apiKey); err != nil {
+	var apiKeyRecord apiKeyItem
+	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &apiKeyRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling api key: %w", err)
 	}
 
-	return &apiKey, nil
+	return apiKeyRecord.toModel(), nil
 }
 
 func (r *APIKeyRepo) List(ctx context.Context) ([]*model.APIKey, error) {
@@ -82,11 +82,11 @@ func (r *APIKeyRepo) List(ctx context.Context) ([]*model.APIKey, error) {
 
 	keys := make([]*model.APIKey, 0, len(result.Items))
 	for _, item := range result.Items {
-		var key model.APIKey
-		if err := dynamodbattribute.UnmarshalMap(item, &key); err != nil {
+		var keyRecord apiKeyItem
+		if err := dynamodbattribute.UnmarshalMap(item, &keyRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling api key: %w", err)
 		}
-		keys = append(keys, &key)
+		keys = append(keys, keyRecord.toModel())
 	}
 
 	return keys, nil

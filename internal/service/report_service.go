@@ -15,6 +15,7 @@ type ReportService struct {
 	forecastDataRepo  repository.ForecastDataRepository
 	rekognitionClient RekognitionAPI
 	userService       *UserService
+	websocketService  *WebSocketService
 }
 
 type RekognitionAPI interface {
@@ -29,6 +30,7 @@ func NewReportService(
 	forecastDataRepo repository.ForecastDataRepository,
 	rekognitionClient RekognitionAPI,
 	userService *UserService,
+	websocketService *WebSocketService,
 ) *ReportService {
 	return &ReportService{
 		mediaRepo:         mediaRepo,
@@ -38,6 +40,7 @@ func NewReportService(
 		forecastDataRepo:  forecastDataRepo,
 		rekognitionClient: rekognitionClient,
 		userService:       userService,
+		websocketService:  websocketService,
 	}
 }
 

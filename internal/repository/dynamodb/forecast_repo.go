@@ -3,6 +3,7 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"treblesurf-backend/internal/model"
@@ -55,11 +56,11 @@ func (r *ForecastRepo) GetSpotForecast(
 
 	forecasts := make([]*model.Forecast, 0, len(result.Items))
 	for _, item := range result.Items {
-		var forecast model.Forecast
-		if err := dynamodbattribute.UnmarshalMap(item, &forecast); err != nil {
+		var forecastRecord forecastItem
+		if err := dynamodbattribute.UnmarshalMap(item, &forecastRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling forecast: %w", err)
 		}
-		forecasts = append(forecasts, &forecast)
+		forecasts = append(forecasts, forecastRecord.toModel())
 	}
 
 	return forecasts, nil
@@ -95,12 +96,12 @@ func (r *ForecastRepo) GetCurrentConditions(
 		return nil, model.ErrForecastNotFound
 	}
 
-	var forecast model.Forecast
-	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &forecast); err != nil {
+	var forecastRecord forecastItem
+	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &forecastRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
 	}
 
-	return &forecast, nil
+	return forecastRecord.toModel(), nil
 }
 
 func (r *ForecastRepo) GetForecastAtTime(
@@ -134,12 +135,12 @@ func (r *ForecastRepo) GetForecastAtTime(
 		return nil, model.ErrForecastNotFound
 	}
 
-	var forecast model.Forecast
-	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &forecast); err != nil {
+	var forecastRecord forecastItem
+	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &forecastRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
 	}
 
-	return &forecast, nil
+	return forecastRecord.toModel(), nil
 }
 
 func (r *ForecastRepo) GetRegionForecast(
@@ -172,11 +173,11 @@ func (r *ForecastRepo) GetRegionForecast(
 
 	forecasts := make([]*model.Forecast, 0, len(result.Items))
 	for _, item := range result.Items {
-		var forecast model.Forecast
-		if err := dynamodbattribute.UnmarshalMap(item, &forecast); err != nil {
+		var forecastRecord forecastItem
+		if err := dynamodbattribute.UnmarshalMap(item, &forecastRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling forecast: %w", err)
 		}
-		forecasts = append(forecasts, &forecast)
+		forecasts = append(forecasts, forecastRecord.toModel())
 	}
 
 	return forecasts, nil
@@ -187,7 +188,7 @@ func (r *ForecastRepo) QuerySince(
 	spotID string,
 	since time.Time,
 	limit int,
-) ([]map[string]interface{}, error) {
+) ([]*model.ForecastDataPoint, error) {
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.tableName),
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :since"),
@@ -210,7 +211,7 @@ func (r *ForecastRepo) QuerySince(
 		return nil, fmt.Errorf("querying forecast data: %w", err)
 	}
 
-	return unmarshalForecastData(result.Items)
+	return unmarshalForecastDataPoints(result.Items)
 }
 
 func (r *ForecastRepo) QueryBetween(
@@ -218,7 +219,7 @@ func (r *ForecastRepo) QueryBetween(
 	spotID string,
 	start, end time.Time,
 	limit int,
-) ([]map[string]interface{}, error) {
+) ([]*model.ForecastDataPoint, error) {
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.tableName),
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp BETWEEN :start AND :end"),
@@ -244,17 +245,44 @@ func (r *ForecastRepo) QueryBetween(
 		return nil, fmt.Errorf("querying forecast data range: %w", err)
 	}
 
-	return unmarshalForecastData(result.Items)
+	return unmarshalForecastDataPoints(result.Items)
 }
 
-func unmarshalForecastData(items []map[string]*dynamodb.AttributeValue) ([]map[string]interface{}, error) {
-	forecasts := make([]map[string]interface{}, 0, len(items))
+type forecastDataItem struct {
+	SpotID            string                 `dynamodbav:"spot_id"`
+	ForecastTimestamp string                 `dynamodbav:"forecast_timestamp"`
+	Data              map[string]interface{} `dynamodbav:"data"`
+}
+
+func unmarshalForecastDataPoints(items []map[string]*dynamodb.AttributeValue) ([]*model.ForecastDataPoint, error) {
+	forecasts := make([]*model.ForecastDataPoint, 0, len(items))
 	for _, item := range items {
-		var forecast map[string]interface{}
-		if err := dynamodbattribute.UnmarshalMap(item, &forecast); err != nil {
+		var forecastItem forecastDataItem
+		if err := dynamodbattribute.UnmarshalMap(item, &forecastItem); err != nil {
 			return nil, fmt.Errorf("unmarshaling forecast data: %w", err)
 		}
-		forecasts = append(forecasts, forecast)
+		forecastTime, err := parseForecastTimestamp(forecastItem.ForecastTimestamp)
+		if err != nil {
+			return nil, fmt.Errorf("parsing forecast timestamp: %w", err)
+		}
+		forecasts = append(forecasts, &model.ForecastDataPoint{
+			SpotID:            forecastItem.SpotID,
+			ForecastTimestamp: forecastTime,
+			Data:              forecastItem.Data,
+		})
 	}
 	return forecasts, nil
+}
+
+func parseForecastTimestamp(value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, fmt.Errorf("timestamp is empty")
+	}
+	if unixSeconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return time.Unix(unixSeconds, 0).UTC(), nil
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed.UTC(), nil
+	}
+	return time.Time{}, fmt.Errorf("unrecognized forecast timestamp: %s", value)
 }

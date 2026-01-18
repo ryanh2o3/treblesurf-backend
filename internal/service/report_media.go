@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -127,9 +128,7 @@ func (s *ReportService) GetReportImage(ctx context.Context, imageKey string) (im
 		return nil, "", fmt.Errorf("failed to read image data: %w", err)
 	}
 
-	// For now, assume JPEG content type
-	// TODO: Implement proper content type detection
-	contentType = "image/jpeg"
+	contentType = detectContentType(imageData, "image/jpeg")
 
 	return imageData, contentType, nil
 }
@@ -140,9 +139,7 @@ func (s *ReportService) GetReportVideo(ctx context.Context, videoKey string) (vi
 		return nil, "", fmt.Errorf("failed to read video data: %w", err)
 	}
 
-	// For now, assume MP4 content type
-	// TODO: Implement proper content type detection
-	contentType = "video/mp4"
+	contentType = detectContentType(videoData, "video/mp4")
 
 	return videoData, contentType, nil
 }
@@ -325,4 +322,15 @@ func (s *ReportService) canUserAccessVideo(videoKey, userUUID string) bool {
 	}
 
 	return true
+}
+
+func detectContentType(data []byte, fallback string) string {
+	if len(data) == 0 {
+		return fallback
+	}
+	contentType := http.DetectContentType(data)
+	if contentType == "" || contentType == "application/octet-stream" {
+		return fallback
+	}
+	return contentType
 }

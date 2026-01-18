@@ -50,6 +50,8 @@ type containerConfig struct {
 	bucketName string
 	jwtSecret  string
 	isLocal    bool
+	websocketEndpoint string
+	websocketStage    string
 }
 
 // NewContainer creates a new Container with all dependencies wired up.
@@ -65,7 +67,7 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 		return nil, fmt.Errorf("initializing storage: %w", err)
 	}
 
-	services, err := initializeServices(storage, containerCfg)
+	services, err := initializeServices(storage, containerCfg, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initializing services: %w", err)
 	}
@@ -79,10 +81,12 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 // loadContainerConfig extracts container configuration from the main config.
 func loadContainerConfig(cfg *config.Config) containerConfig {
 	return containerConfig{
-		region:     cfg.AWS.Region,
-		bucketName: cfg.AWS.BucketName,
-		isLocal:    cfg.IsDevelopment(),
-		jwtSecret:  cfg.Auth.JWTSecret,
+		region:            cfg.AWS.Region,
+		bucketName:        cfg.AWS.BucketName,
+		isLocal:           cfg.IsDevelopment(),
+		jwtSecret:         cfg.Auth.JWTSecret,
+		websocketEndpoint: cfg.WebSocket.Endpoint,
+		websocketStage:    cfg.WebSocket.Stage,
 	}
 }
 

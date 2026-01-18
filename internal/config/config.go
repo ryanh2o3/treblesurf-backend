@@ -37,6 +37,7 @@ type AWSConfig struct {
 type AuthConfig struct {
 	JWTSecret       string
 	GoogleClientIDs []string
+	CookieSecure    bool
 }
 
 // WebSocketConfig holds WebSocket-related configuration.
@@ -91,6 +92,22 @@ func Load() (*Config, error) {
 	// Load Google client IDs
 	if ids := strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_IDS")); ids != "" {
 		cfg.Auth.GoogleClientIDs = splitCommaSeparated(ids)
+	} else {
+		legacyIDs := []string{
+			strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
+			strings.TrimSpace(os.Getenv("GOOGLE_IOS_CLIENT_ID")),
+		}
+		for _, id := range legacyIDs {
+			if id != "" {
+				cfg.Auth.GoogleClientIDs = append(cfg.Auth.GoogleClientIDs, id)
+			}
+		}
+	}
+
+	// Load cookie security settings (defaults to secure in production)
+	cfg.Auth.CookieSecure = !cfg.IsDevelopment()
+	if secure, ok := getEnvBool("COOKIE_SECURE"); ok {
+		cfg.Auth.CookieSecure = secure
 	}
 
 	// Load admin emails from environment
@@ -140,6 +157,21 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func getEnvBool(key string) (bool, bool) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return false, false
+	}
+	switch strings.ToLower(value) {
+	case "1", "true", "t", "yes", "y":
+		return true, true
+	case "0", "false", "f", "no", "n":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func splitCommaSeparated(value string) []string {

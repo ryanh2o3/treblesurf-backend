@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/model"
 	mockrepo "treblesurf-backend/internal/repository/mock"
 	"treblesurf-backend/internal/service"
@@ -17,7 +18,7 @@ import (
 
 func setupForecastController(repo *mockrepo.ForecastRepo) *ForecastController {
 	forecastSvc, _ := service.NewForecastService(repo)
-	tideSvc := service.NewTideService()
+	tideSvc := service.NewTideService(&config.Config{Env: config.EnvDevelopment})
 	return NewForecastController(forecastSvc, tideSvc)
 }
 

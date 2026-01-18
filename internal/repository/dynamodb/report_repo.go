@@ -28,25 +28,19 @@ func NewReportRepo(client *dynamodb.DynamoDB, tableName string) *ReportRepo {
 }
 
 func (r *ReportRepo) Create(ctx context.Context, report *model.SurfReport) error {
-	item, err := dynamodbattribute.MarshalMap(report)
+	record := reportItemFromModel(report)
+	if record.CountryRegionSpot == "" && report.Country != "" && report.Region != "" && report.Spot != "" {
+		record.CountryRegionSpot = fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
+	}
+	if record.DateReported == "" && !report.Timestamp.IsZero() {
+		record.DateReported = report.Timestamp.UTC().Format(time.RFC3339)
+	}
+	if record.Time == "" && !report.Timestamp.IsZero() {
+		record.Time = report.Timestamp.UTC().Format(time.RFC3339)
+	}
+	item, err := dynamodbattribute.MarshalMap(record)
 	if err != nil {
 		return fmt.Errorf("marshaling report: %w", err)
-	}
-
-	if report.CountryRegionSpot == "" && report.Country != "" && report.Region != "" && report.Spot != "" {
-		item["country_region_spot"] = &dynamodb.AttributeValue{
-			S: aws.String(fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)),
-		}
-	}
-	if report.DateReported == "" && !report.Timestamp.IsZero() {
-		item["dateReported"] = &dynamodb.AttributeValue{
-			S: aws.String(report.Timestamp.UTC().Format(time.RFC3339)),
-		}
-	}
-	if report.Time == "" && !report.Timestamp.IsZero() {
-		item["Time"] = &dynamodb.AttributeValue{
-			S: aws.String(report.Timestamp.String()),
-		}
 	}
 
 	input := &dynamodb.PutItemInput{
@@ -88,11 +82,11 @@ func (r *ReportRepo) GetBySpot(
 
 	reports := make([]*model.SurfReport, 0, len(result.Items))
 	for _, item := range result.Items {
-		var report model.SurfReport
-		if err := dynamodbattribute.UnmarshalMap(item, &report); err != nil {
+		var reportRecord reportItem
+		if err := dynamodbattribute.UnmarshalMap(item, &reportRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling report: %w", err)
 		}
-		reports = append(reports, &report)
+		reports = append(reports, reportRecord.toModel())
 	}
 
 	return reports, nil
@@ -131,11 +125,11 @@ func (r *ReportRepo) GetBySpotAndTimeRange(
 
 	reports := make([]*model.SurfReport, 0, len(result.Items))
 	for _, item := range result.Items {
-		var report model.SurfReport
-		if err := dynamodbattribute.UnmarshalMap(item, &report); err != nil {
+		var reportRecord reportItem
+		if err := dynamodbattribute.UnmarshalMap(item, &reportRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling report: %w", err)
 		}
-		reports = append(reports, &report)
+		reports = append(reports, reportRecord.toModel())
 	}
 
 	return reports, nil
@@ -166,11 +160,11 @@ func (r *ReportRepo) ScanSince(ctx context.Context, since time.Time, limit int) 
 
 	reports := make([]*model.SurfReport, 0, len(result.Items))
 	for _, item := range result.Items {
-		var report model.SurfReport
-		if err := dynamodbattribute.UnmarshalMap(item, &report); err != nil {
+		var reportRecord reportItem
+		if err := dynamodbattribute.UnmarshalMap(item, &reportRecord); err != nil {
 			return nil, fmt.Errorf("unmarshaling report: %w", err)
 		}
-		reports = append(reports, &report)
+		reports = append(reports, reportRecord.toModel())
 	}
 
 	return reports, nil

@@ -34,7 +34,11 @@ func main() {
 
 	log.Println("Starting Treble Surf backend in local development mode")
 
-	appCfg := config.MustLoad()
+	appCfg, err := config.Load()
+	if err != nil {
+		log.Printf("failed to load config: %s", err.Error())
+		os.Exit(1)
+	}
 	logging.Init(appCfg)
 
 	cfg, err := localconfig.Load(true)

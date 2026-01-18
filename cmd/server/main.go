@@ -14,7 +14,11 @@ import (
 )
 
 func main() {
-	cfg := config.MustLoad()
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("failed to load config", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	application, err := app.New(cfg)
 	if err != nil {

@@ -214,7 +214,7 @@ func setupUserRoutes(g *gin.RouterGroup, container *Container) {
 	g.GET("/getAllSpotReports", container.ReportController.GetAllSpotSurfReports)
 	g.GET("/getSurfReportsWithSimilarBuoyData", container.ReportController.GetSurfReportsWithSimilarBuoyData)
 	g.GET("/getSurfReportsWithMatchingConditions", container.ReportController.GetSurfReportsWithMatchingConditions)
-	g.GET("getReportImage", container.ReportController.GetReportImage)
+	g.GET("/getReportImage", container.ReportController.GetReportImage)
 	g.GET("/getReportVideo", container.ReportController.GetReportVideo)
 	g.GET("/generateVideoViewURL", container.ReportController.GenerateVideoViewURL)
 	g.GET("/ws-token", container.AuthService.GetWebSocketTokenHandler)
@@ -248,7 +248,7 @@ func setupAdminRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 		adminRoutes.Use(DevAdminAuthMiddleware(container.AuthService))
 	} else {
 		slog.Info("using production admin middleware")
-		adminRoutes.Use(container.AuthService.Middleware(), AdminMiddleware())
+		adminRoutes.Use(container.AuthService.Middleware(), AdminMiddlewareWithConfig(cfg))
 	}
 
 	adminRoutes.POST("/api-keys", container.APIKeyController.CreateAPIKeyHandler)

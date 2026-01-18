@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"treblesurf-backend/internal/auth"
+	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/controller"
 	"treblesurf-backend/internal/repository"
 	repodynamo "treblesurf-backend/internal/repository/dynamodb"
@@ -60,9 +61,9 @@ type containerRepositories struct {
 }
 
 // initializeServices creates all application services with their dependencies.
-func initializeServices(storage *containerStorage, cfg containerConfig) (*containerServices, error) {
+func initializeServices(storage *containerStorage, cfg containerConfig, appCfg *config.Config) (*containerServices, error) {
 	repos := initRepositories(storage, cfg)
-	return buildServices(repos, storage, cfg)
+	return buildServices(repos, storage, cfg, appCfg)
 }
 
 func initRepositories(storage *containerStorage, cfg containerConfig) *containerRepositories {
@@ -89,18 +90,26 @@ func buildServices(
 	repos *containerRepositories,
 	storage *containerStorage,
 	cfg containerConfig,
+	appCfg *config.Config,
 ) (*containerServices, error) {
 	services := &containerServices{
-		tideService: service.NewTideService(),
+		tideService: service.NewTideService(appCfg),
 	}
 
-	if err := initAuthAndUserServices(cfg, repos, services); err != nil {
+	if err := initAuthAndUserServices(appCfg, repos, services); err != nil {
 		return nil, err
 	}
 	if err := initDomainServices(repos, services); err != nil {
 		return nil, err
 	}
 
+	services.websocketService = service.NewWebSocketService(
+		repos.websocketRepo,
+		repos.subscriptionRepo,
+		[]byte(cfg.jwtSecret),
+		cfg.websocketEndpoint,
+		cfg.websocketStage,
+	)
 	services.reportService = service.NewReportService(
 		repos.mediaRepo,
 		repos.reportRepo,
@@ -109,22 +118,18 @@ func buildServices(
 		repos.forecastDataRepo,
 		storage.rekognitionClient,
 		services.userService,
-	)
-	services.websocketService = service.NewWebSocketService(
-		repos.websocketRepo,
-		repos.subscriptionRepo,
-		[]byte(cfg.jwtSecret),
+		services.websocketService,
 	)
 
 	return services, nil
 }
 
 func initAuthAndUserServices(
-	cfg containerConfig,
+	appCfg *config.Config,
 	repos *containerRepositories,
 	services *containerServices,
 ) error {
-	authService, err := auth.NewService(cfg.jwtSecret, repos.userRepo, repos.sessionRepo, slog.Default())
+	authService, err := auth.NewService(appCfg, repos.userRepo, repos.sessionRepo, slog.Default())
 	if err != nil {
 		return fmt.Errorf("creating auth service: %w", err)
 	}

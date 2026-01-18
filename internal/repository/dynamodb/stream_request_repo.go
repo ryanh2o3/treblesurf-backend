@@ -27,7 +27,7 @@ func NewStreamRequestRepo(client *dynamodb.DynamoDB, tableName string) *StreamRe
 }
 
 func (r *StreamRequestRepo) Save(ctx context.Context, request *model.StreamRequest) error {
-	item, err := dynamodbattribute.MarshalMap(request)
+	item, err := dynamodbattribute.MarshalMap(streamRequestItemFromModel(request))
 	if err != nil {
 		return fmt.Errorf("marshaling stream request: %w", err)
 	}
@@ -58,10 +58,10 @@ func (r *StreamRequestRepo) GetBySpotID(ctx context.Context, spotID string) (*mo
 		return nil, nil
 	}
 
-	var request model.StreamRequest
-	if err := dynamodbattribute.UnmarshalMap(result.Item, &request); err != nil {
+	var requestRecord streamRequestItem
+	if err := dynamodbattribute.UnmarshalMap(result.Item, &requestRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling stream request: %w", err)
 	}
 
-	return &request, nil
+	return requestRecord.toModel(), nil
 }

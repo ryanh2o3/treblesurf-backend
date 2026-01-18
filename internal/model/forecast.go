@@ -3,21 +3,21 @@ package model
 import "time"
 
 type Forecast struct {
-	CountryRegionSpot string    `json:"country_region_spot" dynamodbav:"country_region_spot"`
-	ForecastDate      string    `json:"forecast_date" dynamodbav:"ForecastDate"`
-	Date              time.Time `json:"date" dynamodbav:"date"`
-	Conditions        string    `json:"conditions" dynamodbav:"conditions"`
-	Country           string    `json:"country" dynamodbav:"country"`
-	Region            string    `json:"region" dynamodbav:"region"`
-	Spot              string    `json:"spot" dynamodbav:"spot"`
-	DateForecastedFor string    `json:"dateForecastedFor" dynamodbav:"dateForecastedFor"`
-	Location          string    `json:"location" dynamodbav:"location"`
-	Hour              int       `json:"hour" dynamodbav:"hour"`
-	WindSpeed         float64   `json:"wind_speed" dynamodbav:"wind_speed"`
-	WindDirection     float64   `json:"wind_direction" dynamodbav:"wind_direction"`
-	WaveHeight        float64   `json:"wave_height" dynamodbav:"wave_height"`
-	WavePeriod        float64   `json:"wave_period" dynamodbav:"wave_period"`
-	MaxPeriod         float64   `json:"max_period" dynamodbav:"max_period"`
-	WaveDirection     float64   `json:"wave_direction" dynamodbav:"wave_direction"`
-	Temperature       float64   `json:"temperature" dynamodbav:"temperature"`
+	CountryRegionSpot string    `json:"country_region_spot"`
+	ForecastDate      string    `json:"forecast_date"`
+	Date              time.Time `json:"date"`
+	Conditions        string    `json:"conditions"`
+	Country           string    `json:"country"`
+	Region            string    `json:"region"`
+	Spot              string    `json:"spot"`
+	DateForecastedFor string    `json:"dateForecastedFor"`
+	Location          string    `json:"location"`
+	Hour              int       `json:"hour"`
+	WindSpeed         float64   `json:"wind_speed"`
+	WindDirection     float64   `json:"wind_direction"`
+	WaveHeight        float64   `json:"wave_height"`
+	WavePeriod        float64   `json:"wave_period"`
+	MaxPeriod         float64   `json:"max_period"`
+	WaveDirection     float64   `json:"wave_direction"`
+	Temperature       float64   `json:"temperature"`
 }

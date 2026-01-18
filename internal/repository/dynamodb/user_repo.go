@@ -45,12 +45,12 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*model.User, e
 		return nil, repository.ErrNotFound
 	}
 
-	var user model.User
-	if err := dynamodbattribute.UnmarshalMap(result.Item, &user); err != nil {
+	var userRecord userItem
+	if err := dynamodbattribute.UnmarshalMap(result.Item, &userRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling user: %w", err)
 	}
 
-	return &user, nil
+	return userRecord.toModel(), nil
 }
 
 func (r *UserRepo) GetByUUID(ctx context.Context, uuid string) (*model.User, error) {
@@ -74,16 +74,16 @@ func (r *UserRepo) GetByUUID(ctx context.Context, uuid string) (*model.User, err
 		return nil, repository.ErrNotFound
 	}
 
-	var user model.User
-	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &user); err != nil {
+	var userRecord userItem
+	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &userRecord); err != nil {
 		return nil, fmt.Errorf("unmarshaling user: %w", err)
 	}
 
-	return &user, nil
+	return userRecord.toModel(), nil
 }
 
 func (r *UserRepo) Create(ctx context.Context, user *model.User) error {
-	item, err := dynamodbattribute.MarshalMap(user)
+	item, err := dynamodbattribute.MarshalMap(userItemFromModel(user))
 	if err != nil {
 		return fmt.Errorf("marshaling user: %w", err)
 	}
@@ -105,7 +105,7 @@ func (r *UserRepo) Create(ctx context.Context, user *model.User) error {
 }
 
 func (r *UserRepo) Update(ctx context.Context, user *model.User) error {
-	item, err := dynamodbattribute.MarshalMap(user)
+	item, err := dynamodbattribute.MarshalMap(userItemFromModel(user))
 	if err != nil {
 		return fmt.Errorf("marshaling user: %w", err)
 	}

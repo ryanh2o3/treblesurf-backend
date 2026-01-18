@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"treblesurf-backend/internal/model"
 )
@@ -27,7 +28,7 @@ func (s *ReportService) SubmitSurfReport(
 		return err
 	}
 
-	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
+	dateReported := fmt.Sprintf("%s_%s", currentTime.UTC().Format(time.RFC3339), user.UUID)
 	reportItem := s.createBaseReport(
 		countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false,
 	)
@@ -56,7 +57,7 @@ func (s *ReportService) SubmitSurfReport(
 		report.Country, report.Region, report.Spot, userName, user.UUID,
 		s3KeyReport, "", "image", false, reportFields, currentTime,
 	)
-	s.broadcastReportMessage(report.Country, report.Region, report.Spot, message)
+	s.broadcastReportMessage(ctx, report.Country, report.Region, report.Spot, message)
 
 	return nil
 }
@@ -74,7 +75,7 @@ func (s *ReportService) SubmitSurfReportWithS3Image(
 
 	currentTime := parseReportDate(report.Date)
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
-	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
+	dateReported := fmt.Sprintf("%s_%s", currentTime.UTC().Format(time.RFC3339), user.UUID)
 
 	reportItem := s.createBaseReport(
 		countryRegionSpot, dateReported, userEmail, userName, user.UUID, currentTime, "image", false,
@@ -105,7 +106,7 @@ func (s *ReportService) SubmitSurfReportWithS3Image(
 		report.Country, report.Region, report.Spot, userName, user.UUID,
 		s3KeyReport, "", "image", false, reportFields, currentTime,
 	)
-	s.broadcastReportMessage(report.Country, report.Region, report.Spot, message)
+	s.broadcastReportMessage(ctx, report.Country, report.Region, report.Spot, message)
 
 	return nil
 }
@@ -125,7 +126,7 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(
 
 	currentTime := parseReportDate(report.Date)
 	countryRegionSpot := fmt.Sprintf("%s_%s_%s", report.Country, report.Region, report.Spot)
-	dateReported := fmt.Sprintf("%s_%s", currentTime, user.UUID)
+	dateReported := fmt.Sprintf("%s_%s", currentTime.UTC().Format(time.RFC3339), user.UUID)
 	mediaType := determineMediaType(report.ImageKey != "", report.VideoKey != "")
 
 	reportItem := s.createBaseReport(
@@ -154,19 +155,28 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(
 		report.Country, report.Region, report.Spot, userName, user.UUID,
 		s3KeyReport, videoKeyReport, mediaType, report.IOSValidated, reportFields, currentTime,
 	)
-	s.broadcastReportMessage(report.Country, report.Region, report.Spot, message)
+	s.broadcastReportMessage(ctx, report.Country, report.Region, report.Spot, message)
 
 	return nil
 }
 
-func (s *ReportService) getSpotSubscribers(_, _, _ string) ([]string, error) {
-	// TODO: Implement spot subscribers retrieval
-	// For now, return empty list
-	return []string{}, nil
+func (s *ReportService) getSpotSubscribers(ctx context.Context, country, region, spot string) ([]string, error) {
+	if s.websocketService == nil {
+		return nil, fmt.Errorf("websocket service not initialized")
+	}
+	spotIdentifier := fmt.Sprintf("%s/%s/%s", country, region, spot)
+	return s.websocketService.GetSubscribersBySpot(ctx, spotIdentifier)
 }
 
-func (s *ReportService) broadcastToUsers(subscribers []string, _ interface{}) {
-	// TODO: Implement user broadcasting
-	// For now, just log the message
-	slog.Info("broadcasting message to subscribers", slog.Int("count", len(subscribers)))
+func (s *ReportService) broadcastToUsers(ctx context.Context, subscribers []string, message interface{}) {
+	if len(subscribers) == 0 {
+		return
+	}
+	if s.websocketService == nil {
+		slog.Warn("websocket service not initialized; unable to broadcast")
+		return
+	}
+	if err := s.websocketService.BroadcastToUsers(ctx, subscribers, message); err != nil {
+		slog.Warn("failed to broadcast message to subscribers", slog.Any("error", err))
+	}
 }
