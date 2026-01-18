@@ -2,6 +2,8 @@
 package storage
 
 import (
+	"fmt"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -23,10 +25,13 @@ type DynamoDBClient struct {
 
 // NewDynamoDBStorage creates a new DynamoDB client for the specified AWS region.
 func NewDynamoDBStorage(region string) (*DynamoDBClient, error) {
-	sess := session.Must(session.NewSession(&aws.Config{
+	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(region),
-	}))
-	
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AWS session: %w", err)
+	}
+
 	client := dynamodb.New(sess)
 	return &DynamoDBClient{client: client}, nil
 }

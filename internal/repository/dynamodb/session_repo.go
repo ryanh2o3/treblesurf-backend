@@ -9,6 +9,7 @@ import (
 	"treblesurf-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
@@ -117,4 +118,72 @@ func (r *SessionRepo) GetByUserID(ctx context.Context, userID string) ([]*model.
 	}
 
 	return sessions, nil
+}
+
+func (r *SessionRepo) EnsureSessionsTable(ctx context.Context) error {
+	_, err := r.client.DescribeTableWithContext(ctx, &dynamodb.DescribeTableInput{
+		TableName: aws.String(r.tableName),
+	})
+	if err == nil {
+		return nil
+	}
+	if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeResourceNotFoundException {
+		input := &dynamodb.CreateTableInput{
+			TableName: aws.String(r.tableName),
+			AttributeDefinitions: []*dynamodb.AttributeDefinition{
+				{
+					AttributeName: aws.String("session_id"),
+					AttributeType: aws.String("S"),
+				},
+			},
+			KeySchema: []*dynamodb.KeySchemaElement{
+				{
+					AttributeName: aws.String("session_id"),
+					KeyType:       aws.String("HASH"),
+				},
+			},
+			BillingMode: aws.String(dynamodb.BillingModePayPerRequest),
+		}
+
+		if _, createErr := r.client.CreateTableWithContext(ctx, input); createErr != nil {
+			return fmt.Errorf("creating sessions table: %w", createErr)
+		}
+
+		if waitErr := r.client.WaitUntilTableExistsWithContext(ctx, &dynamodb.DescribeTableInput{
+			TableName: aws.String(r.tableName),
+		}); waitErr != nil {
+			return fmt.Errorf("waiting for sessions table: %w", waitErr)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("describing sessions table: %w", err)
+}
+
+func (r *SessionRepo) EnableTTL(ctx context.Context) error {
+	describe, err := r.client.DescribeTimeToLiveWithContext(ctx, &dynamodb.DescribeTimeToLiveInput{
+		TableName: aws.String(r.tableName),
+	})
+	if err != nil {
+		return fmt.Errorf("describing TTL: %w", err)
+	}
+
+	if describe.TimeToLiveDescription != nil {
+		status := aws.StringValue(describe.TimeToLiveDescription.TimeToLiveStatus)
+		if status == dynamodb.TimeToLiveStatusEnabled || status == dynamodb.TimeToLiveStatusEnabling {
+			return nil
+		}
+	}
+
+	_, err = r.client.UpdateTimeToLiveWithContext(ctx, &dynamodb.UpdateTimeToLiveInput{
+		TableName: aws.String(r.tableName),
+		TimeToLiveSpecification: &dynamodb.TimeToLiveSpecification{
+			AttributeName: aws.String("ttl"),
+			Enabled:       aws.Bool(true),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("updating TTL: %w", err)
+	}
+	return nil
 }

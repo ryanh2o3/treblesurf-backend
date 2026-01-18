@@ -165,7 +165,7 @@ func (s *ReportService) getSpotSubscribers(_, _, _ string) ([]string, error) {
 	return []string{}, nil
 }
 
-func (s *ReportService) broadcastToUsers(subscribers []string, message interface{}) {
+func (s *ReportService) broadcastToUsers(subscribers []string, _ interface{}) {
 	// TODO: Implement user broadcasting
 	// For now, just log the message
 	slog.Info("broadcasting message to subscribers", slog.Int("count", len(subscribers)))

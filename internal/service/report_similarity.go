@@ -19,6 +19,17 @@ type buoyDataCache struct {
 	data map[string][]*model.BuoyData // keyed by buoy name
 }
 
+type spotLocation struct {
+	Latitude  float64
+	Longitude float64
+}
+
+type buoyLocation struct {
+	Name      string
+	Latitude  float64
+	Longitude float64
+}
+
 // newBuoyDataCache creates a cache from batch-fetched buoy data.
 func newBuoyDataCache(data map[string][]*model.BuoyData) *buoyDataCache {
 	return &buoyDataCache{data: data}
@@ -33,7 +44,7 @@ func (c *buoyDataCache) getDataAtTime(buoyName string, targetTime time.Time) *mo
 
 	// Find the entry closest to target time within 6 hours
 	var closest *model.BuoyData
-	var minDiff time.Duration = 6 * time.Hour
+	var minDiff = 6 * time.Hour
 
 	for _, entry := range entries {
 		diff := entry.Timestamp.Sub(targetTime)
@@ -97,7 +108,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 			time.Now(),
 		)
 		if repoErr != nil {
-			return nil, fmt.Errorf("failed to query surf reports: %v", repoErr)
+			return nil, fmt.Errorf("failed to query surf reports: %w", repoErr)
 		}
 		reports, err = s.convertReportsToMaps(reportsBySpot)
 		if err != nil {
@@ -107,7 +118,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 		// Scan all reports (filtered by time)
 		reportList, repoErr := s.reportRepo.ScanSince(ctx, cutoffTime, maxResults*10)
 		if repoErr != nil {
-			return nil, fmt.Errorf("failed to scan surf reports: %v", repoErr)
+			return nil, fmt.Errorf("failed to scan surf reports: %w", repoErr)
 		}
 		reports, err = s.convertReportsToMaps(reportList)
 		if err != nil {
@@ -131,27 +142,16 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 		return nil, fmt.Errorf("buoy %s not found", buoyName)
 	}
 
-	buoyLat, ok := buoyLocation["Latitude"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("invalid latitude for buoy %s", buoyName)
-	}
-
-	buoyLon, ok := buoyLocation["Longitude"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("invalid longitude for buoy %s", buoyName)
-	}
+	buoyLat := buoyLocation.Latitude
+	buoyLon := buoyLocation.Longitude
 
 	// Get spot location if provided
 	var spotLat, spotLon float64
 	if countryName != "" && regionName != "" && spotName != "" {
-		spotLoc, err := s.getSpotLocation(ctx, countryName, regionName, spotName)
-		if err == nil && spotLoc != nil {
-			if lat, ok := spotLoc["Latitude"].(float64); ok {
-				spotLat = lat
-			}
-			if lon, ok := spotLoc["Longitude"].(float64); ok {
-				spotLon = lon
-			}
+		spotLoc, spotErr := s.getSpotLocation(ctx, countryName, regionName, spotName)
+		if spotErr == nil {
+			spotLat = spotLoc.Latitude
+			spotLon = spotLoc.Longitude
 		}
 	}
 
@@ -173,9 +173,9 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 			continue
 		}
 
-		reportTime, err := parseReportTime(timeStr)
-		if err != nil {
-			slog.Warn("failed to parse report time", slog.String("time", timeStr), slog.Any("error", err))
+		reportTime, parseErr := parseReportTime(timeStr)
+		if parseErr != nil {
+			slog.Warn("failed to parse report time", slog.String("time", timeStr), slog.Any("error", parseErr))
 			continue
 		}
 
@@ -189,14 +189,10 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 			if crs, ok := report["country_region_spot"].(string); ok {
 				parts := strings.Split(crs, "_")
 				if len(parts) == 3 {
-					spotLoc, err := s.getSpotLocation(ctx, parts[0], parts[1], parts[2])
-					if err == nil && spotLoc != nil {
-						if lat, ok := spotLoc["Latitude"].(float64); ok {
-							reportSpotLat = lat
-						}
-						if lon, ok := spotLoc["Longitude"].(float64); ok {
-							reportSpotLon = lon
-						}
+					spotLoc, spotErr := s.getSpotLocation(ctx, parts[0], parts[1], parts[2])
+					if spotErr == nil {
+						reportSpotLat = spotLoc.Latitude
+						reportSpotLon = spotLoc.Longitude
 					}
 				}
 			}
@@ -313,26 +309,6 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 	return finalReports, nil
 }
 
-func (s *ReportService) getBuoyDataAtTime(ctx context.Context, targetTime time.Time, buoyPriority []string) map[string]interface{} {
-	// Look for data within 6 hours of target time
-	startTime := targetTime.Add(-6 * time.Hour)
-	endTime := targetTime.Add(6 * time.Hour)
-
-	// Try multiple buoys in order of priority
-	for _, buoyName := range buoyPriority {
-		data, err := s.buoyRepo.GetDataRange(ctx, buoyName, startTime, endTime)
-		if err != nil {
-			slog.Warn("error querying buoy data", slog.String("buoy", buoyName), slog.Time("target_time", targetTime), slog.Any("error", err))
-			continue
-		}
-		if len(data) > 0 {
-			return buoyDataToMap(data[0])
-		}
-	}
-
-	return nil
-}
-
 func (s *ReportService) calculateBuoyConditionSimilarity(
 	predHeight float64,
 	predDirection float64,
@@ -437,23 +413,23 @@ func parseReportTime(timeStr string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("unable to parse time string: %s", timeStr)
 }
 
-func (s *ReportService) getSpotLocation(ctx context.Context, countryName, regionName, spotName string) (map[string]interface{}, error) {
+func (s *ReportService) getSpotLocation(ctx context.Context, countryName, regionName, spotName string) (spotLocation, error) {
 	location, err := s.locationRepo.GetLocationInfo(ctx, countryName, regionName, spotName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query location: %v", err)
+		return spotLocation{}, fmt.Errorf("failed to query location: %w", err)
 	}
 	if location == nil {
-		return nil, fmt.Errorf("no location found")
+		return spotLocation{}, fmt.Errorf("no location found")
 	}
 
-	return map[string]interface{}{
-		"Latitude":  location.Latitude,
-		"Longitude": location.Longitude,
+	return spotLocation{
+		Latitude:  location.Latitude,
+		Longitude: location.Longitude,
 	}, nil
 }
 
-func (s *ReportService) getBuoyLocations(ctx context.Context) map[string]map[string]interface{} {
-	buoyLocations := make(map[string]map[string]interface{})
+func (s *ReportService) getBuoyLocations(ctx context.Context) map[string]buoyLocation {
+	buoyLocations := make(map[string]buoyLocation)
 	locations, err := s.buoyRepo.GetLocations(ctx)
 	if err != nil {
 		slog.Warn("error loading buoy locations", slog.Any("error", err))
@@ -464,10 +440,10 @@ func (s *ReportService) getBuoyLocations(ctx context.Context) map[string]map[str
 		if location == nil {
 			continue
 		}
-		buoyLocations[name] = map[string]interface{}{
-			"Name":      location.Name,
-			"Latitude":  location.Latitude,
-			"Longitude": location.Longitude,
+		buoyLocations[name] = buoyLocation{
+			Name:      location.Name,
+			Latitude:  location.Latitude,
+			Longitude: location.Longitude,
 		}
 	}
 
@@ -481,32 +457,18 @@ func (s *ReportService) getNearestBuoys(ctx context.Context, spotLat, spotLon fl
 
 	allBuoys := s.getBuoyLocations(ctx)
 	type buoyWithDistance struct {
-		buoy     map[string]interface{}
 		name     string
+		buoy     buoyLocation
 		distance float64
 	}
 
 	buoysWithDistance := make([]buoyWithDistance, 0, len(allBuoys))
 
 	for name, buoy := range allBuoys {
-		buoyLat, ok1 := buoy["Latitude"].(float64)
-		buoyLon, ok2 := buoy["Longitude"].(float64)
-
-		if !ok1 || !ok2 {
-			continue // Skip if coordinates are missing or invalid
-		}
-
-		distance := s.calculateDistance(spotLat, spotLon, buoyLat, buoyLon)
-
-		// Create a copy of the buoy map with the name added
-		buoyCopy := make(map[string]interface{})
-		for k, v := range buoy {
-			buoyCopy[k] = v
-		}
-		buoyCopy["Name"] = name
+		distance := s.calculateDistance(spotLat, spotLon, buoy.Latitude, buoy.Longitude)
 
 		buoysWithDistance = append(buoysWithDistance, buoyWithDistance{
-			buoy:     buoyCopy,
+			buoy:     buoy,
 			name:     name,
 			distance: distance,
 		})
@@ -519,7 +481,11 @@ func (s *ReportService) getNearestBuoys(ctx context.Context, spotLat, spotLon fl
 
 	result := []map[string]interface{}{}
 	for i := 0; i < numBuoys && i < len(buoysWithDistance); i++ {
-		result = append(result, buoysWithDistance[i].buoy)
+		result = append(result, map[string]interface{}{
+			"Name":      buoysWithDistance[i].name,
+			"Latitude":  buoysWithDistance[i].buoy.Latitude,
+			"Longitude": buoysWithDistance[i].buoy.Longitude,
+		})
 	}
 
 	return result
@@ -673,18 +639,11 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 	// Step 1: Get spot location
 	spotLoc, err := s.getSpotLocation(ctx, countryName, regionName, spotName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get spot location: %v", err)
+		return nil, fmt.Errorf("failed to get spot location: %w", err)
 	}
 
-	spotLat, ok := spotLoc["Latitude"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("invalid latitude for spot")
-	}
-
-	spotLon, ok := spotLoc["Longitude"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("invalid longitude for spot")
-	}
+	spotLat := spotLoc.Latitude
+	spotLon := spotLoc.Longitude
 
 	// Step 2: Find 2 nearest buoys
 	nearestBuoys := s.getNearestBuoys(ctx, spotLat, spotLon, 2)
@@ -788,7 +747,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		time.Now(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query surf reports: %v", err)
+		return nil, fmt.Errorf("failed to query surf reports: %w", err)
 	}
 
 	reports, err := s.convertReportsToMaps(reportsBySpot)
@@ -805,8 +764,8 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		report          map[string]interface{}
 		reportTime      time.Time
 		buoyTargetTimes map[string]struct {
-			targetTime  time.Time
-			travelTime  float64
+			targetTime time.Time
+			travelTime float64
 		}
 	}
 
@@ -820,15 +779,15 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 			continue
 		}
 
-		reportTime, err := parseReportTime(timeStr)
-		if err != nil {
-			slog.Warn("failed to parse report time", slog.String("time", timeStr), slog.Any("error", err))
+		reportTime, parseErr := parseReportTime(timeStr)
+		if parseErr != nil {
+			slog.Warn("failed to parse report time", slog.String("time", timeStr), slog.Any("error", parseErr))
 			continue
 		}
 
 		buoyTargetTimes := make(map[string]struct {
-			targetTime  time.Time
-			travelTime  float64
+			targetTime time.Time
+			travelTime float64
 		})
 
 		for _, buoyInfo := range buoyDataList {
@@ -857,8 +816,8 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 			}
 
 			buoyTargetTimes[buoyInfo.name] = struct {
-				targetTime  time.Time
-				travelTime  float64
+				targetTime time.Time
+				travelTime float64
 			}{targetBuoyTime, travelTimeHours}
 
 			// Track min/max for batch fetch

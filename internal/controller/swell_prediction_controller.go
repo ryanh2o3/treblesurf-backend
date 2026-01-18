@@ -49,17 +49,7 @@ func (c *SwellPredictionController) GetSpotSwellPrediction(ctx *gin.Context) {
 	
 	// Sort predictions by forecast_timestamp (earliest first for better UX)
 	sort.Slice(predictions, func(i, j int) bool {
-		tsI, okI := predictions[i]["forecast_timestamp"].(string)
-		tsJ, okJ := predictions[j]["forecast_timestamp"].(string)
-		if !okI || !okJ {
-			return false
-		}
-		timeI, errI := strconv.ParseInt(tsI, 10, 64)
-		timeJ, errJ := strconv.ParseInt(tsJ, 10, 64)
-		if errI != nil || errJ != nil {
-			return false
-		}
-		return timeI < timeJ
+		return predictions[i].ForecastTimestampValue() < predictions[j].ForecastTimestampValue()
 	})
 	
 	ctx.JSON(http.StatusOK, predictions) // Return all predictions
@@ -118,12 +108,7 @@ func (c *SwellPredictionController) GetRegionSwellPrediction(ctx *gin.Context) {
 
 	// Sort the predictions by spot_id
 	sort.Slice(predictions, func(i, j int) bool {
-		spotI, okI := predictions[i]["spot_id"].(string)
-		spotJ, okJ := predictions[j]["spot_id"].(string)
-		if !okI || !okJ {
-			return false
-		}
-		return spotI < spotJ
+		return predictions[i].SpotID < predictions[j].SpotID
 	})
 
 	ctx.JSON(http.StatusOK, predictions)
@@ -204,12 +189,7 @@ func (c *SwellPredictionController) GetRecentSwellPredictions(ctx *gin.Context) 
 
 	// Sort the predictions by spot_id
 	sort.Slice(predictions, func(i, j int) bool {
-		spotI, okI := predictions[i]["spot_id"].(string)
-		spotJ, okJ := predictions[j]["spot_id"].(string)
-		if !okI || !okJ {
-			return false
-		}
-		return spotI < spotJ
+		return predictions[i].SpotID < predictions[j].SpotID
 	})
 
 	ctx.JSON(http.StatusOK, predictions)
@@ -269,6 +249,11 @@ func (c *SwellPredictionController) GetClosestAIPredictionForSpot(ctx *gin.Conte
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	
+
+	if prediction == nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "No swell prediction found for this spot"})
+		return
+	}
+
 	ctx.JSON(http.StatusOK, prediction)
 }

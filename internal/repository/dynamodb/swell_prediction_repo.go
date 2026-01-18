@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -32,7 +33,7 @@ func (r *SwellPredictionRepo) GetSpotPredictions(
 	spotID string,
 	start time.Time,
 	limit int,
-) ([]map[string]interface{}, error) {
+) ([]model.SwellPrediction, error) {
 	if limit <= 0 {
 		limit = 25
 	}
@@ -65,12 +66,12 @@ func (r *SwellPredictionRepo) GetListSpotsPredictions(
 	spotIDs []string,
 	start time.Time,
 	limit int,
-) ([][]map[string]interface{}, error) {
+) ([][]model.SwellPrediction, error) {
 	if limit <= 0 {
 		limit = 25
 	}
 
-	allPredictions := make([][]map[string]interface{}, 0, len(spotIDs))
+	allPredictions := make([][]model.SwellPrediction, 0, len(spotIDs))
 	for _, spotID := range spotIDs {
 		predictions, err := r.GetSpotPredictions(ctx, spotID, start, limit)
 		if err != nil {
@@ -87,7 +88,7 @@ func (r *SwellPredictionRepo) GetRegionPredictions(
 	country, region string,
 	start time.Time,
 	perSpotLimit int,
-) ([]map[string]interface{}, error) {
+) ([]model.SwellPrediction, error) {
 	if perSpotLimit <= 0 {
 		perSpotLimit = 3
 	}
@@ -118,7 +119,7 @@ func (r *SwellPredictionRepo) GetSpotPredictionRange(
 	ctx context.Context,
 	spotID string,
 	start, end time.Time,
-) ([]map[string]interface{}, error) {
+) ([]model.SwellPrediction, error) {
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.tableName),
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp BETWEEN :start AND :end"),
@@ -148,7 +149,7 @@ func (r *SwellPredictionRepo) GetRecentPredictions(
 	ctx context.Context,
 	cutoff time.Time,
 	perSpotLimit int,
-) ([]map[string]interface{}, error) {
+) ([]model.SwellPrediction, error) {
 	if perSpotLimit <= 0 {
 		perSpotLimit = 3
 	}
@@ -176,7 +177,7 @@ func (r *SwellPredictionRepo) GetClosestPrediction(
 	ctx context.Context,
 	spotID string,
 	now time.Time,
-) (map[string]interface{}, error) {
+) (*model.SwellPrediction, error) {
 	startTime := now.Add(-12 * time.Hour)
 	endTime := now.Add(48 * time.Hour)
 
@@ -197,8 +198,8 @@ func (r *SwellPredictionRepo) GetClosestPrediction(
 		result = fallbackResult
 	}
 
-	closest, err := findClosestPrediction(result.Items, now.Unix())
-	if err != nil || closest == nil {
+	closest := findClosestPrediction(result.Items, now.Unix())
+	if closest == nil {
 		return nil, fmt.Errorf("no valid AI predictions found for spot %s", spotID)
 	}
 
@@ -207,25 +208,14 @@ func (r *SwellPredictionRepo) GetClosestPrediction(
 
 func (r *SwellPredictionRepo) unmarshalPredictions(
 	items []map[string]*dynamodb.AttributeValue,
-) []map[string]interface{} {
-	predictions := make([]map[string]interface{}, 0, len(items))
+) []model.SwellPrediction {
+	predictions := make([]model.SwellPrediction, 0, len(items))
 	for _, item := range items {
-		var prediction map[string]interface{}
-		if err := dynamodbattribute.UnmarshalMap(item, &prediction); err != nil {
+		prediction, ok := r.extractPrediction(item)
+		if !ok {
 			continue
 		}
-
-		if dataAttr, exists := item["data"]; exists {
-			var dataMap map[string]interface{}
-			if err := dynamodbattribute.Unmarshal(dataAttr, &dataMap); err != nil {
-				continue
-			}
-
-			dataMap["spot_id"] = prediction["spot_id"]
-			dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
-			dataMap["generated_at"] = prediction["generated_at"]
-			predictions = append(predictions, dataMap)
-		}
+		predictions = append(predictions, prediction)
 	}
 
 	return predictions
@@ -234,38 +224,27 @@ func (r *SwellPredictionRepo) unmarshalPredictions(
 func (r *SwellPredictionRepo) groupPredictionsBySpot(
 	items []map[string]*dynamodb.AttributeValue,
 	perSpotLimit int,
-) []map[string]interface{} {
+) []model.SwellPrediction {
 	if perSpotLimit <= 0 {
 		perSpotLimit = 3
 	}
 
-	predictions := make([]map[string]interface{}, 0, len(items))
-	spotPredictionsMap := make(map[string][]map[string]interface{})
+	predictions := make([]model.SwellPrediction, 0, len(items))
+	spotPredictionsMap := make(map[string][]model.SwellPrediction)
 
 	for _, item := range items {
-		var prediction map[string]interface{}
-		if err := dynamodbattribute.UnmarshalMap(item, &prediction); err != nil {
-			continue
-		}
-
-		spotID, ok := prediction["spot_id"].(string)
+		prediction, ok := r.extractPrediction(item)
 		if !ok {
 			continue
 		}
 
-		if dataAttr, exists := item["data"]; exists {
-			var dataMap map[string]interface{}
-			if err := dynamodbattribute.Unmarshal(dataAttr, &dataMap); err != nil {
-				continue
-			}
+		spotID := prediction.SpotID
+		if spotID == "" {
+			continue
+		}
 
-			dataMap["spot_id"] = prediction["spot_id"]
-			dataMap["forecast_timestamp"] = prediction["forecast_timestamp"]
-			dataMap["generated_at"] = prediction["generated_at"]
-
-			if len(spotPredictionsMap[spotID]) < perSpotLimit {
-				spotPredictionsMap[spotID] = append(spotPredictionsMap[spotID], dataMap)
-			}
+		if len(spotPredictionsMap[spotID]) < perSpotLimit {
+			spotPredictionsMap[spotID] = append(spotPredictionsMap[spotID], prediction)
 		}
 	}
 
@@ -306,38 +285,29 @@ func buildFallbackPredictionQuery(spotID string, startTime time.Time) *dynamodb.
 func findClosestPrediction(
 	items []map[string]*dynamodb.AttributeValue,
 	currentTimestamp int64,
-) (map[string]interface{}, error) {
-	var closestPrediction map[string]interface{}
+) *model.SwellPrediction {
+	var closestPrediction *model.SwellPrediction
 	var closestTimeDiff int64 = 999999999999
 
 	for _, item := range items {
-		var prediction map[string]interface{}
-		if err := dynamodbattribute.UnmarshalMap(item, &prediction); err != nil {
+		prediction, ok := extractPrediction(item)
+		if !ok {
 			continue
 		}
 
-		if dataAttr, exists := item["data"]; exists {
-			var dataMap map[string]interface{}
-			if err := dynamodbattribute.Unmarshal(dataAttr, &dataMap); err != nil {
-				continue
-			}
-
-			if forecastTimestampStr, ok := prediction["forecast_timestamp"].(string); ok {
-				if forecastTimestamp, err := strconv.ParseInt(forecastTimestampStr, 10, 64); err == nil {
-					timeDiff := abs(currentTimestamp - forecastTimestamp)
-					if timeDiff < closestTimeDiff {
-						closestTimeDiff = timeDiff
-						closestPrediction = dataMap
-						closestPrediction["spot_id"] = prediction["spot_id"]
-						closestPrediction["forecast_timestamp"] = prediction["forecast_timestamp"]
-						closestPrediction["generated_at"] = prediction["generated_at"]
-					}
-				}
-			}
+		forecastTimestamp, err := strconv.ParseInt(prediction.ForecastTimestamp, 10, 64)
+		if err != nil {
+			continue
 		}
+		timeDiff := abs(currentTimestamp - forecastTimestamp)
+		if timeDiff < closestTimeDiff {
+			closestTimeDiff = timeDiff
+			predictionCopy := prediction
+			closestPrediction = &predictionCopy
+			}
 	}
 
-	return closestPrediction, nil
+	return closestPrediction
 }
 
 func abs(x int64) int64 {
@@ -345,4 +315,65 @@ func abs(x int64) int64 {
 		return -x
 	}
 	return x
+}
+
+func (r *SwellPredictionRepo) extractPrediction(
+	item map[string]*dynamodb.AttributeValue,
+) (model.SwellPrediction, bool) {
+	var prediction map[string]interface{}
+	if err := dynamodbattribute.UnmarshalMap(item, &prediction); err != nil {
+		return model.SwellPrediction{}, false
+	}
+	dataAttr, exists := item["data"]
+	if !exists {
+		return model.SwellPrediction{}, false
+	}
+
+	var dataMap map[string]interface{}
+	if err := dynamodbattribute.Unmarshal(dataAttr, &dataMap); err != nil {
+		return model.SwellPrediction{}, false
+	}
+
+	return model.SwellPrediction{
+		SpotID:            stringValue(prediction["spot_id"]),
+		ForecastTimestamp: stringValue(prediction["forecast_timestamp"]),
+		GeneratedAt:       stringValue(prediction["generated_at"]),
+		Data:              dataMap,
+	}, true
+}
+
+func extractPrediction(
+	item map[string]*dynamodb.AttributeValue,
+) (model.SwellPrediction, bool) {
+	var prediction map[string]interface{}
+	if err := dynamodbattribute.UnmarshalMap(item, &prediction); err != nil {
+		return model.SwellPrediction{}, false
+	}
+	dataAttr, exists := item["data"]
+	if !exists {
+		return model.SwellPrediction{}, false
+	}
+
+	var dataMap map[string]interface{}
+	if err := dynamodbattribute.Unmarshal(dataAttr, &dataMap); err != nil {
+		return model.SwellPrediction{}, false
+	}
+
+	return model.SwellPrediction{
+		SpotID:            stringValue(prediction["spot_id"]),
+		ForecastTimestamp: stringValue(prediction["forecast_timestamp"]),
+		GeneratedAt:       stringValue(prediction["generated_at"]),
+		Data:              dataMap,
+	}, true
+}
+
+func stringValue(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case fmt.Stringer:
+		return v.String()
+	default:
+		return fmt.Sprintf("%v", value)
+	}
 }

@@ -32,12 +32,12 @@ func getGoogleClientIDs() (map[string]bool, error) {
 }
 
 // validateGoogleIDToken validates a Google ID token against client IDs.
-func validateGoogleIDToken(idToken string, clientIDs map[string]bool) (*idtoken.Payload, error) {
+func validateGoogleIDToken(ctx context.Context, idToken string, clientIDs map[string]bool) (*idtoken.Payload, error) {
 	var payload *idtoken.Payload
 	var err error
 
 	for id := range clientIDs {
-		payload, err = idtoken.Validate(context.Background(), idToken, id)
+		payload, err = idtoken.Validate(ctx, idToken, id)
 		if err == nil {
 			return payload, nil
 		}

@@ -9,12 +9,12 @@ import (
 
 func TestNewReportRepo(t *testing.T) {
 	// Test that constructor doesn't panic
-	repo := NewReportRepo(nil, "TestTable")
+	repo := NewReportRepo(nil, forecastTableName)
 	if repo == nil {
 		t.Fatalf("expected non-nil repo")
 	}
-	if repo.tableName != "TestTable" {
-		t.Fatalf("expected table name TestTable, got %s", repo.tableName)
+	if repo.tableName != forecastTableName {
+		t.Fatalf("expected table name %s, got %s", forecastTableName, repo.tableName)
 	}
 }
 

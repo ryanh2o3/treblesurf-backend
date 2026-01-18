@@ -50,6 +50,9 @@ func (a *App) GinEngine() *gin.Engine {
 
 // Shutdown allows cleanup when running as a server.
 func (a *App) Shutdown(_ context.Context) error {
+	if a.container != nil {
+		a.container.Close()
+	}
 	return nil
 }
 

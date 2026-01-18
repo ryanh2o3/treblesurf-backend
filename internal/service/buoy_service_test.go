@@ -9,6 +9,8 @@ import (
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
+const testBuoyName = "M4"
+
 func TestNewBuoyService_NilRepository_ReturnsError(t *testing.T) {
 	_, err := NewBuoyService(nil)
 	if err == nil {
@@ -20,13 +22,13 @@ func TestBuoyService_GetLiveData(t *testing.T) {
 	t.Run("returns data for valid buoy", func(t *testing.T) {
 		ctx := context.Background()
 		expected := &model.BuoyData{
-			BuoyName:   "M4",
+			BuoyName:   testBuoyName,
 			WaveHeight: 2.5,
 			WavePeriod: 12.0,
 		}
 		repo := &mockrepo.BuoyRepo{
 			GetLiveDataFn: func(_ context.Context, buoyName string) (*model.BuoyData, error) {
-				if buoyName != "M4" {
+				if buoyName != testBuoyName {
 					t.Fatalf("unexpected buoy name: %s", buoyName)
 				}
 				return expected, nil
@@ -38,7 +40,7 @@ func TestBuoyService_GetLiveData(t *testing.T) {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
 
-		got, err := service.GetLiveData(ctx, "M4")
+		got, err := service.GetLiveData(ctx, testBuoyName)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -64,12 +66,12 @@ func TestBuoyService_GetDataRange(t *testing.T) {
 		start := time.Now().Add(-24 * time.Hour)
 		end := time.Now()
 		expected := []*model.BuoyData{
-			{BuoyName: "M4", WaveHeight: 2.0},
-			{BuoyName: "M4", WaveHeight: 2.5},
+			{BuoyName: testBuoyName, WaveHeight: 2.0},
+			{BuoyName: testBuoyName, WaveHeight: 2.5},
 		}
 		repo := &mockrepo.BuoyRepo{
-			GetDataRangeFn: func(_ context.Context, buoyName string, s, e time.Time) ([]*model.BuoyData, error) {
-				if buoyName != "M4" {
+			GetDataRangeFn: func(_ context.Context, buoyName string, _, _ time.Time) ([]*model.BuoyData, error) {
+				if buoyName != testBuoyName {
 					t.Fatalf("unexpected buoy name: %s", buoyName)
 				}
 				return expected, nil
@@ -81,7 +83,7 @@ func TestBuoyService_GetDataRange(t *testing.T) {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
 
-		got, err := service.GetDataRange(ctx, "M4", start, end)
+		got, err := service.GetDataRange(ctx, testBuoyName, start, end)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -97,7 +99,7 @@ func TestBuoyService_GetDataRange(t *testing.T) {
 		start := time.Now()
 		end := time.Now().Add(-24 * time.Hour) // End before start
 
-		_, err := service.GetDataRange(context.Background(), "M4", start, end)
+		_, err := service.GetDataRange(context.Background(), testBuoyName, start, end)
 		if err == nil {
 			t.Fatalf("expected error for end time before start time")
 		}
@@ -107,7 +109,7 @@ func TestBuoyService_GetDataRange(t *testing.T) {
 func TestBuoyService_GetLocations(t *testing.T) {
 	ctx := context.Background()
 	expected := map[string]*model.BuoyLocation{
-		"M4": {Name: "M4", Region: "Atlantic", Latitude: 51.0, Longitude: -10.0},
+		testBuoyName: {Name: testBuoyName, Region: "Atlantic", Latitude: 51.0, Longitude: -10.0},
 		"M5": {Name: "M5", Region: "Celtic", Latitude: 51.5, Longitude: -9.5},
 	}
 	repo := &mockrepo.BuoyRepo{
@@ -133,7 +135,7 @@ func TestBuoyService_GetLocations(t *testing.T) {
 func TestBuoyService_GetRegionBuoys(t *testing.T) {
 	ctx := context.Background()
 	locations := map[string]*model.BuoyLocation{
-		"M4":         {Name: "M4", Region: "Atlantic", Latitude: 51.0, Longitude: -10.0},
+		testBuoyName: {Name: testBuoyName, Region: "Atlantic", Latitude: 51.0, Longitude: -10.0},
 		"M5":         {Name: "M5", Region: "Atlantic", Latitude: 51.5, Longitude: -9.5},
 		"Blackstone": {Name: "Blackstone", Region: "Celtic", Latitude: 52.0, Longitude: -8.0},
 	}
@@ -160,11 +162,11 @@ func TestBuoyService_GetRegionBuoys(t *testing.T) {
 func TestBuoyService_GetLast24HoursData(t *testing.T) {
 	ctx := context.Background()
 	expected := []*model.BuoyData{
-		{BuoyName: "M4", WaveHeight: 2.0},
-		{BuoyName: "M4", WaveHeight: 2.5},
+		{BuoyName: testBuoyName, WaveHeight: 2.0},
+		{BuoyName: testBuoyName, WaveHeight: 2.5},
 	}
 	repo := &mockrepo.BuoyRepo{
-		GetDataRangeFn: func(_ context.Context, buoyName string, start, end time.Time) ([]*model.BuoyData, error) {
+		GetDataRangeFn: func(_ context.Context, _ string, start, end time.Time) ([]*model.BuoyData, error) {
 			// Verify time range is approximately 24 hours
 			duration := end.Sub(start)
 			if duration < 23*time.Hour || duration > 25*time.Hour {
@@ -179,7 +181,7 @@ func TestBuoyService_GetLast24HoursData(t *testing.T) {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
 
-	got, err := service.GetLast24HoursData(ctx, "M4")
+	got, err := service.GetLast24HoursData(ctx, testBuoyName)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -202,12 +204,12 @@ func TestBuoyService_DefaultBuoys(t *testing.T) {
 	// Should include M4
 	found := false
 	for _, b := range buoys {
-		if b == "M4" {
+		if b == testBuoyName {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected M4 to be in default buoys")
+		t.Fatalf("expected %s to be in default buoys", testBuoyName)
 	}
 }

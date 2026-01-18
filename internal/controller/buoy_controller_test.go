@@ -3,8 +3,10 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -15,8 +17,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func init() {
+const (
+	testBuoyNameM4 = "M4"
+	testRegion     = "Atlantic"
+)
+
+func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
+	os.Exit(m.Run())
 }
 
 func setupBuoyController(repo *mockrepo.BuoyRepo) *BuoyController {
@@ -40,7 +48,7 @@ func TestBuoyController_GetLiveBuoyData(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/getLiveBuoyData", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/getLiveBuoyData", http.NoBody)
 
 	controller.GetLiveBuoyData(c)
 
@@ -48,7 +56,7 @@ func TestBuoyController_GetLiveBuoyData(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var response []map[string]interface{}
+	var response []buoyDataResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -61,7 +69,7 @@ func TestBuoyController_GetLiveBuoyData(t *testing.T) {
 func TestBuoyController_GetSingleBuoyData(t *testing.T) {
 	repo := &mockrepo.BuoyRepo{
 		GetLiveDataFn: func(_ context.Context, buoyName string) (*model.BuoyData, error) {
-			if buoyName != "M4" {
+			if buoyName != testBuoyNameM4 {
 				t.Fatalf("unexpected buoy name: %s", buoyName)
 			}
 			return &model.BuoyData{
@@ -76,7 +84,7 @@ func TestBuoyController_GetSingleBuoyData(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/getSingleBuoyData?buoyName=M4", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/getSingleBuoyData?buoyName=M4", http.NoBody)
 
 	controller.GetSingleBuoyData(c)
 
@@ -89,8 +97,8 @@ func TestBuoyController_GetRegionBuoys(t *testing.T) {
 	repo := &mockrepo.BuoyRepo{
 		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
 			return map[string]*model.BuoyLocation{
-				"M4": {Name: "M4", Region: "Atlantic", Latitude: 51.0, Longitude: -10.0},
-				"M5": {Name: "M5", Region: "Atlantic", Latitude: 51.5, Longitude: -9.5},
+				testBuoyNameM4: {Name: testBuoyNameM4, Region: testRegion, Latitude: 51.0, Longitude: -10.0},
+				"M5":           {Name: "M5", Region: testRegion, Latitude: 51.5, Longitude: -9.5},
 			}, nil
 		},
 	}
@@ -99,7 +107,7 @@ func TestBuoyController_GetRegionBuoys(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/regionBuoys?region=Atlantic", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/regionBuoys?region=Atlantic", http.NoBody)
 
 	controller.GetRegionBuoys(c)
 
@@ -121,7 +129,7 @@ func TestBuoyController_GetRegionBuoys_NotFound(t *testing.T) {
 	repo := &mockrepo.BuoyRepo{
 		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
 			return map[string]*model.BuoyLocation{
-				"M4": {Name: "M4", Region: "Atlantic"},
+				testBuoyNameM4: {Name: testBuoyNameM4, Region: testRegion},
 			}, nil
 		},
 	}
@@ -130,7 +138,7 @@ func TestBuoyController_GetRegionBuoys_NotFound(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/regionBuoys?region=Pacific", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/regionBuoys?region=Pacific", http.NoBody)
 
 	controller.GetRegionBuoys(c)
 
@@ -153,7 +161,11 @@ func TestBuoyController_GetBuoyDataRange(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/getBuoyDataRange?buoyName=M4&startTime=2024-01-01&endTime=2024-01-02", nil)
+	c.Request = httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/getBuoyDataRange?buoyName=%s&startTime=2024-01-01&endTime=2024-01-02", testBuoyNameM4),
+		http.NoBody,
+	)
 
 	controller.GetBuoyDataRange(c)
 
@@ -168,7 +180,11 @@ func TestBuoyController_GetBuoyDataRange_InvalidStartTime(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/getBuoyDataRange?buoyName=M4&startTime=invalid&endTime=2024-01-02", nil)
+	c.Request = httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/getBuoyDataRange?buoyName=%s&startTime=invalid&endTime=2024-01-02", testBuoyNameM4),
+		http.NoBody,
+	)
 
 	controller.GetBuoyDataRange(c)
 
@@ -181,7 +197,13 @@ func TestBuoyController_BuoyLocationInfo(t *testing.T) {
 	repo := &mockrepo.BuoyRepo{
 		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
 			return map[string]*model.BuoyLocation{
-				"M4": {Name: "M4", Region: "Atlantic", Country: "Ireland", Latitude: 51.0, Longitude: -10.0},
+				testBuoyNameM4: {
+					Name:      testBuoyNameM4,
+					Region:    testRegion,
+					Country:   "Ireland",
+					Latitude:  51.0,
+					Longitude: -10.0,
+				},
 			}, nil
 		},
 	}
@@ -190,7 +212,7 @@ func TestBuoyController_BuoyLocationInfo(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/buoyLocationInfo", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/buoyLocationInfo", http.NoBody)
 
 	controller.BuoyLocationInfo(c)
 
@@ -198,7 +220,7 @@ func TestBuoyController_BuoyLocationInfo(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var response []map[string]interface{}
+	var response []buoyLocationResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}

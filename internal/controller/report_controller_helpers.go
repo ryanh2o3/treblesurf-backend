@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -418,7 +419,7 @@ func validateMediaDeletionRequest(c *gin.Context, mediaKey, mediaType string) bo
 func verifyMediaAccess(userSvc *service.UserService, c *gin.Context, email, mediaKey, mediaType string) (*model.User, bool) {
 	user, err := userSvc.GetByEmail(c.Request.Context(), email)
 	if err != nil {
-		if err == model.ErrUserNotFound {
+		if errors.Is(err, repository.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":   "User not found",
 				"message": "Unable to retrieve your user profile",
@@ -483,7 +484,7 @@ func handleReportSubmissionCommon(
 	slog.Info("user email from context", slog.String("email", email))
 	user, err := userSvc.GetByEmail(c.Request.Context(), email)
 	if err != nil {
-		if err == model.ErrUserNotFound {
+		if errors.Is(err, repository.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":   "User not found",
 				"message": "Unable to retrieve your user profile",

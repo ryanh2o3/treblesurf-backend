@@ -10,11 +10,11 @@ import (
 // Config holds all application configuration.
 type Config struct {
 	AWS       AWSConfig
-	Auth      AuthConfig
 	WebSocket WebSocketConfig
 	Server    ServerConfig
-	Security  SecurityConfig
 	Env       Environment
+	Auth      AuthConfig
+	Security  SecurityConfig
 }
 
 // Environment represents the application environment.

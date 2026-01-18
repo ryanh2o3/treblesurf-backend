@@ -112,7 +112,7 @@ func (r *LocationRepo) GetLocationInfo(ctx context.Context, country, region, spo
 	return &location, nil
 }
 
-func (r *LocationRepo) GetCoordinates(ctx context.Context, country, region, spot string) (float64, float64, error) {
+func (r *LocationRepo) GetCoordinates(ctx context.Context, country, region, spot string) (lat, lon float64, err error) {
 	location, err := r.GetLocationInfo(ctx, country, region, spot)
 	if err != nil {
 		return 0, 0, err

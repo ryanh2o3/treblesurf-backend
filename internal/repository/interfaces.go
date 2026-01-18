@@ -83,9 +83,9 @@ type ForecastDataRepository interface {
 
 // BuoyDataRequest represents a request for buoy data at a specific time range.
 type BuoyDataRequest struct {
-	BuoyName string
 	Start    time.Time
 	End      time.Time
+	BuoyName string
 }
 
 // BuoyRepository handles buoy data persistence.
@@ -126,6 +126,10 @@ type MediaRepository interface {
 	// Returns ErrNotFound if the file doesn't exist.
 	Download(ctx context.Context, key string) ([]byte, error)
 
+	// Exists checks whether a file exists for the given key.
+	// Returns ErrNotFound if the file doesn't exist.
+	Exists(ctx context.Context, key string) (bool, error)
+
 	// Delete removes a file by its key.
 	Delete(ctx context.Context, key string) error
 
@@ -163,12 +167,12 @@ type SpotSubscriptionRepository interface {
 
 // SwellPredictionRepository handles swell prediction persistence.
 type SwellPredictionRepository interface {
-	GetSpotPredictions(ctx context.Context, spotID string, start time.Time, limit int) ([]map[string]interface{}, error)
-	GetListSpotsPredictions(ctx context.Context, spotIDs []string, start time.Time, limit int) ([][]map[string]interface{}, error)
-	GetRegionPredictions(ctx context.Context, country, region string, start time.Time, perSpotLimit int) ([]map[string]interface{}, error)
-	GetSpotPredictionRange(ctx context.Context, spotID string, start, end time.Time) ([]map[string]interface{}, error)
-	GetRecentPredictions(ctx context.Context, cutoff time.Time, perSpotLimit int) ([]map[string]interface{}, error)
-	GetClosestPrediction(ctx context.Context, spotID string, now time.Time) (map[string]interface{}, error)
+	GetSpotPredictions(ctx context.Context, spotID string, start time.Time, limit int) ([]model.SwellPrediction, error)
+	GetListSpotsPredictions(ctx context.Context, spotIDs []string, start time.Time, limit int) ([][]model.SwellPrediction, error)
+	GetRegionPredictions(ctx context.Context, country, region string, start time.Time, perSpotLimit int) ([]model.SwellPrediction, error)
+	GetSpotPredictionRange(ctx context.Context, spotID string, start, end time.Time) ([]model.SwellPrediction, error)
+	GetRecentPredictions(ctx context.Context, cutoff time.Time, perSpotLimit int) ([]model.SwellPrediction, error)
+	GetClosestPrediction(ctx context.Context, spotID string, now time.Time) (*model.SwellPrediction, error)
 }
 
 // StreamRequestRepository handles stream request persistence.

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
@@ -20,7 +21,10 @@ import (
 type WebSocketService struct {
 	connections   repository.WebSocketRepository
 	subscriptions repository.SpotSubscriptionRepository
+	apiClientErr  error
+	apiClient     *apigatewaymanagementapi.ApiGatewayManagementApi
 	jwtSecret     []byte
+	apiClientOnce sync.Once
 }
 
 func NewWebSocketService(
@@ -46,13 +50,13 @@ func (s *WebSocketService) ValidateWebSocketToken(token string) (*jwt.Token, err
 
 // GetEmailFromToken extracts the email claim from a validated WebSocket token.
 func (s *WebSocketService) GetEmailFromToken(token *jwt.Token) (string, error) {
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
+	claims, okClaims := token.Claims.(jwt.MapClaims)
+	if !okClaims {
 		return "", fmt.Errorf("invalid token claims")
 	}
 
 	// Check subject is "websocket"
-	if sub, ok := claims["sub"].(string); !ok || sub != "websocket" {
+	if sub, okSub := claims["sub"].(string); !okSub || sub != "websocket" {
 		return "", fmt.Errorf("invalid token subject")
 	}
 
@@ -93,24 +97,12 @@ func (s *WebSocketService) SaveSubscription(ctx context.Context, spotIdentifier,
 
 // SendToConnection sends a message to a specific WebSocket client
 func (s *WebSocketService) SendToConnection(connectionID, message string) error {
-	// Get endpoint and stage from environment variables
-	endpoint := os.Getenv("WEBSOCKET_API_ENDPOINT")
-	if endpoint == "" {
-		return fmt.Errorf("WEBSOCKET_API_ENDPOINT not configured")
+	client, err := s.apiGatewayClient()
+	if err != nil {
+		return err
 	}
 
-	stage := os.Getenv("WEBSOCKET_API_STAGE")
-	if stage == "" {
-		stage = "production" // Default stage name
-	}
-
-	sess := session.Must(session.NewSession())
-
-	// Create API Gateway Management API client
-	apiEndpoint := fmt.Sprintf("https://%s/%s", endpoint, stage)
-	client := apigatewaymanagementapi.New(sess, aws.NewConfig().WithEndpoint(apiEndpoint))
-
-	_, err := client.PostToConnection(&apigatewaymanagementapi.PostToConnectionInput{
+	_, err = client.PostToConnection(&apigatewaymanagementapi.PostToConnectionInput{
 		ConnectionId: aws.String(connectionID),
 		Data:         []byte(message),
 	})
@@ -163,13 +155,13 @@ func (s *WebSocketService) BroadcastToUsers(ctx context.Context, userIDs []strin
 	// Get all connections for the given user IDs
 	connections, err := s.GetConnectionsByUserIDs(ctx, userIDs)
 	if err != nil {
-		return fmt.Errorf("failed to get connections: %v", err)
+		return fmt.Errorf("failed to get connections: %w", err)
 	}
 
 	// Send message to each connection
 	messageJSON, err := json.Marshal(message)
 	if err != nil {
-		return fmt.Errorf("failed to marshal message: %v", err)
+		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
 	for _, conn := range connections {
@@ -184,4 +176,36 @@ func (s *WebSocketService) BroadcastToUsers(ctx context.Context, userIDs []strin
 
 func (s *WebSocketService) GetConnectionsByUserIDs(ctx context.Context, userIDs []string) ([]*model.ConnectionInfo, error) {
 	return s.connections.GetConnectionsByUserIDs(ctx, userIDs)
+}
+
+func (s *WebSocketService) apiGatewayClient() (*apigatewaymanagementapi.ApiGatewayManagementApi, error) {
+	s.apiClientOnce.Do(func() {
+		endpoint := os.Getenv("WEBSOCKET_API_ENDPOINT")
+		if endpoint == "" {
+			s.apiClientErr = fmt.Errorf("WEBSOCKET_API_ENDPOINT not configured")
+			return
+		}
+
+		stage := os.Getenv("WEBSOCKET_API_STAGE")
+		if stage == "" {
+			stage = "production"
+		}
+
+		sess, err := session.NewSession()
+		if err != nil {
+			s.apiClientErr = fmt.Errorf("failed to create AWS session: %w", err)
+			return
+		}
+
+		apiEndpoint := fmt.Sprintf("https://%s/%s", endpoint, stage)
+		s.apiClient = apigatewaymanagementapi.New(sess, aws.NewConfig().WithEndpoint(apiEndpoint))
+	})
+
+	if s.apiClientErr != nil {
+		return nil, s.apiClientErr
+	}
+	if s.apiClient == nil {
+		return nil, fmt.Errorf("websocket api client not initialized")
+	}
+	return s.apiClient, nil
 }

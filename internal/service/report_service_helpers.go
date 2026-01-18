@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/rwcarlsen/goexif/exif"
@@ -19,7 +21,7 @@ import (
 func (s *ReportService) getUserAndValidate(ctx context.Context, userEmail string) (*model.User, error) {
 	user, err := s.userService.GetByEmail(ctx, userEmail)
 	if err != nil {
-		if err == model.ErrUserNotFound {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, fmt.Errorf("user not found")
 		}
 		return nil, fmt.Errorf("failed to get user: %w", err)

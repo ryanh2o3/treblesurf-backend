@@ -8,6 +8,12 @@ import (
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
+const (
+	locationTestCountry = "Ireland"
+	locationTestRegion  = "Donegal"
+	locationTestSpot    = "Bundoran"
+)
+
 func TestNewLocationService_NilRepositories_ReturnsError(t *testing.T) {
 	t.Run("nil location repository", func(t *testing.T) {
 		_, err := NewLocationService(nil, &mockrepo.MediaRepo{})
@@ -29,7 +35,7 @@ func TestLocationService_GetRegions(t *testing.T) {
 	expected := []string{"Donegal", "Sligo", "Clare"}
 	repo := &mockrepo.LocationRepo{
 		GetRegionsFn: func(_ context.Context, country string) ([]string, error) {
-			if country != "Ireland" {
+			if country != locationTestCountry {
 				t.Fatalf("unexpected country: %s", country)
 			}
 			return expected, nil
@@ -41,7 +47,7 @@ func TestLocationService_GetRegions(t *testing.T) {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
 
-	got, err := service.GetRegions(ctx, "Ireland")
+	got, err := service.GetRegions(ctx, locationTestCountry)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -53,12 +59,12 @@ func TestLocationService_GetRegions(t *testing.T) {
 func TestLocationService_GetSpots(t *testing.T) {
 	ctx := context.Background()
 	expected := []*model.LocationInfo{
-		{CountryRegionSpot: "Ireland/Donegal/Bundoran"},
-		{CountryRegionSpot: "Ireland/Donegal/Rossnowlagh"},
+		{CountryRegionSpot: locationTestCountry + "/" + locationTestRegion + "/" + locationTestSpot},
+		{CountryRegionSpot: locationTestCountry + "/" + locationTestRegion + "/Rossnowlagh"},
 	}
 	repo := &mockrepo.LocationRepo{
 		GetSpotsFn: func(_ context.Context, country, region string) ([]*model.LocationInfo, error) {
-			if country != "Ireland" || region != "Donegal" {
+			if country != locationTestCountry || region != locationTestRegion {
 				t.Fatalf("unexpected args: %s %s", country, region)
 			}
 			return expected, nil
@@ -70,7 +76,7 @@ func TestLocationService_GetSpots(t *testing.T) {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
 
-	got, err := service.GetSpots(ctx, "Ireland", "Donegal")
+	got, err := service.GetSpots(ctx, locationTestCountry, locationTestRegion)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,13 +88,13 @@ func TestLocationService_GetSpots(t *testing.T) {
 func TestLocationService_GetLocationInfo(t *testing.T) {
 	ctx := context.Background()
 	expected := &model.LocationInfo{
-		CountryRegionSpot: "Ireland/Donegal/Bundoran",
+		CountryRegionSpot: locationTestCountry + "/" + locationTestRegion + "/" + locationTestSpot,
 		Latitude:          54.5,
 		Longitude:         -8.3,
 	}
 	repo := &mockrepo.LocationRepo{
 		GetLocationInfoFn: func(_ context.Context, country, region, spot string) (*model.LocationInfo, error) {
-			if country != "Ireland" || region != "Donegal" || spot != "Bundoran" {
+			if country != locationTestCountry || region != locationTestRegion || spot != locationTestSpot {
 				t.Fatalf("unexpected args: %s %s %s", country, region, spot)
 			}
 			return expected, nil
@@ -100,7 +106,7 @@ func TestLocationService_GetLocationInfo(t *testing.T) {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
 
-	got, err := service.GetLocationInfo(ctx, "Ireland", "Donegal", "Bundoran")
+	got, err := service.GetLocationInfo(ctx, locationTestCountry, locationTestRegion, locationTestSpot)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -114,7 +120,7 @@ func TestLocationService_GetCoordinates(t *testing.T) {
 	expectedLat := 54.5
 	expectedLon := -8.3
 	repo := &mockrepo.LocationRepo{
-		GetCoordinatesFn: func(_ context.Context, country, region, spot string) (float64, float64, error) {
+		GetCoordinatesFn: func(_ context.Context, _, _, _ string) (float64, float64, error) {
 			return expectedLat, expectedLon, nil
 		},
 	}
@@ -124,7 +130,7 @@ func TestLocationService_GetCoordinates(t *testing.T) {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
 
-	got, err := service.GetCoordinates(ctx, "Ireland", "Donegal", "Bundoran")
+	got, err := service.GetCoordinates(ctx, locationTestCountry, locationTestRegion, locationTestSpot)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

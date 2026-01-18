@@ -54,9 +54,10 @@ func (h *Handler) handleConnect(
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 	token := req.QueryStringParameters["token"]
-	ctx := context.Background()
+	ctx, cancel := requestContext()
+	defer cancel()
 
-	userID, sessionID, err := h.validateWebSocketToken(token)
+	userID, err := h.validateWebSocketToken(token)
 	if err != nil || userID == "" {
 		if token == "" {
 			return unauthorizedResponse(), nil
@@ -74,7 +75,6 @@ func (h *Handler) handleConnect(
 	slog.Info("client connected",
 		slog.String("connection_id", connectionID),
 		slog.String("user_id", userID),
-		slog.String("session_id", sessionID),
 	)
 	return successResponse("Connected"), nil
 }
@@ -84,7 +84,8 @@ func (h *Handler) handleDisconnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
-	ctx := context.Background()
+	ctx, cancel := requestContext()
+	defer cancel()
 
 	if err := h.websocketService.DeleteConnection(ctx, connectionID); err != nil {
 		slog.Warn("error deleting connection", slog.Any("error", err))
@@ -109,7 +110,9 @@ func (h *Handler) handleDefault(
 		}, nil
 	}
 
-	if err := h.websocketService.UpdateConnectionLastActive(context.Background(), req.RequestContext.ConnectionID); err != nil {
+	ctx, cancel := requestContext()
+	defer cancel()
+	if err := h.websocketService.UpdateConnectionLastActive(ctx, req.RequestContext.ConnectionID); err != nil {
 		slog.Warn("failed to update connection last active", slog.Any("error", err))
 	}
 
@@ -161,49 +164,96 @@ func (h *Handler) handleCustomRoute(
 func (h *Handler) handleSubscribeAction(
 	req events.APIGatewayWebsocketProxyRequest, data json.RawMessage,
 ) (events.APIGatewayProxyResponse, error) {
-	var subRequest model.SubscriptionRequest
-	if err := json.Unmarshal(data, &subRequest); err != nil {
-		slog.Warn("error parsing subscription data", slog.Any("error", err))
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       "Invalid subscription data",
-		}, nil
+	subRequest, resp := parseSubscriptionRequest(data)
+	if resp != nil {
+		return *resp, nil
 	}
 
 	connectionID := req.RequestContext.ConnectionID
+	ctx, cancel := requestContext()
+	defer cancel()
 
-	connection, err := h.websocketService.GetConnection(context.Background(), connectionID)
+	connection, resp := h.getConnection(ctx, connectionID)
+	if resp != nil {
+		return *resp, nil
+	}
+
+	spotIdentifier := fmt.Sprintf("%s/%s/%s", subRequest.Country, subRequest.Region, subRequest.Spot)
+	if resp := h.saveSubscription(ctx, connectionID, connection.UserID, spotIdentifier); resp != nil {
+		return *resp, nil
+	}
+
+	if resp := h.sendSubscriptionResponse(connectionID, connection.UserID, spotIdentifier); resp != nil {
+		return *resp, nil
+	}
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Body:       "Subscribed",
+	}, nil
+}
+
+func parseSubscriptionRequest(data json.RawMessage) (model.SubscriptionRequest, *events.APIGatewayProxyResponse) {
+	var subRequest model.SubscriptionRequest
+	if err := json.Unmarshal(data, &subRequest); err != nil {
+		slog.Warn("error parsing subscription data", slog.Any("error", err))
+		return model.SubscriptionRequest{}, &events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       "Invalid subscription data",
+		}
+	}
+	return subRequest, nil
+}
+
+func (h *Handler) getConnection(
+	ctx context.Context,
+	connectionID string,
+) (*model.ConnectionInfo, *events.APIGatewayProxyResponse) {
+	connection, err := h.websocketService.GetConnection(ctx, connectionID)
 	if err != nil {
 		slog.Warn("error getting connection info", slog.Any("error", err))
-		return events.APIGatewayProxyResponse{
+		return nil, &events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 			Body:       "Failed to process subscription",
-		}, nil
+		}
 	}
+	return connection, nil
+}
 
-	userID := connection.UserID
-	spotIdentifier := fmt.Sprintf("%s/%s/%s", subRequest.Country, subRequest.Region, subRequest.Spot)
-
-	if saveErr := h.websocketService.SaveSubscription(context.Background(), spotIdentifier, userID, connectionID); saveErr != nil {
-		slog.Warn("failed to save subscription", slog.Any("error", saveErr))
-		return events.APIGatewayProxyResponse{
+func (h *Handler) saveSubscription(
+	ctx context.Context,
+	connectionID string,
+	userID string,
+	spotIdentifier string,
+) *events.APIGatewayProxyResponse {
+	if err := h.websocketService.SaveSubscription(ctx, spotIdentifier, userID, connectionID); err != nil {
+		slog.Warn("failed to save subscription", slog.Any("error", err))
+		return &events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 			Body:       "Failed to subscribe",
-		}, nil
+		}
 	}
 
-	if updateErr := h.websocketService.UpdateConnectionSpot(context.Background(), connectionID, spotIdentifier); updateErr != nil {
-		slog.Warn("failed to update connection spot", slog.Any("error", updateErr))
+	if err := h.websocketService.UpdateConnectionSpot(ctx, connectionID, spotIdentifier); err != nil {
+		slog.Warn("failed to update connection spot", slog.Any("error", err))
 	}
 
+	return nil
+}
+
+func (h *Handler) sendSubscriptionResponse(
+	connectionID string,
+	userID string,
+	spotIdentifier string,
+) *events.APIGatewayProxyResponse {
 	response := h.websocketService.CreateSubscriptionResponse(spotIdentifier)
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
 		slog.Warn("failed to marshal response", slog.Any("error", err))
-		return events.APIGatewayProxyResponse{
+		return &events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 			Body:       "Failed to process subscription",
-		}, nil
+		}
 	}
 	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
 		slog.Warn("failed to send message to connection", slog.Any("error", err))
@@ -214,10 +264,7 @@ func (h *Handler) handleSubscribeAction(
 		slog.String("spot", spotIdentifier),
 		slog.String("connection_id", connectionID),
 	)
-	return events.APIGatewayProxyResponse{
-		StatusCode: http.StatusOK,
-		Body:       "Subscribed",
-	}, nil
+	return nil
 }
 
 // handlePingAction responds to ping messages to keep the connection alive
@@ -228,7 +275,9 @@ func (h *Handler) handlePingAction(
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
-	if err := h.websocketService.UpdateConnectionLastActive(context.Background(), connectionID); err != nil {
+	ctx, cancel := requestContext()
+	defer cancel()
+	if err := h.websocketService.UpdateConnectionLastActive(ctx, connectionID); err != nil {
 		slog.Warn("failed to update connection last active", slog.Any("error", err))
 	}
 

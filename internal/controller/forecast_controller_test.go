@@ -38,7 +38,7 @@ func TestForecastController_GetSpotForecast(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Bundoran", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
 
 	controller.GetSpotForecast(c)
 
@@ -49,7 +49,7 @@ func TestForecastController_GetSpotForecast(t *testing.T) {
 
 func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, _, _, _ string) ([]*model.Forecast, error) {
 			return []*model.Forecast{}, nil
 		},
 	}
@@ -58,7 +58,7 @@ func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Unknown", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Unknown", http.NoBody)
 
 	controller.GetSpotForecast(c)
 
@@ -80,7 +80,8 @@ func TestForecastController_GetListSpotsForecast(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/listSpotsForecast?country=Ireland&region=Donegal&spots=Bundoran,Rossnowlagh", nil)
+	requestPath := "/listSpotsForecast?country=Ireland&region=Donegal&spots=Bundoran,Rossnowlagh"
+	c.Request = httptest.NewRequest(http.MethodGet, requestPath, http.NoBody)
 
 	controller.GetListSpotsForecast(c)
 
@@ -112,7 +113,7 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/currentConditions?country=Ireland&region=Donegal&spot=Bundoran", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/currentConditions?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
 
 	controller.GetCurrentWeather(c)
 
@@ -123,7 +124,7 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetCurrentConditionsFn: func(_ context.Context, country, region, spot string) (*model.Forecast, error) {
+		GetCurrentConditionsFn: func(_ context.Context, _, _, _ string) (*model.Forecast, error) {
 			return nil, nil
 		},
 	}
@@ -132,7 +133,7 @@ func TestForecastController_GetCurrentWeather_NotFound(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/currentConditions?country=Ireland&region=Donegal&spot=Unknown", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/currentConditions?country=Ireland&region=Donegal&spot=Unknown", http.NoBody)
 
 	controller.GetCurrentWeather(c)
 
@@ -155,7 +156,7 @@ func TestForecastController_GetRegionForecast(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/regionForecast?country=Ireland&region=Donegal", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/regionForecast?country=Ireland&region=Donegal", http.NoBody)
 
 	controller.GetRegionForecast(c)
 

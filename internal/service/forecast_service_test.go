@@ -8,12 +8,19 @@ import (
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
+type forecastCtxKey string
+
+const (
+	forecastCtxKeyValue   forecastCtxKey = "ctx-key"
+	forecastCtxValue      string         = "ctx-value"
+)
+
 func TestForecastService_GetSpotForecast_PropagatesContext(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "ctx-key", "ctx-value")
+	ctx := context.WithValue(context.Background(), forecastCtxKeyValue, forecastCtxValue)
 	expected := []*model.Forecast{{CountryRegionSpot: "US_CA_Spot"}}
 	repo := &mockrepo.ForecastRepo{
 		GetSpotForecastFn: func(callCtx context.Context, country, region, spot string) ([]*model.Forecast, error) {
-			if callCtx.Value("ctx-key") != "ctx-value" {
+			if callCtx.Value(forecastCtxKeyValue) != forecastCtxValue {
 				t.Fatalf("expected context value to be propagated")
 			}
 			if country != "US" || region != "CA" || spot != "Spot" {
@@ -38,12 +45,12 @@ func TestForecastService_GetSpotForecast_PropagatesContext(t *testing.T) {
 }
 
 func TestForecastService_GetListSpotsForecast_PropagatesContext(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "ctx-key", "ctx-value")
+	ctx := context.WithValue(context.Background(), forecastCtxKeyValue, forecastCtxValue)
 	calls := 0
 	repo := &mockrepo.ForecastRepo{
 		GetSpotForecastFn: func(callCtx context.Context, country, region, spot string) ([]*model.Forecast, error) {
 			calls++
-			if callCtx.Value("ctx-key") != "ctx-value" {
+			if callCtx.Value(forecastCtxKeyValue) != forecastCtxValue {
 				t.Fatalf("expected context value to be propagated")
 			}
 			return []*model.Forecast{{CountryRegionSpot: country + "_" + region + "_" + spot}}, nil

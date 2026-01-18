@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -10,23 +11,27 @@ import (
 )
 
 // validateWebSocketToken validates the WebSocket token and extracts user information.
-func (h *Handler) validateWebSocketToken(token string) (userID, sessionID string, err error) {
+func (h *Handler) validateWebSocketToken(token string) (string, error) {
 	if token == "" {
-		return "", "", nil
+		return "", nil
 	}
 
 	wsToken, err := h.websocketService.ValidateWebSocketToken(token)
 	if err != nil || !wsToken.Valid {
-		return "", "", err
+		return "", err
 	}
 
 	// Extract email from the new JWT-based WebSocket token
 	email, err := h.websocketService.GetEmailFromToken(wsToken)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
-	return email, "", nil
+	return email, nil
+}
+
+func requestContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 10*time.Second)
 }
 
 // createConnectionInfo creates a ConnectionInfo from the request.

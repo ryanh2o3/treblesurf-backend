@@ -89,7 +89,7 @@ func TestAPIKeyService_StoreAPIKey(t *testing.T) {
 	ctx := context.Background()
 	stored := false
 	repo := &mockrepo.APIKeyRepo{
-		CreateFn: func(_ context.Context, key *model.APIKey) error {
+		CreateFn: func(_ context.Context, _ *model.APIKey) error {
 			stored = true
 			return nil
 		},

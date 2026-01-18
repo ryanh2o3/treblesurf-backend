@@ -5,7 +5,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -18,45 +17,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
-
-// CorsMiddleware handles CORS for the API with iOS app support
-func CorsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// For iOS app, you might want to restrict origins in production
-		origin := c.GetHeader("Origin")
-		env := os.Getenv("GO_ENV")
-
-		// Allow all origins in development or when GO_ENV is not set (local development)
-		if env == "development" || env == "" {
-			c.Header("Access-Control-Allow-Origin", "*")
-		} else {
-			// In production, restrict to your domains
-			allowedOrigins := []string{
-				"https://treblesurf.com",
-				"https://www.treblesurf.com",
-				// Add your iOS app's custom URL scheme if you have one
-			}
-
-			if contains(allowedOrigins, origin) {
-				c.Header("Access-Control-Allow-Origin", origin)
-			}
-		}
-
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers",
-			"Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Cookie")
-		c.Header("Access-Control-Expose-Headers", "Content-Length, X-CSRF-Token, Set-Cookie")
-		c.Header("Access-Control-Allow-Credentials", "true")
-		c.Header("Access-Control-Max-Age", "86400") // 24 hours
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-
-		c.Next()
-	}
-}
 
 // iOSHeadersMiddleware adds headers that help with iOS app integration
 func iOSHeadersMiddleware() gin.HandlerFunc {
@@ -74,15 +34,6 @@ func iOSHeadersMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }
 
 // AdminMiddleware returns a Gin middleware function that validates admin user permissions.
@@ -208,6 +159,7 @@ func DevAdminAuthMiddleware(authService *auth.Service) gin.HandlerFunc {
 // Helper functions for middleware
 
 // isAdminUser checks if an email is in the hardcoded admin list.
+//
 // Deprecated: Use config.IsAdmin() instead for production.
 func isAdminUser(email string) bool {
 	// Fallback admin users - prefer using config.IsAdmin() in production
@@ -217,13 +169,11 @@ func isAdminUser(email string) bool {
 	return adminUsers[email]
 }
 
-// RateLimitMiddleware implements a simple rate limiter using token bucket algorithm.
-func RateLimitMiddleware(requestsPerSecond int) gin.HandlerFunc {
-	if requestsPerSecond <= 0 {
-		requestsPerSecond = 100 // Default
+// RateLimitMiddlewareWithLimiter implements a simple rate limiter using token bucket algorithm.
+func RateLimitMiddlewareWithLimiter(limiter *rateLimiter) gin.HandlerFunc {
+	if limiter == nil {
+		limiter = newRateLimiter(0)
 	}
-
-	limiter := newRateLimiter(requestsPerSecond)
 
 	return func(c *gin.Context) {
 		ip := getClientIPFromContext(c)
@@ -240,18 +190,22 @@ func RateLimitMiddleware(requestsPerSecond int) gin.HandlerFunc {
 
 // rateLimiter implements a simple token bucket rate limiter.
 type rateLimiter struct {
-	mu             sync.Mutex
-	clients        map[string]*clientBucket
-	rps            int
-	cleanupTicker  *time.Ticker
+	clients       map[string]*clientBucket
+	cleanupTicker *time.Ticker
+	rps           int
+	mu            sync.Mutex
+	stopOnce      sync.Once
 }
 
 type clientBucket struct {
-	tokens    float64
 	lastCheck time.Time
+	tokens    float64
 }
 
 func newRateLimiter(rps int) *rateLimiter {
+	if rps <= 0 {
+		rps = 100
+	}
 	rl := &rateLimiter{
 		clients:       make(map[string]*clientBucket),
 		rps:           rps,
@@ -266,6 +220,14 @@ func newRateLimiter(rps int) *rateLimiter {
 	}()
 
 	return rl
+}
+
+func (rl *rateLimiter) stop() {
+	rl.stopOnce.Do(func() {
+		if rl.cleanupTicker != nil {
+			rl.cleanupTicker.Stop()
+		}
+	})
 }
 
 func (rl *rateLimiter) allow(clientID string) bool {

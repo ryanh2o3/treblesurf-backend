@@ -40,14 +40,16 @@ type Container struct {
 	BuoyController            *controller.BuoyController
 	StreamController          *controller.StreamController
 	SnapshotController        *controller.SnapshotController
+
+	rateLimiter *rateLimiter
 }
 
 // containerConfig holds configuration values needed for container initialization.
 type containerConfig struct {
 	region     string
 	bucketName string
-	isLocal    bool
 	jwtSecret  string
+	isLocal    bool
 }
 
 // NewContainer creates a new Container with all dependencies wired up.
@@ -70,7 +72,8 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 
 	controllers := initializeControllers(services, storage, containerCfg)
 
-	return buildContainer(storage, services, controllers), nil
+	rateLimiter := newRateLimiter(cfg.Security.RateLimitRPS)
+	return buildContainer(storage, services, controllers, rateLimiter), nil
 }
 
 // loadContainerConfig extracts container configuration from the main config.
@@ -88,6 +91,7 @@ func buildContainer(
 	storage *containerStorage,
 	services *containerServices,
 	controllers *containerControllers,
+	rateLimiter *rateLimiter,
 ) *Container {
 	return &Container{
 		DynamoDBStorage:           storage.dbStorage,
@@ -112,5 +116,13 @@ func buildContainer(
 		BuoyController:            controllers.buoyController,
 		StreamController:          controllers.streamController,
 		SnapshotController:        controllers.snapshotController,
+		rateLimiter:               rateLimiter,
 	}
+}
+
+func (c *Container) Close() {
+	if c == nil || c.rateLimiter == nil {
+		return
+	}
+	c.rateLimiter.stop()
 }

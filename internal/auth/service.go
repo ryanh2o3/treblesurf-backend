@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -67,12 +68,12 @@ type SessionInfo struct {
 
 // Service provides authentication handlers and middleware with injected dependencies.
 type Service struct {
-	jwtSecret      []byte
 	userRepo       repository.UserRepository
 	sessionRepo    repository.SessionRepository
 	sessionService *sessions.Service
 	sessionStore   *store.DynamoDBStore
 	logger         *slog.Logger
+	jwtSecret      []byte
 }
 
 // NewService constructs an auth service with its required dependencies.
@@ -108,7 +109,6 @@ func NewService(
 
 	return service, nil
 }
-
 
 func (s *Service) initSessionService() error {
 	sessionStore := store.NewDynamoDBStore(s.sessionRepo)
@@ -146,7 +146,7 @@ func (s *Service) initSessionService() error {
 func (s *Service) getUserByEmail(ctx context.Context, email string) (*User, error) {
 	userData, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		if err == model.ErrUserNotFound {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, err
@@ -167,7 +167,7 @@ func (s *Service) createUser(ctx context.Context, user User) error {
 	user.CreatedAt = now
 	user.LastLogin = now
 	user.Theme = constants.DefaultUserTheme
-	return s.userRepo.Create(ctx, toModelUser(user))
+	return s.userRepo.Create(ctx, toModelUser(&user))
 }
 
 func (s *Service) updateUserLastLogin(ctx context.Context, email string) error {
@@ -194,7 +194,7 @@ func (s *Service) ensureUserHasUUID(ctx context.Context, email string) error {
 		return fmt.Errorf("failed to generate UUID: %w", err)
 	}
 
-	modelUser := toModelUser(*userData)
+	modelUser := toModelUser(userData)
 	modelUser.UUID = newUUID.String()
 	if err := s.userRepo.Update(ctx, modelUser); err != nil {
 		return fmt.Errorf("failed to update user with UUID: %w", err)
@@ -221,7 +221,10 @@ func toAuthUser(userData *model.User) *User {
 	}
 }
 
-func toModelUser(userData User) *model.User {
+func toModelUser(userData *User) *model.User {
+	if userData == nil {
+		return nil
+	}
 	return &model.User{
 		UUID:       userData.UUID,
 		Email:      userData.Email,
@@ -289,7 +292,9 @@ func (s *Service) validateAndExtractGoogleClaims(
 		return nil, "", "", "", "", ""
 	}
 
-	payload, err := validateGoogleIDToken(idToken, clientIDs)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	payload, err := validateGoogleIDToken(ctx, idToken, clientIDs)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 		return nil, "", "", "", "", ""

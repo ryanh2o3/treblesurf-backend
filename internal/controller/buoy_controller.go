@@ -17,6 +17,27 @@ type BuoyController struct {
 	buoys *service.BuoyService
 }
 
+type buoyLocationResponse struct {
+	Name      string  `json:"name"`
+	Region    string  `json:"region"`
+	Country   string  `json:"country"`
+	Spot      string  `json:"spot"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+type buoyDataResponse struct {
+	DataDateTime  string  `json:"dataDateTime"`
+	WaveHeight    float64 `json:"wave_height"`
+	MaxPeriod     float64 `json:"max_period"`
+	WavePeriod    float64 `json:"wave_period"`
+	WaveDirection float64 `json:"wave_direction"`
+	WindSpeed     float64 `json:"wind_speed"`
+	WindDirection float64 `json:"wind_direction"`
+	Temperature   float64 `json:"temperature"`
+	Pressure      float64 `json:"pressure"`
+}
+
 // NewBuoyController creates a new BuoyController with the given service.
 func NewBuoyController(buoys *service.BuoyService) *BuoyController {
 	return &BuoyController{buoys: buoys}
@@ -30,12 +51,11 @@ func (bc *BuoyController) BuoyLocationInfo(c *gin.Context) {
 		return
 	}
 
-	results := make([]map[string]interface{}, 0, len(locations))
+	results := make([]buoyLocationResponse, 0, len(locations))
 	for name, location := range locations {
-		if location == nil {
-			continue
+		if response := buoyLocationToResponse(name, location); response != nil {
+			results = append(results, *response)
 		}
-		results = append(results, buoyLocationToMap(name, location))
 	}
 
 	c.JSON(http.StatusOK, results)
@@ -58,7 +78,7 @@ func (bc *BuoyController) IndividualBuoyLocationInfo(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, buoyLocationToMap(buoyName, location))
+	c.JSON(http.StatusOK, buoyLocationToResponse(buoyName, location))
 }
 
 // GetLiveBuoyData returns the most recent buoy data for all default buoys.
@@ -70,10 +90,10 @@ func (bc *BuoyController) GetLiveBuoyData(c *gin.Context) {
 		return
 	}
 
-	results := make([]map[string]interface{}, 0, len(data))
+	results := make([]buoyDataResponse, 0, len(data))
 	for _, d := range data {
-		if m := buoyDataToMap(d); m != nil {
-			results = append(results, m)
+		if response := buoyDataToResponse(d); response != nil {
+			results = append(results, *response)
 		}
 	}
 
@@ -113,7 +133,7 @@ func (bc *BuoyController) GetBuoyDataRange(c *gin.Context) {
 		return
 	}
 
-	results := buoyDataSliceToMaps(data)
+	results := buoyDataSliceToResponses(data)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -137,7 +157,7 @@ func (bc *BuoyController) GetSingleBuoyData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, buoyDataToMap(data))
+	c.JSON(http.StatusOK, buoyDataToResponse(data))
 }
 
 // GetLast24HoursBuoyData returns buoy data from the last 24 hours for a specific buoy.
@@ -155,7 +175,7 @@ func (bc *BuoyController) GetLast24HoursBuoyData(c *gin.Context) {
 		return
 	}
 
-	results := buoyDataSliceToMaps(data)
+	results := buoyDataSliceToResponses(data)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -170,7 +190,7 @@ func (bc *BuoyController) GetMultipleBuoyData(c *gin.Context) {
 		return
 	}
 
-	results := buoyDataSliceToMaps(data)
+	results := buoyDataSliceToResponses(data)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -204,45 +224,45 @@ func parseTime(s string) (time.Time, error) {
 	return time.Parse("2006-01-02", s)
 }
 
-func buoyLocationToMap(name string, location *model.BuoyLocation) map[string]interface{} {
+func buoyLocationToResponse(name string, location *model.BuoyLocation) *buoyLocationResponse {
 	if location == nil {
 		return nil
 	}
-	return map[string]interface{}{
-		"name":      name,
-		"latitude":  location.Latitude,
-		"longitude": location.Longitude,
-		"region":    location.Region,
-		"country":   location.Country,
-		"spot":      location.Spot,
+	return &buoyLocationResponse{
+		Name:      name,
+		Latitude:  location.Latitude,
+		Longitude: location.Longitude,
+		Region:    location.Region,
+		Country:   location.Country,
+		Spot:      location.Spot,
 	}
 }
 
-func buoyDataToMap(data *model.BuoyData) map[string]interface{} {
+func buoyDataToResponse(data *model.BuoyData) *buoyDataResponse {
 	if data == nil {
 		return nil
 	}
-	return map[string]interface{}{
-		"wave_height":    data.WaveHeight,
-		"max_period":     data.MaxPeriod,
-		"wave_period":    data.WavePeriod,
-		"wave_direction": data.WaveDirection,
-		"wind_speed":     data.WindSpeed,
-		"wind_direction": data.WindDirection,
-		"temperature":    data.Temperature,
-		"pressure":       data.Pressure,
-		"dataDateTime":   data.Timestamp.UTC().Format(time.RFC3339),
+	return &buoyDataResponse{
+		WaveHeight:    data.WaveHeight,
+		MaxPeriod:     data.MaxPeriod,
+		WavePeriod:    data.WavePeriod,
+		WaveDirection: data.WaveDirection,
+		WindSpeed:     data.WindSpeed,
+		WindDirection: data.WindDirection,
+		Temperature:   data.Temperature,
+		Pressure:      data.Pressure,
+		DataDateTime:  data.Timestamp.UTC().Format(time.RFC3339),
 	}
 }
 
-func buoyDataSliceToMaps(data []*model.BuoyData) []map[string]interface{} {
+func buoyDataSliceToResponses(data []*model.BuoyData) []buoyDataResponse {
 	if data == nil {
-		return []map[string]interface{}{}
+		return []buoyDataResponse{}
 	}
-	results := make([]map[string]interface{}, 0, len(data))
+	results := make([]buoyDataResponse, 0, len(data))
 	for _, d := range data {
-		if m := buoyDataToMap(d); m != nil {
-			results = append(results, m)
+		if response := buoyDataToResponse(d); response != nil {
+			results = append(results, *response)
 		}
 	}
 	return results

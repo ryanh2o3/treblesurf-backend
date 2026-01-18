@@ -37,7 +37,7 @@ func (m *LocationRepo) GetLocationInfo(ctx context.Context, country, region, spo
 	return nil, model.ErrLocationNotFound
 }
 
-func (m *LocationRepo) GetCoordinates(ctx context.Context, country, region, spot string) (float64, float64, error) {
+func (m *LocationRepo) GetCoordinates(ctx context.Context, country, region, spot string) (lat, lon float64, err error) {
 	if m.GetCoordinatesFn != nil {
 		return m.GetCoordinatesFn(ctx, country, region, spot)
 	}

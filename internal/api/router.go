@@ -23,7 +23,7 @@ func SetupRouter(cfg *config.Config, container *Container) *gin.Engine {
 
 	// Apply rate limiting in production
 	if !cfg.IsDevelopment() {
-		r.Use(RateLimitMiddleware(cfg.Security.RateLimitRPS))
+		r.Use(RateLimitMiddlewareWithLimiter(container.rateLimiter))
 	}
 
 	// Register routes

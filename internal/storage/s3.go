@@ -28,10 +28,13 @@ type S3Client struct {
 
 // NewS3Storage creates a new S3 storage client for the specified AWS region.
 func NewS3Storage(region string) (*S3Client, error) {
-	sess := session.Must(session.NewSession(&aws.Config{
+	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(region),
-	}))
-	
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AWS session: %w", err)
+	}
+
 	client := s3.New(sess)
 	return &S3Client{client: client}, nil
 }
@@ -43,7 +46,7 @@ func (s *S3Client) GetObject(bucket, key string) ([]byte, error) {
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get object from S3: %v", err)
+		return nil, fmt.Errorf("failed to get object from S3: %w", err)
 	}
 	defer func() {
 		if closeErr := result.Body.Close(); closeErr != nil {
@@ -53,7 +56,7 @@ func (s *S3Client) GetObject(bucket, key string) ([]byte, error) {
 
 	data, readErr := io.ReadAll(result.Body)
 	if readErr != nil {
-		return nil, fmt.Errorf("failed to read S3 object body: %v", readErr)
+		return nil, fmt.Errorf("failed to read S3 object body: %w", readErr)
 	}
 	return data, nil
 }
@@ -67,7 +70,7 @@ func (s *S3Client) PutObject(bucket, key string, data []byte, contentType string
 		ContentType: aws.String(contentType),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to put object to S3: %v", err)
+		return fmt.Errorf("failed to put object to S3: %w", err)
 	}
 	return nil
 }
@@ -79,7 +82,7 @@ func (s *S3Client) DeleteObject(bucket, key string) error {
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to delete object from S3: %v", err)
+		return fmt.Errorf("failed to delete object from S3: %w", err)
 	}
 	return nil
 }
@@ -93,7 +96,7 @@ func (s *S3Client) GeneratePresignedUploadURL(bucket, key string, expires time.D
 
 	presignedURL, err := req.Presign(expires)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate presigned URL: %v", err)
+		return "", fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
 
 	return presignedURL, nil
@@ -108,7 +111,7 @@ func (s *S3Client) GeneratePresignedViewURL(bucket, key string, expires time.Dur
 
 	presignedURL, err := req.Presign(expires)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate presigned view URL: %v", err)
+		return "", fmt.Errorf("failed to generate presigned view URL: %w", err)
 	}
 
 	return presignedURL, nil

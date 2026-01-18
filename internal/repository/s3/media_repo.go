@@ -10,10 +10,13 @@ import (
 	"treblesurf-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 var _ repository.MediaRepository = (*MediaRepo)(nil)
+
+const awsErrNotFound = "NotFound"
 
 type MediaRepo struct {
 	client     *s3.S3
@@ -46,6 +49,11 @@ func (r *MediaRepo) Download(ctx context.Context, key string) ([]byte, error) {
 		Key:    aws.String(key),
 	})
 	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == s3.ErrCodeNoSuchKey || awsErr.Code() == awsErrNotFound {
+				return nil, repository.ErrNotFound
+			}
+		}
 		return nil, fmt.Errorf("downloading media: %w", err)
 	}
 	defer result.Body.Close()
@@ -68,7 +76,23 @@ func (r *MediaRepo) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (r *MediaRepo) GenerateUploadURL(ctx context.Context, key string, expires time.Duration) (string, error) {
+func (r *MediaRepo) Exists(ctx context.Context, key string) (bool, error) {
+	_, err := r.client.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(r.bucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == s3.ErrCodeNoSuchKey || awsErr.Code() == awsErrNotFound {
+				return false, repository.ErrNotFound
+			}
+		}
+		return false, fmt.Errorf("checking media existence: %w", err)
+	}
+	return true, nil
+}
+
+func (r *MediaRepo) GenerateUploadURL(_ context.Context, key string, expires time.Duration) (string, error) {
 	req, _ := r.client.PutObjectRequest(&s3.PutObjectInput{
 		Bucket: aws.String(r.bucketName),
 		Key:    aws.String(key),
@@ -80,7 +104,7 @@ func (r *MediaRepo) GenerateUploadURL(ctx context.Context, key string, expires t
 	return url, nil
 }
 
-func (r *MediaRepo) GenerateViewURL(ctx context.Context, key string, expires time.Duration) (string, error) {
+func (r *MediaRepo) GenerateViewURL(_ context.Context, key string, expires time.Duration) (string, error) {
 	req, _ := r.client.GetObjectRequest(&s3.GetObjectInput{
 		Bucket: aws.String(r.bucketName),
 		Key:    aws.String(key),

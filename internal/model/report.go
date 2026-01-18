@@ -3,33 +3,33 @@ package model
 import "time"
 
 type SurfReport struct {
-	Timestamp      time.Time `json:"timestamp" dynamodbav:"timestamp"`
-	UpdatedAt      time.Time `json:"updated_at" dynamodbav:"updated_at"`
-	CreatedAt      time.Time `json:"created_at" dynamodbav:"created_at"`
-	SwellSize      string    `json:"swell_size,omitempty" dynamodbav:"swell_size,omitempty"`
-	Spot           string    `json:"spot" dynamodbav:"spot"`
-	Region         string    `json:"region" dynamodbav:"region"`
-	ID             string    `json:"id" dynamodbav:"id"`
-	WindAmount     string    `json:"wind_amount,omitempty" dynamodbav:"WindAmount,omitempty"`
-	WindDirection  string    `json:"wind_direction,omitempty" dynamodbav:"WindDirection,omitempty"`
-	SurfConditions string    `json:"surf_conditions" dynamodbav:"surf_conditions"`
-	SurfDifficulty string    `json:"surf_difficulty" dynamodbav:"surf_difficulty"`
-	ImageKey       string    `json:"image_key,omitempty" dynamodbav:"ImageKey,omitempty"`
-	Notes          string    `json:"notes,omitempty" dynamodbav:"notes,omitempty"`
-	Country        string    `json:"country" dynamodbav:"country"`
-	UserEmail      string    `json:"user_email,omitempty" dynamodbav:"UserEmail,omitempty"`
-	VideoKey       string    `json:"video_key,omitempty" dynamodbav:"VideoKey,omitempty"`
-	Reporter       string    `json:"reporter,omitempty" dynamodbav:"Reporter,omitempty"`
-	ReportedBy     string    `json:"reported_by,omitempty" dynamodbav:"reportedBy,omitempty"`
-	MediaType      string    `json:"media_type,omitempty" dynamodbav:"MediaType,omitempty"`
-	IOSValidated   bool      `json:"ios_validated,omitempty" dynamodbav:"IOSValidated,omitempty"`
-	SurfSize       string    `json:"surf_size,omitempty" dynamodbav:"SurfSize,omitempty"`
-	Consistency    string    `json:"consistency,omitempty" dynamodbav:"Consistency,omitempty"`
-	Quality        string    `json:"quality,omitempty" dynamodbav:"Quality,omitempty"`
-	Messiness      string    `json:"messiness,omitempty" dynamodbav:"Messiness,omitempty"`
-	Time           string    `json:"time,omitempty" dynamodbav:"Time,omitempty"`
-	DateReported   string    `json:"date_reported,omitempty" dynamodbav:"dateReported,omitempty"`
-	CountryRegionSpot string `json:"country_region_spot,omitempty" dynamodbav:"country_region_spot,omitempty"`
+	Timestamp         time.Time `json:"timestamp" dynamodbav:"timestamp"`
+	UpdatedAt         time.Time `json:"updated_at" dynamodbav:"updated_at"`
+	CreatedAt         time.Time `json:"created_at" dynamodbav:"created_at"`
+	Notes             string    `json:"notes,omitempty" dynamodbav:"notes,omitempty"`
+	UserEmail         string    `json:"user_email,omitempty" dynamodbav:"UserEmail,omitempty"`
+	Region            string    `json:"region" dynamodbav:"region"`
+	ID                string    `json:"id" dynamodbav:"id"`
+	WindAmount        string    `json:"wind_amount,omitempty" dynamodbav:"WindAmount,omitempty"`
+	WindDirection     string    `json:"wind_direction,omitempty" dynamodbav:"WindDirection,omitempty"`
+	SurfConditions    string    `json:"surf_conditions" dynamodbav:"surf_conditions"`
+	SurfDifficulty    string    `json:"surf_difficulty" dynamodbav:"surf_difficulty"`
+	ImageKey          string    `json:"image_key,omitempty" dynamodbav:"ImageKey,omitempty"`
+	SwellSize         string    `json:"swell_size,omitempty" dynamodbav:"swell_size,omitempty"`
+	Country           string    `json:"country" dynamodbav:"country"`
+	Spot              string    `json:"spot" dynamodbav:"spot"`
+	VideoKey          string    `json:"video_key,omitempty" dynamodbav:"VideoKey,omitempty"`
+	Reporter          string    `json:"reporter,omitempty" dynamodbav:"Reporter,omitempty"`
+	ReportedBy        string    `json:"reported_by,omitempty" dynamodbav:"reportedBy,omitempty"`
+	MediaType         string    `json:"media_type,omitempty" dynamodbav:"MediaType,omitempty"`
+	CountryRegionSpot string    `json:"country_region_spot,omitempty" dynamodbav:"country_region_spot,omitempty"`
+	SurfSize          string    `json:"surf_size,omitempty" dynamodbav:"SurfSize,omitempty"`
+	Consistency       string    `json:"consistency,omitempty" dynamodbav:"Consistency,omitempty"`
+	Quality           string    `json:"quality,omitempty" dynamodbav:"Quality,omitempty"`
+	Messiness         string    `json:"messiness,omitempty" dynamodbav:"Messiness,omitempty"`
+	Time              string    `json:"time,omitempty" dynamodbav:"Time,omitempty"`
+	DateReported      string    `json:"date_reported,omitempty" dynamodbav:"dateReported,omitempty"`
+	IOSValidated      bool      `json:"ios_validated,omitempty" dynamodbav:"IOSValidated,omitempty"`
 }
 
 type ReportImage struct {

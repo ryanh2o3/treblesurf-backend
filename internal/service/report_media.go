@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"treblesurf-backend/internal/constants"
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/rekognition"
@@ -122,7 +124,7 @@ func (s *ReportService) GenerateVideoUploadURL(
 func (s *ReportService) GetReportImage(ctx context.Context, imageKey string) (imageData []byte, contentType string, err error) {
 	imageData, err = s.mediaRepo.Download(ctx, imageKey)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to read image data: %v", err)
+		return nil, "", fmt.Errorf("failed to read image data: %w", err)
 	}
 
 	// For now, assume JPEG content type
@@ -135,7 +137,7 @@ func (s *ReportService) GetReportImage(ctx context.Context, imageKey string) (im
 func (s *ReportService) GetReportVideo(ctx context.Context, videoKey string) (videoData []byte, contentType string, err error) {
 	videoData, err = s.mediaRepo.Download(ctx, videoKey)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to read video data: %v", err)
+		return nil, "", fmt.Errorf("failed to read video data: %w", err)
 	}
 
 	// For now, assume MP4 content type
@@ -152,7 +154,7 @@ func (s *ReportService) GenerateVideoViewURL(ctx context.Context, videoKey, user
 
 	user, err := s.userService.GetByEmail(ctx, userEmail)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %v", err)
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 	if user == nil {
 		return nil, fmt.Errorf("user not found")
@@ -161,9 +163,12 @@ func (s *ReportService) GenerateVideoViewURL(ctx context.Context, videoKey, user
 		return nil, fmt.Errorf("user does not have a UUID")
 	}
 
-	_, err = s.mediaRepo.Download(ctx, videoKey)
+	exists, err := s.mediaRepo.Exists(ctx, videoKey)
 	if err != nil {
-		return nil, fmt.Errorf("video not found or not accessible: %v", err)
+		return nil, fmt.Errorf("video not found or not accessible: %w", err)
+	}
+	if !exists {
+		return nil, fmt.Errorf("video not found or not accessible: %w", repository.ErrNotFound)
 	}
 
 	// Video keys follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.mp4
@@ -174,7 +179,7 @@ func (s *ReportService) GenerateVideoViewURL(ctx context.Context, videoKey, user
 	expires := 1 * time.Hour
 	viewURL, err := s.mediaRepo.GenerateViewURL(ctx, videoKey, expires)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate presigned view URL: %v", err)
+		return nil, fmt.Errorf("failed to generate presigned view URL: %w", err)
 	}
 
 	expiresAt := time.Now().Add(expires)
@@ -238,12 +243,15 @@ func (s *ReportService) ValidateImageKeyExists(ctx context.Context, imageKey str
 	}
 
 	// Try to get the object metadata to check if it exists
-	_, err := s.mediaRepo.Download(ctx, imageKey)
+	exists, err := s.mediaRepo.Exists(ctx, imageKey)
 	if err != nil {
-		return false, fmt.Errorf("image key %s does not exist or is not accessible: %v", imageKey, err)
+		if errors.Is(err, repository.ErrNotFound) {
+			return false, fmt.Errorf("image key %s does not exist", imageKey)
+		}
+		return false, fmt.Errorf("image key %s does not exist or is not accessible: %w", imageKey, err)
 	}
 
-	return true, nil
+	return exists, nil
 }
 
 func (s *ReportService) CleanupOrphanedImage(ctx context.Context, imageKey string) error {
@@ -255,7 +263,7 @@ func (s *ReportService) CleanupOrphanedImage(ctx context.Context, imageKey strin
 	err := s.mediaRepo.Delete(ctx, imageKey)
 	if err != nil {
 		slog.Warn("failed to cleanup orphaned image", slog.String("key", imageKey), slog.Any("error", err))
-		return fmt.Errorf("failed to cleanup orphaned image: %v", err)
+		return fmt.Errorf("failed to cleanup orphaned image: %w", err)
 	}
 
 	slog.Info("successfully cleaned up orphaned image", slog.String("key", imageKey))
@@ -271,7 +279,7 @@ func (s *ReportService) DeleteMediaFromS3(ctx context.Context, mediaKey string) 
 	err := s.mediaRepo.Delete(ctx, mediaKey)
 	if err != nil {
 		slog.Warn("failed to delete media", slog.String("key", mediaKey), slog.Any("error", err))
-		return fmt.Errorf("failed to delete media from S3: %v", err)
+		return fmt.Errorf("failed to delete media from S3: %w", err)
 	}
 
 	slog.Info("successfully deleted media", slog.String("key", mediaKey))

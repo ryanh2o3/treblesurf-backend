@@ -8,12 +8,20 @@ import (
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
+type userCtxKey string
+
+const (
+	userCtxKeyValue userCtxKey = "ctx-key"
+	userCtxValue    string     = "ctx-value"
+	testUserEmail              = "test@example.com"
+)
+
 func TestUserService_GetByEmail_ReturnsUser(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "ctx-key", "ctx-value")
-	expected := &model.User{Email: "test@example.com"}
+	ctx := context.WithValue(context.Background(), userCtxKeyValue, userCtxValue)
+	expected := &model.User{Email: testUserEmail}
 	repo := &mockrepo.UserRepo{
 		GetByEmailFn: func(callCtx context.Context, email string) (*model.User, error) {
-			if callCtx.Value("ctx-key") != "ctx-value" {
+			if callCtx.Value(userCtxKeyValue) != userCtxValue {
 				t.Fatalf("expected context value to be propagated")
 			}
 			if email != expected.Email {
@@ -38,15 +46,15 @@ func TestUserService_GetByEmail_ReturnsUser(t *testing.T) {
 }
 
 func TestUserService_UpdateTheme_UsesContext(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "ctx-key", "ctx-value")
+	ctx := context.WithValue(context.Background(), userCtxKeyValue, userCtxValue)
 	called := false
 	repo := &mockrepo.UserRepo{
 		UpdateThemeFn: func(callCtx context.Context, email, theme string) error {
 			called = true
-			if callCtx.Value("ctx-key") != "ctx-value" {
+			if callCtx.Value(userCtxKeyValue) != userCtxValue {
 				t.Fatalf("expected context value to be propagated")
 			}
-			if email != "test@example.com" || theme != "dark" {
+			if email != testUserEmail || theme != "dark" {
 				t.Fatalf("unexpected args: %s %s", email, theme)
 			}
 			return nil
@@ -58,7 +66,7 @@ func TestUserService_UpdateTheme_UsesContext(t *testing.T) {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
 
-	if err := service.UpdateTheme(ctx, "test@example.com", "dark"); err != nil {
+	if err := service.UpdateTheme(ctx, testUserEmail, "dark"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !called {
@@ -68,9 +76,9 @@ func TestUserService_UpdateTheme_UsesContext(t *testing.T) {
 
 func TestUserService_GetByUUID_ReturnsUser(t *testing.T) {
 	ctx := context.Background()
-	expected := &model.User{UUID: "test-uuid-123", Email: "test@example.com"}
+	expected := &model.User{UUID: "test-uuid-123", Email: testUserEmail}
 	repo := &mockrepo.UserRepo{
-		GetByUUIDFn: func(callCtx context.Context, uuid string) (*model.User, error) {
+		GetByUUIDFn: func(_ context.Context, uuid string) (*model.User, error) {
 			if uuid != expected.UUID {
 				t.Fatalf("unexpected uuid: %s", uuid)
 			}
@@ -96,9 +104,9 @@ func TestUserService_Delete_UsesContext(t *testing.T) {
 	ctx := context.Background()
 	deleted := false
 	repo := &mockrepo.UserRepo{
-		DeleteFn: func(callCtx context.Context, email string) error {
+		DeleteFn: func(_ context.Context, email string) error {
 			deleted = true
-			if email != "test@example.com" {
+			if email != testUserEmail {
 				t.Fatalf("unexpected email: %s", email)
 			}
 			return nil
@@ -110,7 +118,7 @@ func TestUserService_Delete_UsesContext(t *testing.T) {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
 
-	if err := service.Delete(ctx, "test@example.com"); err != nil {
+	if err := service.Delete(ctx, testUserEmail); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !deleted {

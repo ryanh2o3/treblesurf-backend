@@ -128,7 +128,7 @@ func TestStreamService_IsStreamRequested(t *testing.T) {
 	t.Run("returns false for no request", func(t *testing.T) {
 		ctx := context.Background()
 		repo := &mockrepo.StreamRequestRepo{
-			GetBySpotIDFn: func(_ context.Context, spotID string) (*model.StreamRequest, error) {
+			GetBySpotIDFn: func(_ context.Context, _ string) (*model.StreamRequest, error) {
 				return nil, nil
 			},
 		}

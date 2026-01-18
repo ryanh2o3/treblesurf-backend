@@ -7,6 +7,7 @@ import (
 
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/controller"
+	"treblesurf-backend/internal/repository"
 	repodynamo "treblesurf-backend/internal/repository/dynamodb"
 	repos3 "treblesurf-backend/internal/repository/s3"
 	"treblesurf-backend/internal/service"
@@ -41,99 +42,139 @@ type containerControllers struct {
 	snapshotController        *controller.SnapshotController
 }
 
+type containerRepositories struct {
+	userRepo            repository.UserRepository
+	sessionRepo         repository.SessionRepository
+	apiKeyRepo          repository.APIKeyRepository
+	locationRepo        repository.LocationRepository
+	forecastRepo        repository.ForecastRepository
+	forecastDataRepo    repository.ForecastDataRepository
+	websocketRepo       repository.WebSocketRepository
+	subscriptionRepo    repository.SpotSubscriptionRepository
+	swellPredictionRepo repository.SwellPredictionRepository
+	reportRepo          repository.ReportRepository
+	buoyRepo            repository.BuoyRepository
+	mediaRepo           repository.MediaRepository
+	streamRequestRepo   repository.StreamRequestRepository
+	snapshotRepo        repository.SnapshotRepository
+}
+
 // initializeServices creates all application services with their dependencies.
 func initializeServices(storage *containerStorage, cfg containerConfig) (*containerServices, error) {
-	// Initialize repositories
-	userRepo := repodynamo.NewUserRepo(storage.dynamoDBClient, "Users")
-	sessionRepo := repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions")
-	apiKeyRepo := repodynamo.NewAPIKeyRepo(storage.dynamoDBClient, "ApiKeys")
-	locationRepo := repodynamo.NewLocationRepo(storage.dynamoDBClient, "LocationData")
+	repos := initRepositories(storage, cfg)
+	return buildServices(repos, storage, cfg)
+}
+
+func initRepositories(storage *containerStorage, cfg containerConfig) *containerRepositories {
 	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, "SpotForecastData")
-	websocketRepo := repodynamo.NewWebSocketRepo(storage.dynamoDBClient, "WebSocketConnections")
-	subscriptionRepo := repodynamo.NewSpotSubscriptionRepo(storage.dynamoDBClient, "SpotSubscriptions")
-	swellPredictionRepo := repodynamo.NewSwellPredictionRepo(storage.dynamoDBClient, "SwellPredictions")
-	reportRepo := repodynamo.NewReportRepo(storage.dynamoDBClient, "SurfReports")
-	buoyRepo := repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations")
-	mediaRepo := repos3.NewMediaRepo(storage.s3Client, cfg.bucketName)
-	streamRequestRepo := repodynamo.NewStreamRequestRepo(storage.dynamoDBClient, "StreamRequests")
-	snapshotRepo := repodynamo.NewSnapshotRepo(storage.dynamoDBClient, "SpotSnapshots")
-
-	// Initialize auth service first (other services may depend on it)
-	authService, err := auth.NewService(cfg.jwtSecret, userRepo, sessionRepo, slog.Default())
-	if err != nil {
-		return nil, fmt.Errorf("creating auth service: %w", err)
+	return &containerRepositories{
+		userRepo:            repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"),
+		sessionRepo:         repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions"),
+		apiKeyRepo:          repodynamo.NewAPIKeyRepo(storage.dynamoDBClient, "ApiKeys"),
+		locationRepo:        repodynamo.NewLocationRepo(storage.dynamoDBClient, "LocationData"),
+		forecastRepo:        forecastRepo,
+		forecastDataRepo:    forecastRepo,
+		websocketRepo:       repodynamo.NewWebSocketRepo(storage.dynamoDBClient, "WebSocketConnections"),
+		subscriptionRepo:    repodynamo.NewSpotSubscriptionRepo(storage.dynamoDBClient, "SpotSubscriptions"),
+		swellPredictionRepo: repodynamo.NewSwellPredictionRepo(storage.dynamoDBClient, "SwellPredictions"),
+		reportRepo:          repodynamo.NewReportRepo(storage.dynamoDBClient, "SurfReports"),
+		buoyRepo:            repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations"),
+		mediaRepo:           repos3.NewMediaRepo(storage.s3Client, cfg.bucketName),
+		streamRequestRepo:   repodynamo.NewStreamRequestRepo(storage.dynamoDBClient, "StreamRequests"),
+		snapshotRepo:        repodynamo.NewSnapshotRepo(storage.dynamoDBClient, "SpotSnapshots"),
 	}
+}
 
-	// Initialize user service
-	userService, err := service.NewUserService(userRepo)
-	if err != nil {
-		return nil, fmt.Errorf("creating user service: %w", err)
-	}
-
-	// Initialize other services
-	forecastService, err := service.NewForecastService(forecastRepo)
-	if err != nil {
-		return nil, fmt.Errorf("creating forecast service: %w", err)
-	}
-
-	locationService, err := service.NewLocationService(locationRepo, mediaRepo)
-	if err != nil {
-		return nil, fmt.Errorf("creating location service: %w", err)
-	}
-
-	apiKeyService, err := service.NewAPIKeyService(apiKeyRepo)
-	if err != nil {
-		return nil, fmt.Errorf("creating apikey service: %w", err)
-	}
-
-	swellPredictionService, err := service.NewSwellPredictionService(swellPredictionRepo)
-	if err != nil {
-		return nil, fmt.Errorf("creating swell prediction service: %w", err)
-	}
-
-	streamService, err := service.NewStreamService(streamRequestRepo)
-	if err != nil {
-		return nil, fmt.Errorf("creating stream service: %w", err)
-	}
-
-	snapshotService, err := service.NewSnapshotService(snapshotRepo)
-	if err != nil {
-		return nil, fmt.Errorf("creating snapshot service: %w", err)
-	}
-
-	buoyService, err := service.NewBuoyService(buoyRepo)
-	if err != nil {
-		return nil, fmt.Errorf("creating buoy service: %w", err)
-	}
-
+func buildServices(
+	repos *containerRepositories,
+	storage *containerStorage,
+	cfg containerConfig,
+) (*containerServices, error) {
 	services := &containerServices{
-		forecastService:        forecastService,
-		tideService:            service.NewTideService(),
-		locationService:        locationService,
-		userService:            userService,
-		apiKeyService:          apiKeyService,
-		swellPredictionService: swellPredictionService,
-		authService:            authService,
-		streamService:          streamService,
-		snapshotService:        snapshotService,
-		buoyService:            buoyService,
+		tideService: service.NewTideService(),
 	}
 
-	// Initialize report service (depends on other services)
+	if err := initAuthAndUserServices(cfg, repos, services); err != nil {
+		return nil, err
+	}
+	if err := initDomainServices(repos, services); err != nil {
+		return nil, err
+	}
+
 	services.reportService = service.NewReportService(
-		mediaRepo,
-		reportRepo,
-		buoyRepo,
-		locationRepo,
-		forecastRepo,
+		repos.mediaRepo,
+		repos.reportRepo,
+		repos.buoyRepo,
+		repos.locationRepo,
+		repos.forecastDataRepo,
 		storage.rekognitionClient,
 		services.userService,
 	)
-
-	// Initialize websocket service
-	services.websocketService = service.NewWebSocketService(websocketRepo, subscriptionRepo, []byte(cfg.jwtSecret))
+	services.websocketService = service.NewWebSocketService(
+		repos.websocketRepo,
+		repos.subscriptionRepo,
+		[]byte(cfg.jwtSecret),
+	)
 
 	return services, nil
+}
+
+func initAuthAndUserServices(
+	cfg containerConfig,
+	repos *containerRepositories,
+	services *containerServices,
+) error {
+	authService, err := auth.NewService(cfg.jwtSecret, repos.userRepo, repos.sessionRepo, slog.Default())
+	if err != nil {
+		return fmt.Errorf("creating auth service: %w", err)
+	}
+	userService, err := service.NewUserService(repos.userRepo)
+	if err != nil {
+		return fmt.Errorf("creating user service: %w", err)
+	}
+	services.authService = authService
+	services.userService = userService
+	return nil
+}
+
+func initDomainServices(repos *containerRepositories, services *containerServices) error {
+	forecastService, err := service.NewForecastService(repos.forecastRepo)
+	if err != nil {
+		return fmt.Errorf("creating forecast service: %w", err)
+	}
+	locationService, err := service.NewLocationService(repos.locationRepo, repos.mediaRepo)
+	if err != nil {
+		return fmt.Errorf("creating location service: %w", err)
+	}
+	apiKeyService, err := service.NewAPIKeyService(repos.apiKeyRepo)
+	if err != nil {
+		return fmt.Errorf("creating apikey service: %w", err)
+	}
+	swellPredictionService, err := service.NewSwellPredictionService(repos.swellPredictionRepo)
+	if err != nil {
+		return fmt.Errorf("creating swell prediction service: %w", err)
+	}
+	streamService, err := service.NewStreamService(repos.streamRequestRepo)
+	if err != nil {
+		return fmt.Errorf("creating stream service: %w", err)
+	}
+	snapshotService, err := service.NewSnapshotService(repos.snapshotRepo)
+	if err != nil {
+		return fmt.Errorf("creating snapshot service: %w", err)
+	}
+	buoyService, err := service.NewBuoyService(repos.buoyRepo)
+	if err != nil {
+		return fmt.Errorf("creating buoy service: %w", err)
+	}
+
+	services.forecastService = forecastService
+	services.locationService = locationService
+	services.apiKeyService = apiKeyService
+	services.swellPredictionService = swellPredictionService
+	services.streamService = streamService
+	services.snapshotService = snapshotService
+	services.buoyService = buoyService
+	return nil
 }
 
 // initializeControllers creates all controllers with their service dependencies.

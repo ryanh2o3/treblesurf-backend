@@ -1,10 +1,11 @@
 package controller
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
-	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -38,7 +39,7 @@ func (uc *UserController) SetUserTheme(c *gin.Context) {
 	// First check if the user exists
 	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
 	if err != nil {
-		if err == model.ErrUserNotFound {
+		if errors.Is(err, repository.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -82,7 +83,7 @@ func (uc *UserController) DeleteMyAccount(c *gin.Context) {
 	// First check if the user exists
 	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
 	if err != nil {
-		if err == model.ErrUserNotFound {
+		if errors.Is(err, repository.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
@@ -127,7 +128,7 @@ func (uc *UserController) GetUserTheme(c *gin.Context) {
 	// First check if the user exists
 	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
 	if err != nil {
-		if err == model.ErrUserNotFound {
+		if errors.Is(err, repository.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}

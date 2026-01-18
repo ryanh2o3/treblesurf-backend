@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
 )
 
@@ -29,7 +30,7 @@ func NewSwellPredictionService(predictions repository.SwellPredictionRepository)
 func (s *SwellPredictionService) GetSpotSwellPrediction(
 	ctx context.Context,
 	spotName, regionName, countryName string,
-) ([]map[string]interface{}, error) {
+) ([]model.SwellPrediction, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	
 	now := time.Now().UTC()
@@ -40,7 +41,7 @@ func (s *SwellPredictionService) GetSpotSwellPrediction(
 func (s *SwellPredictionService) GetListSpotsSwellPrediction(
 	ctx context.Context,
 	spots []string, regionName, countryName string,
-) ([][]map[string]interface{}, error) {
+) ([][]model.SwellPrediction, error) {
 	spotIDs := make([]string, 0, len(spots))
 	for _, spot := range spots {
 		spotIDs = append(spotIDs, fmt.Sprintf("%s#%s#%s", countryName, regionName, spot))
@@ -54,7 +55,7 @@ func (s *SwellPredictionService) GetListSpotsSwellPrediction(
 func (s *SwellPredictionService) GetRegionSwellPrediction(
 	ctx context.Context,
 	regionName, countryName string,
-) ([]map[string]interface{}, error) {
+) ([]model.SwellPrediction, error) {
 	// Get current time rounded to the hour (UTC)
 	now := time.Now().UTC()
 	currentHour := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.UTC)
@@ -65,12 +66,12 @@ func (s *SwellPredictionService) GetSpotSwellPredictionRange(
 	ctx context.Context,
 	spotName, regionName, countryName string,
 	startTime, endTime time.Time,
-) ([]map[string]interface{}, error) {
+) ([]model.SwellPrediction, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	return s.predictions.GetSpotPredictionRange(ctx, spotID, startTime, endTime)
 }
 
-func (s *SwellPredictionService) GetRecentSwellPredictions(ctx context.Context, hoursBack int) ([]map[string]interface{}, error) {
+func (s *SwellPredictionService) GetRecentSwellPredictions(ctx context.Context, hoursBack int) ([]model.SwellPrediction, error) {
 	cutoffTime := time.Now().Add(-time.Duration(hoursBack) * time.Hour)
 	return s.predictions.GetRecentPredictions(ctx, cutoffTime, 3)
 }
@@ -78,7 +79,7 @@ func (s *SwellPredictionService) GetRecentSwellPredictions(ctx context.Context, 
 func (s *SwellPredictionService) GetClosestAIPredictionForSpot(
 	ctx context.Context,
 	spotName, regionName, countryName string,
-) (map[string]interface{}, error) {
+) (*model.SwellPrediction, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
 	now := time.Now().UTC()
 

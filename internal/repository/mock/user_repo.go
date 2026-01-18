@@ -24,14 +24,14 @@ func (m *UserRepo) GetByEmail(ctx context.Context, email string) (*model.User, e
 	if m.GetByEmailFn != nil {
 		return m.GetByEmailFn(ctx, email)
 	}
-	return nil, model.ErrUserNotFound
+	return nil, repository.ErrNotFound
 }
 
 func (m *UserRepo) GetByUUID(ctx context.Context, uuid string) (*model.User, error) {
 	if m.GetByUUIDFn != nil {
 		return m.GetByUUIDFn(ctx, uuid)
 	}
-	return nil, model.ErrUserNotFound
+	return nil, repository.ErrNotFound
 }
 
 func (m *UserRepo) Create(ctx context.Context, user *model.User) error {

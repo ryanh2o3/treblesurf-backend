@@ -42,7 +42,7 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*model.User, e
 		return nil, fmt.Errorf("getting user by email: %w", err)
 	}
 	if result.Item == nil {
-		return nil, model.ErrUserNotFound
+		return nil, repository.ErrNotFound
 	}
 
 	var user model.User
@@ -71,7 +71,7 @@ func (r *UserRepo) GetByUUID(ctx context.Context, uuid string) (*model.User, err
 		return nil, fmt.Errorf("scanning user by uuid: %w", err)
 	}
 	if len(result.Items) == 0 {
-		return nil, model.ErrUserNotFound
+		return nil, repository.ErrNotFound
 	}
 
 	var user model.User
@@ -96,7 +96,7 @@ func (r *UserRepo) Create(ctx context.Context, user *model.User) error {
 
 	if _, err := r.client.PutItemWithContext(ctx, input); err != nil {
 		if isConditionalCheckFailed(err) {
-			return model.ErrUserAlreadyExists
+			return repository.ErrAlreadyExists
 		}
 		return fmt.Errorf("creating user: %w", err)
 	}
@@ -111,11 +111,15 @@ func (r *UserRepo) Update(ctx context.Context, user *model.User) error {
 	}
 
 	input := &dynamodb.PutItemInput{
-		TableName: aws.String(r.tableName),
-		Item:      item,
+		TableName:           aws.String(r.tableName),
+		Item:                item,
+		ConditionExpression: aws.String("attribute_exists(email)"),
 	}
 
 	if _, err := r.client.PutItemWithContext(ctx, input); err != nil {
+		if isConditionalCheckFailed(err) {
+			return repository.ErrNotFound
+		}
 		return fmt.Errorf("updating user: %w", err)
 	}
 
@@ -124,13 +128,17 @@ func (r *UserRepo) Update(ctx context.Context, user *model.User) error {
 
 func (r *UserRepo) Delete(ctx context.Context, email string) error {
 	input := &dynamodb.DeleteItemInput{
-		TableName: aws.String(r.tableName),
+		TableName:           aws.String(r.tableName),
+		ConditionExpression: aws.String("attribute_exists(email)"),
 		Key: map[string]*dynamodb.AttributeValue{
 			"email": {S: aws.String(email)},
 		},
 	}
 
 	if _, err := r.client.DeleteItemWithContext(ctx, input); err != nil {
+		if isConditionalCheckFailed(err) {
+			return repository.ErrNotFound
+		}
 		return fmt.Errorf("deleting user: %w", err)
 	}
 
