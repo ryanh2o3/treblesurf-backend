@@ -47,9 +47,13 @@ jobs:
       
       - name: Wait for LocalStack to be ready
         run: |
-          timeout=120
+          timeout=180
           elapsed=0
-          while ! curl -s http://localhost:4566/_localstack/health | grep -q '"s3": "running"'; do
+          while true; do
+            if curl -s http://localhost:4566/_localstack/health | grep -Eq '"s3"\s*:\s*"(running|available)"'; then
+              echo "LocalStack is ready"
+              break
+            fi
             if [ $elapsed -ge $timeout ]; then
               echo "LocalStack failed to start within $timeout seconds"
               exit 1
@@ -58,7 +62,6 @@ jobs:
             sleep 2
             elapsed=$((elapsed + 2))
           done
-          echo "LocalStack is ready"
       
       - name: Create S3 bucket in LocalStack
         run: |
