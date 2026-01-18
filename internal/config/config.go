@@ -61,71 +61,12 @@ type SecurityConfig struct {
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
 	env := Environment(getEnvOrDefault("GO_ENV", string(EnvProduction)))
+	cfg := newBaseConfig(env)
 
-	cfg := &Config{
-		Env: env,
-		AWS: AWSConfig{
-			Region:     getEnvOrDefault("AWS_REGION", "eu-west-1"),
-			BucketName: getEnvOrDefault("S3_BUCKET_NAME", "treblesurf-images"),
-		},
-		WebSocket: WebSocketConfig{
-			Endpoint: os.Getenv("WEBSOCKET_API_ENDPOINT"),
-			Stage:    getEnvOrDefault("WEBSOCKET_API_STAGE", "production"),
-		},
-		Server: ServerConfig{
-			Port: getEnvOrDefault("PORT", "8080"),
-		},
-		Security: SecurityConfig{
-			RateLimitRPS: 100, // Default rate limit
-		},
+	if err := loadAuthConfig(cfg, env); err != nil {
+		return nil, err
 	}
-
-	// Load JWT secret
-	cfg.Auth.JWTSecret = os.Getenv("JWT_SECRET")
-	if cfg.Auth.JWTSecret == "" && env == EnvProduction {
-		return nil, fmt.Errorf("JWT_SECRET is required in production")
-	}
-	if cfg.Auth.JWTSecret == "" {
-		cfg.Auth.JWTSecret = "dev-secret-do-not-use-in-prod"
-	}
-
-	// Load Google client IDs
-	if ids := strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_IDS")); ids != "" {
-		cfg.Auth.GoogleClientIDs = splitCommaSeparated(ids)
-	} else {
-		legacyIDs := []string{
-			strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
-			strings.TrimSpace(os.Getenv("GOOGLE_IOS_CLIENT_ID")),
-		}
-		for _, id := range legacyIDs {
-			if id != "" {
-				cfg.Auth.GoogleClientIDs = append(cfg.Auth.GoogleClientIDs, id)
-			}
-		}
-	}
-
-	// Load cookie security settings (defaults to secure in production)
-	cfg.Auth.CookieSecure = !cfg.IsDevelopment()
-	if secure, ok := getEnvBool("COOKIE_SECURE"); ok {
-		cfg.Auth.CookieSecure = secure
-	}
-
-	// Load admin emails from environment
-	if admins := strings.TrimSpace(os.Getenv("ADMIN_EMAILS")); admins != "" {
-		cfg.Security.AdminEmails = splitCommaSeparated(admins)
-	}
-
-	// Load allowed origins for CORS
-	if origins := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); origins != "" {
-		cfg.Security.AllowedOrigins = splitCommaSeparated(origins)
-	} else if env == EnvProduction {
-		// Default production origins
-		cfg.Security.AllowedOrigins = []string{
-			"https://treblesurf.com",
-			"https://www.treblesurf.com",
-			"https://app.treblesurf.com",
-		}
-	}
+	loadSecurityConfig(cfg, env)
 
 	return cfg, nil
 }
@@ -159,18 +100,91 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-func getEnvBool(key string) (bool, bool) {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
+func getEnvBool(key string) (value, ok bool) {
+	rawValue := strings.TrimSpace(os.Getenv(key))
+	if rawValue == "" {
 		return false, false
 	}
-	switch strings.ToLower(value) {
+	switch strings.ToLower(rawValue) {
 	case "1", "true", "t", "yes", "y":
 		return true, true
 	case "0", "false", "f", "no", "n":
 		return false, true
 	default:
 		return false, false
+	}
+}
+
+func newBaseConfig(env Environment) *Config {
+	return &Config{
+		Env: env,
+		AWS: AWSConfig{
+			Region:     getEnvOrDefault("AWS_REGION", "eu-west-1"),
+			BucketName: getEnvOrDefault("S3_BUCKET_NAME", "treblesurf-images"),
+		},
+		WebSocket: WebSocketConfig{
+			Endpoint: os.Getenv("WEBSOCKET_API_ENDPOINT"),
+			Stage:    getEnvOrDefault("WEBSOCKET_API_STAGE", "production"),
+		},
+		Server: ServerConfig{
+			Port: getEnvOrDefault("PORT", "8080"),
+		},
+		Security: SecurityConfig{
+			RateLimitRPS: 100, // Default rate limit
+		},
+	}
+}
+
+func loadAuthConfig(cfg *Config, env Environment) error {
+	cfg.Auth.JWTSecret = os.Getenv("JWT_SECRET")
+	if cfg.Auth.JWTSecret == "" && env == EnvProduction {
+		return fmt.Errorf("JWT_SECRET is required in production")
+	}
+	if cfg.Auth.JWTSecret == "" {
+		cfg.Auth.JWTSecret = "dev-secret-do-not-use-in-prod"
+	}
+
+	cfg.Auth.GoogleClientIDs = loadGoogleClientIDs()
+
+	cfg.Auth.CookieSecure = !cfg.IsDevelopment()
+	if secure, ok := getEnvBool("COOKIE_SECURE"); ok {
+		cfg.Auth.CookieSecure = secure
+	}
+
+	return nil
+}
+
+func loadGoogleClientIDs() []string {
+	if ids := strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_IDS")); ids != "" {
+		return splitCommaSeparated(ids)
+	}
+
+	legacyIDs := []string{
+		strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
+		strings.TrimSpace(os.Getenv("GOOGLE_IOS_CLIENT_ID")),
+	}
+	out := make([]string, 0, len(legacyIDs))
+	for _, id := range legacyIDs {
+		if id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func loadSecurityConfig(cfg *Config, env Environment) {
+	if admins := strings.TrimSpace(os.Getenv("ADMIN_EMAILS")); admins != "" {
+		cfg.Security.AdminEmails = splitCommaSeparated(admins)
+	}
+
+	if origins := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); origins != "" {
+		cfg.Security.AllowedOrigins = splitCommaSeparated(origins)
+	} else if env == EnvProduction {
+		cfg.Security.AllowedOrigins = []string{
+			"https://treblesurf.com",
+			"https://www.treblesurf.com",
+			"https://app.treblesurf.com",
+		}
 	}
 }
 

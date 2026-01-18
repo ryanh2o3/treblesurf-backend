@@ -14,6 +14,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	locationTestCountry = "Ireland"
+	locationTestRegion  = "Donegal"
+	locationTestSpot    = "Bundoran"
+)
+
 func setupLocationController(repo *mockrepo.LocationRepo) *LocationController {
 	mediaRepo := &mockrepo.MediaRepo{}
 	svc, _ := service.NewLocationService(repo, mediaRepo)
@@ -23,10 +29,10 @@ func setupLocationController(repo *mockrepo.LocationRepo) *LocationController {
 func TestLocationController_GetRegions(t *testing.T) {
 	repo := &mockrepo.LocationRepo{
 		GetRegionsFn: func(_ context.Context, country string) ([]string, error) {
-			if country != "Ireland" {
+			if country != locationTestCountry {
 				t.Errorf("unexpected country: %s", country)
 			}
-			return []string{"Donegal", "Clare", "Kerry"}, nil
+			return []string{locationTestRegion, "Clare", "Kerry"}, nil
 		},
 	}
 
@@ -34,7 +40,7 @@ func TestLocationController_GetRegions(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/regions?country=Ireland", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodGet, "/regions?country="+locationTestCountry, http.NoBody)
 
 	controller.GetRegions(c)
 
@@ -69,7 +75,7 @@ func TestLocationController_GetRegions_MissingCountry(t *testing.T) {
 
 func TestLocationController_GetRegions_ServiceError(t *testing.T) {
 	repo := &mockrepo.LocationRepo{
-		GetRegionsFn: func(_ context.Context, country string) ([]string, error) {
+		GetRegionsFn: func(_ context.Context, _ string) ([]string, error) {
 			return nil, context.DeadlineExceeded
 		},
 	}
@@ -78,7 +84,7 @@ func TestLocationController_GetRegions_ServiceError(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/regions?country=Ireland", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodGet, "/regions?country="+locationTestCountry, http.NoBody)
 
 	controller.GetRegions(c)
 
@@ -90,11 +96,11 @@ func TestLocationController_GetRegions_ServiceError(t *testing.T) {
 func TestLocationController_GetSpots(t *testing.T) {
 	repo := &mockrepo.LocationRepo{
 		GetSpotsFn: func(_ context.Context, country, region string) ([]*model.LocationInfo, error) {
-			if country != "Ireland" || region != "Donegal" {
+			if country != locationTestCountry || region != locationTestRegion {
 				t.Errorf("unexpected location: %s/%s", country, region)
 			}
 			return []*model.LocationInfo{
-				{CountryRegionSpot: country + "_" + region + "_Bundoran", Latitude: 54.5, Longitude: -8.3},
+				{CountryRegionSpot: country + "_" + region + "_" + locationTestSpot, Latitude: 54.5, Longitude: -8.3},
 				{CountryRegionSpot: country + "_" + region + "_Rossnowlagh", Latitude: 54.6, Longitude: -8.4},
 			}, nil
 		},
@@ -104,7 +110,7 @@ func TestLocationController_GetSpots(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/spots?country=Ireland&region=Donegal", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodGet, "/spots?country="+locationTestCountry+"&region="+locationTestRegion, http.NoBody)
 
 	controller.GetSpots(c)
 
@@ -130,8 +136,8 @@ func TestLocationController_GetSpots_MissingParams(t *testing.T) {
 		name   string
 		url    string
 	}{
-		{"missing country", "/spots?region=Donegal"},
-		{"missing region", "/spots?country=Ireland"},
+		{"missing country", "/spots?region=" + locationTestRegion},
+		{"missing region", "/spots?country=" + locationTestCountry},
 		{"missing both", "/spots"},
 	}
 
@@ -153,7 +159,7 @@ func TestLocationController_GetSpots_MissingParams(t *testing.T) {
 func TestLocationController_GetCoordinates(t *testing.T) {
 	repo := &mockrepo.LocationRepo{
 		GetCoordinatesFn: func(_ context.Context, country, region, spot string) (float64, float64, error) {
-			if country != "Ireland" || region != "Donegal" || spot != "Bundoran" {
+			if country != locationTestCountry || region != locationTestRegion || spot != locationTestSpot {
 				t.Errorf("unexpected location: %s/%s/%s", country, region, spot)
 			}
 			return 54.5, -8.3, nil
@@ -164,7 +170,9 @@ func TestLocationController_GetCoordinates(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/location?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+	locationURL := "/location?country=" + locationTestCountry +
+		"&region=" + locationTestRegion + "&spot=" + locationTestSpot
+	c.Request = httptest.NewRequest(http.MethodGet, locationURL, http.NoBody)
 
 	controller.GetCoordinates(c)
 
@@ -191,7 +199,7 @@ func TestLocationController_GetCoordinates(t *testing.T) {
 func TestLocationController_GetLocationInfo(t *testing.T) {
 	repo := &mockrepo.LocationRepo{
 		GetLocationInfoFn: func(_ context.Context, country, region, spot string) (*model.LocationInfo, error) {
-			if country != "Ireland" || region != "Donegal" || spot != "Bundoran" {
+			if country != locationTestCountry || region != locationTestRegion || spot != locationTestSpot {
 				t.Errorf("unexpected location: %s/%s/%s", country, region, spot)
 			}
 			return &model.LocationInfo{
@@ -206,7 +214,9 @@ func TestLocationController_GetLocationInfo(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/locationInfo?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+	locationInfoURL := "/locationInfo?country=" + locationTestCountry +
+		"&region=" + locationTestRegion + "&spot=" + locationTestSpot
+	c.Request = httptest.NewRequest(http.MethodGet, locationInfoURL, http.NoBody)
 
 	controller.GetLocationInfo(c)
 
@@ -235,7 +245,9 @@ func TestLocationController_GetLocationInfo_NotFound(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/locationInfo?country=Ireland&region=Donegal&spot=Unknown", http.NoBody)
+	missingInfoURL := "/locationInfo?country=" + locationTestCountry +
+		"&region=" + locationTestRegion + "&spot=Unknown"
+	c.Request = httptest.NewRequest(http.MethodGet, missingInfoURL, http.NoBody)
 
 	controller.GetLocationInfo(c)
 
@@ -256,7 +268,7 @@ func TestLocationController_GetSpots_ServiceError(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/spots?country=Ireland&region=Donegal", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodGet, "/spots?country="+locationTestCountry+"&region="+locationTestRegion, http.NoBody)
 
 	controller.GetSpots(c)
 
@@ -276,7 +288,9 @@ func TestLocationController_GetLocationInfo_ServiceError(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/locationInfo?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+	infoServiceURL := "/locationInfo?country=" + locationTestCountry +
+		"&region=" + locationTestRegion + "&spot=" + locationTestSpot
+	c.Request = httptest.NewRequest(http.MethodGet, infoServiceURL, http.NoBody)
 
 	controller.GetLocationInfo(c)
 
@@ -293,9 +307,9 @@ func TestLocationController_GetLocationInfo_MissingParams(t *testing.T) {
 		name string
 		url  string
 	}{
-		{"missing country", "/locationInfo?region=Donegal&spot=Bundoran"},
-		{"missing region", "/locationInfo?country=Ireland&spot=Bundoran"},
-		{"missing spot", "/locationInfo?country=Ireland&region=Donegal"},
+		{"missing country", "/locationInfo?region=" + locationTestRegion + "&spot=" + locationTestSpot},
+		{"missing region", "/locationInfo?country=" + locationTestCountry + "&spot=" + locationTestSpot},
+		{"missing spot", "/locationInfo?country=" + locationTestCountry + "&region=" + locationTestRegion},
 		{"missing all", "/locationInfo"},
 	}
 
@@ -325,7 +339,9 @@ func TestLocationController_GetCoordinates_ServiceError(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/coordinates?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+	coordinatesURL := "/coordinates?country=" + locationTestCountry +
+		"&region=" + locationTestRegion + "&spot=" + locationTestSpot
+	c.Request = httptest.NewRequest(http.MethodGet, coordinatesURL, http.NoBody)
 
 	controller.GetCoordinates(c)
 
@@ -342,9 +358,9 @@ func TestLocationController_GetCoordinates_MissingParams(t *testing.T) {
 		name string
 		url  string
 	}{
-		{"missing country", "/coordinates?region=Donegal&spot=Bundoran"},
-		{"missing region", "/coordinates?country=Ireland&spot=Bundoran"},
-		{"missing spot", "/coordinates?country=Ireland&region=Donegal"},
+		{"missing country", "/coordinates?region=" + locationTestRegion + "&spot=" + locationTestSpot},
+		{"missing region", "/coordinates?country=" + locationTestCountry + "&spot=" + locationTestSpot},
+		{"missing spot", "/coordinates?country=" + locationTestCountry + "&region=" + locationTestRegion},
 		{"missing all", "/coordinates"},
 	}
 

@@ -127,7 +127,7 @@ func TestSnapshotController_GetLatestSnapshotHandler_NotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	snapshotRepo := &mockrepo.SnapshotRepo{
-		GetLatestBySpotFn: func(_ context.Context, spotID string) (*model.SpotSnapshot, error) {
+		GetLatestBySpotFn: func(_ context.Context, _ string) (*model.SpotSnapshot, error) {
 			return nil, nil // No snapshot found
 		},
 	}
@@ -177,7 +177,7 @@ func TestParseTimestamp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
-			c.Request = httptest.NewRequest(http.MethodPost, "/test", nil)
+			c.Request = httptest.NewRequest(http.MethodPost, "/test", http.NoBody)
 			c.Request.PostForm = map[string][]string{
 				"timestamp": {tt.timestampStr},
 			}
@@ -191,10 +191,8 @@ func TestParseTimestamp(t *testing.T) {
 				if result.IsZero() && tt.timestampStr != "" {
 					t.Error("expected non-zero time")
 				}
-			} else {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
+			} else if err == nil {
+				t.Error("expected error but got none")
 			}
 		})
 	}
@@ -229,15 +227,14 @@ func TestValidateImageFile(t *testing.T) {
 
 // Test generateSnapshotS3Key helper function through integration
 // Since it's used internally, we test it indirectly
-func TestGenerateSnapshotS3Key_Format(t *testing.T) {
+func TestGenerateSnapshotS3Key_Format(_ *testing.T) {
 	// This tests the format indirectly
 	// The function generates: "snapshots/{spotID}/{uuid}{ext}"
 	spotID := "test-spot"
 	filename := "test-image.jpg"
-	
+
 	// We can't test directly without accessing private function
 	// But we verify the pattern through integration tests
 	_ = spotID
 	_ = filename
 }
-

@@ -16,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/rekognition"
 )
 
+const testUploadURL = "https://s3.example.com/upload-url"
+
 // mockRekognitionClient is a mock implementation of RekognitionAPI
 type mockRekognitionClient struct {
 	DetectLabelsFn func(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error)
@@ -30,12 +32,12 @@ func (m *mockRekognitionClient) DetectLabels(input *rekognition.DetectLabelsInpu
 
 func TestReportService_GenerateImageUploadURL(t *testing.T) {
 	tests := []struct {
+		setupMock func() (*UserService, repository.MediaRepository)
 		name      string
 		country   string
 		region    string
 		spot      string
 		userEmail string
-		setupMock func() (*UserService, repository.MediaRepository)
 		wantErr   bool
 	}{
 		{
@@ -52,11 +54,11 @@ func TestReportService_GenerateImageUploadURL(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				mediaRepo := &mockrepo.MediaRepo{
-					GenerateUploadURLFn: func(_ context.Context, key string, expires time.Duration) (string, error) {
+					GenerateUploadURLFn: func(_ context.Context, _ string, expires time.Duration) (string, error) {
 						if expires != 15*time.Minute {
 							t.Errorf("expected expiration 15 minutes, got %v", expires)
 						}
-						return "https://s3.example.com/upload-url", nil
+						return testUploadURL, nil
 					},
 				}
 				return userService, mediaRepo
@@ -71,7 +73,7 @@ func TestReportService_GenerateImageUploadURL(t *testing.T) {
 			userEmail: "notfound@example.com",
 			setupMock: func() (*UserService, repository.MediaRepository) {
 				userRepo := &mockrepo.UserRepo{
-					GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+					GetByEmailFn: func(_ context.Context, _ string) (*model.User, error) {
 						return nil, repository.ErrNotFound
 					},
 				}
@@ -113,7 +115,7 @@ func TestReportService_GenerateImageUploadURL(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				mediaRepo := &mockrepo.MediaRepo{
-					GenerateUploadURLFn: func(_ context.Context, key string, expires time.Duration) (string, error) {
+					GenerateUploadURLFn: func(_ context.Context, _ string, _ time.Duration) (string, error) {
 						return "", errors.New("S3 error")
 					},
 				}
@@ -163,12 +165,12 @@ func TestReportService_GenerateImageUploadURL(t *testing.T) {
 
 func TestReportService_GenerateVideoUploadURL(t *testing.T) {
 	tests := []struct {
+		setupMock func() (*UserService, repository.MediaRepository)
 		name      string
 		country   string
 		region    string
 		spot      string
 		userEmail string
-		setupMock func() (*UserService, repository.MediaRepository)
 		wantErr   bool
 	}{
 		{
@@ -185,8 +187,8 @@ func TestReportService_GenerateVideoUploadURL(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				mediaRepo := &mockrepo.MediaRepo{
-					GenerateUploadURLFn: func(_ context.Context, key string, expires time.Duration) (string, error) {
-						return "https://s3.example.com/upload-url", nil
+					GenerateUploadURLFn: func(_ context.Context, _ string, _ time.Duration) (string, error) {
+						return testUploadURL, nil
 					},
 				}
 				return userService, mediaRepo
@@ -201,7 +203,7 @@ func TestReportService_GenerateVideoUploadURL(t *testing.T) {
 			userEmail: "notfound@example.com",
 			setupMock: func() (*UserService, repository.MediaRepository) {
 				userRepo := &mockrepo.UserRepo{
-					GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+					GetByEmailFn: func(_ context.Context, _ string) (*model.User, error) {
 						return nil, repository.ErrNotFound
 					},
 				}
@@ -247,9 +249,9 @@ func TestReportService_GenerateVideoUploadURL(t *testing.T) {
 
 func TestReportService_GetReportImage(t *testing.T) {
 	tests := []struct {
+		setupMock func() repository.MediaRepository
 		name      string
 		imageKey  string
-		setupMock func() repository.MediaRepository
 		wantErr   bool
 	}{
 		{
@@ -257,7 +259,7 @@ func TestReportService_GetReportImage(t *testing.T) {
 			imageKey: "surf-reports/Ireland_Donegal_Bundoran/image.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+					DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 						return []byte("fake-image-data"), nil
 					},
 				}
@@ -269,7 +271,7 @@ func TestReportService_GetReportImage(t *testing.T) {
 			imageKey: "surf-reports/Ireland_Donegal_Bundoran/missing.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+					DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 						return nil, repository.ErrNotFound
 					},
 				}
@@ -281,7 +283,7 @@ func TestReportService_GetReportImage(t *testing.T) {
 			imageKey: "surf-reports/Ireland_Donegal_Bundoran/image.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+					DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 						return nil, errors.New("S3 error")
 					},
 				}
@@ -320,9 +322,9 @@ func TestReportService_GetReportImage(t *testing.T) {
 
 func TestReportService_GetReportVideo(t *testing.T) {
 	tests := []struct {
+		setupMock func() repository.MediaRepository
 		name      string
 		videoKey  string
-		setupMock func() repository.MediaRepository
 		wantErr   bool
 	}{
 		{
@@ -330,7 +332,7 @@ func TestReportService_GetReportVideo(t *testing.T) {
 			videoKey: "surf-reports/Ireland_Donegal_Bundoran/video.mp4",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+					DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 						return []byte("fake-video-data"), nil
 					},
 				}
@@ -342,7 +344,7 @@ func TestReportService_GetReportVideo(t *testing.T) {
 			videoKey: "surf-reports/Ireland_Donegal_Bundoran/missing.mp4",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+					DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 						return nil, repository.ErrNotFound
 					},
 				}
@@ -378,10 +380,10 @@ func TestReportService_GetReportVideo(t *testing.T) {
 
 func TestReportService_GenerateVideoViewURL(t *testing.T) {
 	tests := []struct {
+		setupMock func() (*UserService, repository.MediaRepository)
 		name      string
 		videoKey  string
 		userEmail string
-		setupMock func() (*UserService, repository.MediaRepository)
 		wantErr   bool
 	}{
 		{
@@ -396,10 +398,10 @@ func TestReportService_GenerateVideoViewURL(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				mediaRepo := &mockrepo.MediaRepo{
-					ExistsFn: func(_ context.Context, key string) (bool, error) {
+					ExistsFn: func(_ context.Context, _ string) (bool, error) {
 						return true, nil
 					},
-					GenerateViewURLFn: func(_ context.Context, key string, expires time.Duration) (string, error) {
+					GenerateViewURLFn: func(_ context.Context, _ string, expires time.Duration) (string, error) {
 						if expires != 1*time.Hour {
 							t.Errorf("expected expiration 1 hour, got %v", expires)
 						}
@@ -422,7 +424,7 @@ func TestReportService_GenerateVideoViewURL(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				mediaRepo := &mockrepo.MediaRepo{
-					ExistsFn: func(_ context.Context, key string) (bool, error) {
+					ExistsFn: func(_ context.Context, _ string) (bool, error) {
 						return false, nil
 					},
 				}
@@ -442,7 +444,7 @@ func TestReportService_GenerateVideoViewURL(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				mediaRepo := &mockrepo.MediaRepo{
-					ExistsFn: func(_ context.Context, key string) (bool, error) {
+					ExistsFn: func(_ context.Context, _ string) (bool, error) {
 						return true, nil
 					},
 				}
@@ -509,13 +511,13 @@ func TestReportService_validateImageWithRekognition(t *testing.T) {
 	defer os.Setenv("GO_ENV", originalEnv)
 
 	tests := []struct {
-		name        string
-		imageData   []byte
-		env         string
 		setupMock   func() RekognitionAPI
+		name        string
+		env         string
+		errContains string
+		imageData   []byte
 		wantValid   bool
 		wantErr     bool
-		errContains string
 	}{
 		{
 			name:      "development mode - always valid",
@@ -533,7 +535,7 @@ func TestReportService_validateImageWithRekognition(t *testing.T) {
 			env:       "production",
 			setupMock: func() RekognitionAPI {
 				return &mockRekognitionClient{
-					DetectLabelsFn: func(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
+					DetectLabelsFn: func(_ *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
 						return &rekognition.DetectLabelsOutput{
 							Labels: []*rekognition.Label{
 								{Name: aws.String("Sea"), Confidence: aws.Float64(95.0)},
@@ -552,7 +554,7 @@ func TestReportService_validateImageWithRekognition(t *testing.T) {
 			env:       "production",
 			setupMock: func() RekognitionAPI {
 				return &mockRekognitionClient{
-					DetectLabelsFn: func(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
+					DetectLabelsFn: func(_ *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
 						return &rekognition.DetectLabelsOutput{
 							Labels: []*rekognition.Label{
 								{Name: aws.String("Person"), Confidence: aws.Float64(95.0)},
@@ -571,7 +573,7 @@ func TestReportService_validateImageWithRekognition(t *testing.T) {
 			env:       "production",
 			setupMock: func() RekognitionAPI {
 				return &mockRekognitionClient{
-					DetectLabelsFn: func(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
+					DetectLabelsFn: func(_ *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
 						return nil, errors.New("rekognition service error")
 					},
 				}
@@ -598,10 +600,8 @@ func TestReportService_validateImageWithRekognition(t *testing.T) {
 						t.Errorf("expected error to contain %q, got %q", tt.errContains, err.Error())
 					}
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 			if valid != tt.wantValid {
 				t.Errorf("validateImageWithRekognition() valid = %v, want %v", valid, tt.wantValid)
@@ -612,9 +612,9 @@ func TestReportService_validateImageWithRekognition(t *testing.T) {
 
 func TestReportService_DeleteMediaFromS3(t *testing.T) {
 	tests := []struct {
+		setupMock func() repository.MediaRepository
 		name      string
 		mediaKey  string
-		setupMock func() repository.MediaRepository
 		wantErr   bool
 	}{
 		{
@@ -622,7 +622,7 @@ func TestReportService_DeleteMediaFromS3(t *testing.T) {
 			mediaKey: "surf-reports/Ireland_Donegal_Bundoran/image.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					DeleteFn: func(_ context.Context, key string) error {
+					DeleteFn: func(_ context.Context, _ string) error {
 						return nil
 					},
 				}
@@ -642,7 +642,7 @@ func TestReportService_DeleteMediaFromS3(t *testing.T) {
 			mediaKey: "surf-reports/Ireland_Donegal_Bundoran/image.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					DeleteFn: func(_ context.Context, key string) error {
+					DeleteFn: func(_ context.Context, _ string) error {
 						return errors.New("S3 deletion error")
 					},
 				}
@@ -672,9 +672,9 @@ func TestReportService_DeleteMediaFromS3(t *testing.T) {
 
 func TestReportService_ValidateImageKeyExists(t *testing.T) {
 	tests := []struct {
+		setupMock func() repository.MediaRepository
 		name      string
 		imageKey  string
-		setupMock func() repository.MediaRepository
 		want      bool
 		wantErr   bool
 	}{
@@ -683,7 +683,7 @@ func TestReportService_ValidateImageKeyExists(t *testing.T) {
 			imageKey: "surf-reports/Ireland_Donegal_Bundoran/image.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					ExistsFn: func(_ context.Context, key string) (bool, error) {
+					ExistsFn: func(_ context.Context, _ string) (bool, error) {
 						return true, nil
 					},
 				}
@@ -696,7 +696,7 @@ func TestReportService_ValidateImageKeyExists(t *testing.T) {
 			imageKey: "surf-reports/Ireland_Donegal_Bundoran/missing.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					ExistsFn: func(_ context.Context, key string) (bool, error) {
+					ExistsFn: func(_ context.Context, _ string) (bool, error) {
 						return false, nil
 					},
 				}
@@ -718,7 +718,7 @@ func TestReportService_ValidateImageKeyExists(t *testing.T) {
 			imageKey: "surf-reports/Ireland_Donegal_Bundoran/image.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					ExistsFn: func(_ context.Context, key string) (bool, error) {
+					ExistsFn: func(_ context.Context, _ string) (bool, error) {
 						return false, errors.New("S3 error")
 					},
 				}
@@ -752,9 +752,9 @@ func TestReportService_ValidateImageKeyExists(t *testing.T) {
 
 func TestReportService_CleanupOrphanedImage(t *testing.T) {
 	tests := []struct {
+		setupMock func() repository.MediaRepository
 		name      string
 		imageKey  string
-		setupMock func() repository.MediaRepository
 		wantErr   bool
 	}{
 		{
@@ -762,7 +762,7 @@ func TestReportService_CleanupOrphanedImage(t *testing.T) {
 			imageKey: "surf-reports/Ireland_Donegal_Bundoran/orphaned.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					DeleteFn: func(_ context.Context, key string) error {
+					DeleteFn: func(_ context.Context, _ string) error {
 						return nil
 					},
 				}
@@ -782,7 +782,7 @@ func TestReportService_CleanupOrphanedImage(t *testing.T) {
 			imageKey: "surf-reports/Ireland_Donegal_Bundoran/orphaned.jpg",
 			setupMock: func() repository.MediaRepository {
 				return &mockrepo.MediaRepo{
-					DeleteFn: func(_ context.Context, key string) error {
+					DeleteFn: func(_ context.Context, _ string) error {
 						return errors.New("S3 deletion error")
 					},
 				}
@@ -812,7 +812,7 @@ func TestReportService_CleanupOrphanedImage(t *testing.T) {
 
 // Helper function
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || 
+	return len(s) >= len(substr) && (s == substr ||
 		(len(s) > len(substr) && findSubstring(s, substr)))
 }
 

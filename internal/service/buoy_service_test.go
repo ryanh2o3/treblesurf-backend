@@ -225,7 +225,7 @@ func TestBuoyService_GetDataAtTime(t *testing.T) {
 			Timestamp:  now,
 		}
 		repo := &mockrepo.BuoyRepo{
-			GetDataAtTimeFn: func(_ context.Context, buoyName string, targetTime time.Time) (*model.BuoyData, error) {
+			GetDataAtTimeFn: func(_ context.Context, buoyName string, _ time.Time) (*model.BuoyData, error) {
 				if buoyName != testBuoyName {
 					t.Fatalf("unexpected buoy name: %s", buoyName)
 				}
@@ -261,7 +261,7 @@ func TestBuoyService_GetDataAtTime(t *testing.T) {
 func TestBuoyService_GetMultipleBuoysData(t *testing.T) {
 	t.Run("returns data for multiple buoys", func(t *testing.T) {
 		ctx := context.Background()
-		buoyNames := []string{"M4", "M5", "Blackstones"}
+		buoyNames := []string{testBuoyName, "M5", "Blackstones"}
 		repo := &mockrepo.BuoyRepo{
 			GetLiveDataFn: func(_ context.Context, buoyName string) (*model.BuoyData, error) {
 				return &model.BuoyData{
@@ -294,20 +294,20 @@ func TestBuoyService_GetMultipleBuoysData(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got != nil && len(got) != 0 {
+		if len(got) != 0 {
 			t.Fatalf("expected empty or nil, got %d items", len(got))
 		}
 	})
 
 	t.Run("skips buoys with errors", func(t *testing.T) {
 		ctx := context.Background()
-		buoyNames := []string{"M4", "M5"}
+		buoyNames := []string{testBuoyName, "M5"}
 		callCount := 0
 		repo := &mockrepo.BuoyRepo{
 			GetLiveDataFn: func(_ context.Context, buoyName string) (*model.BuoyData, error) {
 				callCount++
-				if buoyName == "M4" {
-					return &model.BuoyData{BuoyName: "M4", WaveHeight: 2.5}, nil
+				if buoyName == testBuoyName {
+					return &model.BuoyData{BuoyName: testBuoyName, WaveHeight: 2.5}, nil
 				}
 				// M5 returns error - should be skipped
 				return nil, model.ErrBuoyDataNotFound
@@ -321,10 +321,10 @@ func TestBuoyService_GetMultipleBuoysData(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(got) != 1 {
-			t.Fatalf("expected 1 item (M4), got %d", len(got))
+			t.Fatalf("expected 1 item (%s), got %d", testBuoyName, len(got))
 		}
-		if got[0].BuoyName != "M4" {
-			t.Fatalf("expected M4, got %s", got[0].BuoyName)
+		if got[0].BuoyName != testBuoyName {
+			t.Fatalf("expected %s, got %s", testBuoyName, got[0].BuoyName)
 		}
 	})
 }
@@ -396,11 +396,11 @@ func TestBuoyService_GetBatchDataRanges(t *testing.T) {
 	t.Run("returns data for batch requests", func(t *testing.T) {
 		ctx := context.Background()
 		requests := []repository.BuoyDataRequest{
-			{BuoyName: "M4", Start: time.Now().Add(-24 * time.Hour), End: time.Now()},
+			{BuoyName: testBuoyName, Start: time.Now().Add(-24 * time.Hour), End: time.Now()},
 			{BuoyName: "M5", Start: time.Now().Add(-24 * time.Hour), End: time.Now()},
 		}
 		expected := map[string][]*model.BuoyData{
-			"M4": {{BuoyName: "M4", WaveHeight: 2.5}},
+			testBuoyName: {{BuoyName: testBuoyName, WaveHeight: 2.5}},
 			"M5": {{BuoyName: "M5", WaveHeight: 3.0}},
 		}
 		repo := &mockrepo.BuoyRepo{

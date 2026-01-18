@@ -10,6 +10,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	testAppVersion = "1.0.0"
+	testPlatform   = "iOS"
+)
+
 func TestSetupRouter_HealthCheck(t *testing.T) {
 	cfg := &config.Config{Env: config.EnvDevelopment}
 	container := &Container{}
@@ -142,10 +147,10 @@ func TestIOSHeadersMiddleware_Router(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	router.ServeHTTP(w, req)
 
-	if w.Header().Get("X-App-Version") != "1.0.0" {
+	if w.Header().Get("X-App-Version") != testAppVersion {
 		t.Error("expected X-App-Version header")
 	}
-	if w.Header().Get("X-Platform") != "iOS" {
+	if w.Header().Get("X-Platform") != testPlatform {
 		t.Error("expected X-Platform header")
 	}
 }

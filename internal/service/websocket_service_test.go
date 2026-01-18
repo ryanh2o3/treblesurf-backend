@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+const websocketTestSpotIdentifier = "Ireland/Donegal/Bundoran"
 
 func TestNewWebSocketService(t *testing.T) {
 	connections := &mockrepo.WebSocketRepo{}
@@ -30,7 +33,7 @@ func TestNewWebSocketService(t *testing.T) {
 	if service.subscriptions != subscriptions {
 		t.Error("subscriptions not set correctly")
 	}
-	if string(service.jwtSecret) != string(jwtSecret) {
+	if !bytes.Equal(service.jwtSecret, jwtSecret) {
 		t.Error("jwtSecret not set correctly")
 	}
 	if service.endpoint != endpoint {
@@ -46,10 +49,10 @@ func TestWebSocketService_ValidateWebSocketToken(t *testing.T) {
 	service := NewWebSocketService(nil, nil, jwtSecret, "", "")
 
 	tests := []struct {
-		name      string
-		token     string
-		wantErr   bool
 		setupToken func() string
+		name       string
+		token      string
+		wantErr    bool
 	}{
 		{
 			name: "valid token",
@@ -65,9 +68,9 @@ func TestWebSocketService_ValidateWebSocketToken(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "invalid token",
-			token:     "invalid-token",
-			wantErr:   true,
+			name:       "invalid token",
+			token:      "invalid-token",
+			wantErr:    true,
 			setupToken: func() string { return "invalid-token" },
 		},
 		{
@@ -110,10 +113,10 @@ func TestWebSocketService_GetEmailFromToken(t *testing.T) {
 	service := NewWebSocketService(nil, nil, jwtSecret, "", "")
 
 	tests := []struct {
-		name      string
+		name       string
 		setupToken func() *jwt.Token
-		wantEmail string
-		wantErr   bool
+		wantEmail  string
+		wantErr    bool
 	}{
 		{
 			name: "valid token with email",
@@ -126,7 +129,7 @@ func TestWebSocketService_GetEmailFromToken(t *testing.T) {
 				return token
 			},
 			wantEmail: "test@example.com",
-			wantErr:  false,
+			wantErr:   false,
 		},
 		{
 			name: "token without email",
@@ -281,7 +284,7 @@ func TestWebSocketService_UpdateConnectionSpot(t *testing.T) {
 	}
 	service := NewWebSocketService(connections, nil, []byte("secret"), "", "")
 
-	err := service.UpdateConnectionSpot(ctx, "test-connection-id", "Ireland/Donegal/Bundoran")
+	err := service.UpdateConnectionSpot(ctx, "test-connection-id", websocketTestSpotIdentifier)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -299,7 +302,7 @@ func TestWebSocketService_SaveSubscription(t *testing.T) {
 	}
 	service := NewWebSocketService(nil, subscriptions, []byte("secret"), "", "")
 
-	err := service.SaveSubscription(ctx, "Ireland/Donegal/Bundoran", "test-user-id", "test-connection-id")
+	err := service.SaveSubscription(ctx, websocketTestSpotIdentifier, "test-user-id", "test-connection-id")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -310,7 +313,7 @@ func TestWebSocketService_GetSubscribersBySpot(t *testing.T) {
 	expectedSubscribers := []string{"user1", "user2"}
 	subscriptions := &mockrepo.SpotSubscriptionRepo{
 		GetSubscribersBySpotFn: func(_ context.Context, spotIdentifier string) ([]string, error) {
-			if spotIdentifier == "Ireland/Donegal/Bundoran" {
+			if spotIdentifier == websocketTestSpotIdentifier {
 				return expectedSubscribers, nil
 			}
 			return nil, nil
@@ -318,7 +321,7 @@ func TestWebSocketService_GetSubscribersBySpot(t *testing.T) {
 	}
 	service := NewWebSocketService(nil, subscriptions, []byte("secret"), "", "")
 
-	subscribers, err := service.GetSubscribersBySpot(ctx, "Ireland/Donegal/Bundoran")
+	subscribers, err := service.GetSubscribersBySpot(ctx, websocketTestSpotIdentifier)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -331,7 +334,7 @@ func TestWebSocketService_GetSubscribersBySpot_NilRepository(t *testing.T) {
 	ctx := context.Background()
 	service := NewWebSocketService(nil, nil, []byte("secret"), "", "")
 
-	_, err := service.GetSubscribersBySpot(ctx, "Ireland/Donegal/Bundoran")
+	_, err := service.GetSubscribersBySpot(ctx, websocketTestSpotIdentifier)
 	if err == nil {
 		t.Fatal("expected error for nil subscription repository")
 	}
@@ -339,7 +342,7 @@ func TestWebSocketService_GetSubscribersBySpot_NilRepository(t *testing.T) {
 
 func TestWebSocketService_CreateSubscriptionResponse(t *testing.T) {
 	service := NewWebSocketService(nil, nil, []byte("secret"), "", "")
-	spotIdentifier := "Ireland/Donegal/Bundoran"
+	spotIdentifier := websocketTestSpotIdentifier
 
 	response := service.CreateSubscriptionResponse(spotIdentifier)
 

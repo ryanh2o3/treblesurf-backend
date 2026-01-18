@@ -36,7 +36,6 @@ func setupReportController(reportSvc *service.ReportService, userSvc *service.Us
 }
 
 func createTestReportService(
-	t *testing.T,
 	reportRepo *mockrepo.ReportRepo,
 	userSvc *service.UserService,
 	mediaRepo *mockrepo.MediaRepo,
@@ -76,7 +75,7 @@ func TestReportController_SubmitCurrentSurfReport(t *testing.T) {
 	userSvc, _ := service.NewUserService(userRepo)
 
 	reportRepo := &mockrepo.ReportRepo{
-		CreateFn: func(_ context.Context, report *model.SurfReport) error {
+		CreateFn: func(_ context.Context, _ *model.SurfReport) error {
 			return nil
 		},
 	}
@@ -97,7 +96,13 @@ func TestReportController_SubmitCurrentSurfReport(t *testing.T) {
 		},
 	}
 
-	reportSvc := createTestReportService(t, reportRepo, userSvc, mediaRepo, rekognitionClient, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		reportRepo,
+		userSvc,
+		mediaRepo,
+		rekognitionClient,
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	reportData := model.ReportWithImage{
@@ -140,7 +145,13 @@ func TestReportController_SubmitCurrentSurfReport(t *testing.T) {
 func TestReportController_SubmitCurrentSurfReport_Unauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, &service.UserService{}, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		&service.UserService{},
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
 	controller := setupReportController(reportSvc, userSvc)
 
@@ -167,7 +178,13 @@ func TestReportController_SubmitCurrentSurfReport_InvalidJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -194,13 +211,13 @@ func TestReportController_SubmitSurfReportWithS3Image(t *testing.T) {
 	userSvc, _ := service.NewUserService(userRepo)
 
 	reportRepo := &mockrepo.ReportRepo{
-		CreateFn: func(_ context.Context, report *model.SurfReport) error {
+		CreateFn: func(_ context.Context, _ *model.SurfReport) error {
 			return nil
 		},
 	}
 
 	mediaRepo := &mockrepo.MediaRepo{
-		DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+		DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 			return []byte("image-data"), nil
 		},
 	}
@@ -215,7 +232,13 @@ func TestReportController_SubmitSurfReportWithS3Image(t *testing.T) {
 		},
 	}
 
-	reportSvc := createTestReportService(t, reportRepo, userSvc, mediaRepo, rekognitionClient, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		reportRepo,
+		userSvc,
+		mediaRepo,
+		rekognitionClient,
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	reportData := model.ReportWithS3Image{
@@ -256,12 +279,18 @@ func TestReportController_GenerateImageUploadURL(t *testing.T) {
 	}
 	userSvc, _ := service.NewUserService(userRepo)
 	mediaRepo := &mockrepo.MediaRepo{
-		GenerateUploadURLFn: func(_ context.Context, key string, expires time.Duration) (string, error) {
+		GenerateUploadURLFn: func(_ context.Context, key string, _ time.Duration) (string, error) {
 			return "https://presigned-url.com/" + key, nil
 		},
 	}
 
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, mediaRepo, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		mediaRepo,
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -289,7 +318,13 @@ func TestReportController_GenerateImageUploadURL_MissingParams(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -308,7 +343,7 @@ func TestReportController_RetrieveTodaysSurfReports(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	reportRepo := &mockrepo.ReportRepo{
-		GetBySpotFn: func(_ context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error) {
+		GetBySpotFn: func(_ context.Context, country, region, spot string, _ int) ([]*model.SurfReport, error) {
 			return []*model.SurfReport{
 				{
 					Country: country,
@@ -320,7 +355,13 @@ func TestReportController_RetrieveTodaysSurfReports(t *testing.T) {
 	}
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, reportRepo, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		reportRepo,
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -338,7 +379,13 @@ func TestReportController_RetrieveTodaysSurfReports_MissingParams(t *testing.T) 
 	gin.SetMode(gin.TestMode)
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -370,7 +417,13 @@ func TestReportController_GetAllSpotSurfReports(t *testing.T) {
 	}
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, reportRepo, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		reportRepo,
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -388,7 +441,13 @@ func TestReportController_GetAllSpotSurfReports_InvalidLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -406,13 +465,19 @@ func TestReportController_GetReportImage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mediaRepo := &mockrepo.MediaRepo{
-		DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+		DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 			return []byte("image-data"), nil
 		},
 	}
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, mediaRepo, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		mediaRepo,
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -439,7 +504,13 @@ func TestReportController_GetReportImage_MissingKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -457,13 +528,19 @@ func TestReportController_GetReportImage_NotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mediaRepo := &mockrepo.MediaRepo{
-		DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+		DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 			return nil, repository.ErrNotFound
 		},
 	}
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, mediaRepo, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		mediaRepo,
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -487,12 +564,18 @@ func TestReportController_GenerateVideoUploadURL(t *testing.T) {
 	}
 	userSvc, _ := service.NewUserService(userRepo)
 	mediaRepo := &mockrepo.MediaRepo{
-		GenerateUploadURLFn: func(_ context.Context, key string, expires time.Duration) (string, error) {
+		GenerateUploadURLFn: func(_ context.Context, key string, _ time.Duration) (string, error) {
 			return "https://presigned-url.com/" + key, nil
 		},
 	}
 
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, mediaRepo, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		mediaRepo,
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -511,13 +594,19 @@ func TestReportController_GetReportVideo(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mediaRepo := &mockrepo.MediaRepo{
-		DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+		DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 			return []byte("video-data"), nil
 		},
 	}
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, mediaRepo, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		mediaRepo,
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -535,10 +624,10 @@ func TestReportController_GenerateVideoViewURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mediaRepo := &mockrepo.MediaRepo{
-		GenerateViewURLFn: func(_ context.Context, key string, expires time.Duration) (string, error) {
+		GenerateViewURLFn: func(_ context.Context, key string, _ time.Duration) (string, error) {
 			return "https://view-url.com/" + key, nil
 		},
-		ExistsFn: func(_ context.Context, key string) (bool, error) {
+		ExistsFn: func(_ context.Context, _ string) (bool, error) {
 			return true, nil
 		},
 	}
@@ -550,7 +639,7 @@ func TestReportController_GenerateVideoViewURL(t *testing.T) {
 	}
 
 	reportRepo := &mockrepo.ReportRepo{
-		GetBySpotFn: func(_ context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error) {
+		GetBySpotFn: func(_ context.Context, _, _, _ string, _ int) ([]*model.SurfReport, error) {
 			return []*model.SurfReport{
 				{
 					VideoKey: "surf-reports/Ireland_Donegal_Bundoran/2024-01-15T14:30:00Z_test-uuid-123.mp4",
@@ -560,12 +649,20 @@ func TestReportController_GenerateVideoViewURL(t *testing.T) {
 	}
 
 	userSvc, _ := service.NewUserService(userRepo)
-	reportSvc := createTestReportService(t, reportRepo, userSvc, mediaRepo, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		reportRepo,
+		userSvc,
+		mediaRepo,
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/generateVideoViewURL?key=surf-reports/Ireland_Donegal_Bundoran/2024-01-15T14:30:00Z_test-uuid-123.mp4", http.NoBody)
+	videoURL := "/generateVideoViewURL?key=surf-reports/" +
+		"Ireland_Donegal_Bundoran/2024-01-15T14:30:00Z_test-uuid-123.mp4"
+	c.Request = httptest.NewRequest(http.MethodGet, videoURL, http.NoBody)
 	c.Set("email", "test@example.com")
 
 	controller.GenerateVideoViewURL(c)
@@ -579,7 +676,13 @@ func TestReportController_GenerateVideoViewURL_MissingKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -605,18 +708,24 @@ func TestReportController_SubmitSurfReportWithIOSValidation(t *testing.T) {
 	userSvc, _ := service.NewUserService(userRepo)
 
 	reportRepo := &mockrepo.ReportRepo{
-		CreateFn: func(_ context.Context, report *model.SurfReport) error {
+		CreateFn: func(_ context.Context, _ *model.SurfReport) error {
 			return nil
 		},
 	}
 
 	mediaRepo := &mockrepo.MediaRepo{
-		DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+		DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 			return []byte("media-data"), nil
 		},
 	}
 
-	reportSvc := createTestReportService(t, reportRepo, userSvc, mediaRepo, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		reportRepo,
+		userSvc,
+		mediaRepo,
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	reportData := model.ReportWithIOSValidation{
@@ -652,7 +761,13 @@ func TestReportController_SubmitSurfReportWithIOSValidation_NotIOSValidated(t *t
 	gin.SetMode(gin.TestMode)
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	reportData := model.ReportWithIOSValidation{
@@ -687,17 +802,25 @@ func TestReportController_DeleteUploadedMedia(t *testing.T) {
 	userSvc, _ := service.NewUserService(userRepo)
 
 	mediaRepo := &mockrepo.MediaRepo{
-		DeleteFn: func(_ context.Context, key string) error {
+		DeleteFn: func(_ context.Context, _ string) error {
 			return nil
 		},
 	}
 
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, mediaRepo, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		mediaRepo,
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodDelete, "/deleteMedia?key=surf-reports/Ireland_Donegal_Bundoran/2024-01-15T14:30:00Z_test-uuid-123.jpg&type=image", http.NoBody)
+	deleteURL := "/deleteMedia?key=surf-reports/" +
+		"Ireland_Donegal_Bundoran/2024-01-15T14:30:00Z_test-uuid-123.jpg&type=image"
+	c.Request = httptest.NewRequest(http.MethodDelete, deleteURL, http.NoBody)
 	c.Set("email", "test@example.com")
 
 	controller.DeleteUploadedMedia(c)
@@ -711,7 +834,13 @@ func TestReportController_DeleteUploadedMedia_MissingParams(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userSvc, _ := service.NewUserService(&mockrepo.UserRepo{})
-	reportSvc := createTestReportService(t, &mockrepo.ReportRepo{}, userSvc, &mockrepo.MediaRepo{}, &mockRekognitionClient{}, createTestWebSocketService())
+	reportSvc := createTestReportService(
+		&mockrepo.ReportRepo{},
+		userSvc,
+		&mockrepo.MediaRepo{},
+		&mockRekognitionClient{},
+		createTestWebSocketService(),
+	)
 	controller := setupReportController(reportSvc, userSvc)
 
 	w := httptest.NewRecorder()
@@ -730,7 +859,7 @@ func TestReportController_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	buoyRepo := &mockrepo.BuoyRepo{
-		GetBatchDataRangesFn: func(_ context.Context, requests []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
+		GetBatchDataRangesFn: func(_ context.Context, _ []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
 			return map[string][]*model.BuoyData{
 				"test-buoy": {
 					{
@@ -754,13 +883,13 @@ func TestReportController_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 	}
 
 	locationRepo := &mockrepo.LocationRepo{
-		GetCoordinatesFn: func(_ context.Context, country, region, spot string) (float64, float64, error) {
+		GetCoordinatesFn: func(_ context.Context, _, _, _ string) (float64, float64, error) {
 			return 54.5, -8.3, nil
 		},
 	}
 
 	reportRepo := &mockrepo.ReportRepo{
-		ScanSinceFn: func(_ context.Context, since time.Time, limit int) ([]*model.SurfReport, error) {
+		ScanSinceFn: func(_ context.Context, _ time.Time, _ int) ([]*model.SurfReport, error) {
 			return []*model.SurfReport{
 				{
 					Country: "Ireland",
@@ -788,7 +917,9 @@ func TestReportController_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/similarBuoy?waveHeight=2.5&waveDirection=270&period=12&buoyName=test-buoy&country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+	similarBuoyURL := "/similarBuoy?waveHeight=2.5&waveDirection=270&period=12" +
+		"&buoyName=test-buoy&country=Ireland&region=Donegal&spot=Bundoran"
+	c.Request = httptest.NewRequest(http.MethodGet, similarBuoyURL, http.NoBody)
 
 	controller.GetSurfReportsWithSimilarBuoyData(c)
 
@@ -802,7 +933,7 @@ func TestReportController_GetSurfReportsWithMatchingConditions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	reportRepo := &mockrepo.ReportRepo{
-		ScanSinceFn: func(_ context.Context, since time.Time, limit int) ([]*model.SurfReport, error) {
+		ScanSinceFn: func(_ context.Context, _ time.Time, _ int) ([]*model.SurfReport, error) {
 			return []*model.SurfReport{
 				{
 					Country: "Ireland",
@@ -814,7 +945,7 @@ func TestReportController_GetSurfReportsWithMatchingConditions(t *testing.T) {
 	}
 
 	locationRepo := &mockrepo.LocationRepo{
-		GetCoordinatesFn: func(_ context.Context, country, region, spot string) (float64, float64, error) {
+		GetCoordinatesFn: func(_ context.Context, _, _, _ string) (float64, float64, error) {
 			return 54.5, -8.3, nil
 		},
 	}
@@ -829,13 +960,13 @@ func TestReportController_GetSurfReportsWithMatchingConditions(t *testing.T) {
 				},
 			}, nil
 		},
-		GetBatchDataRangesFn: func(_ context.Context, requests []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
+		GetBatchDataRangesFn: func(_ context.Context, _ []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
 			return map[string][]*model.BuoyData{}, nil
 		},
 	}
 
 	forecastRepo := &mockrepo.ForecastRepo{
-		QueryBetweenFn: func(_ context.Context, spotID string, start, end time.Time, limit int) ([]*model.ForecastDataPoint, error) {
+		QueryBetweenFn: func(_ context.Context, _ string, _, _ time.Time, _ int) ([]*model.ForecastDataPoint, error) {
 			return []*model.ForecastDataPoint{
 				{
 					Data: map[string]interface{}{"windSpeed": 10.0},
@@ -860,7 +991,9 @@ func TestReportController_GetSurfReportsWithMatchingConditions(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/matchingConditions?country=Ireland&region=Donegal&spot=Bundoran&daysBack=365&maxResults=20", http.NoBody)
+	matchingConditionsURL := "/matchingConditions?country=Ireland&region=Donegal&spot=Bundoran" +
+		"&daysBack=365&maxResults=20"
+	c.Request = httptest.NewRequest(http.MethodGet, matchingConditionsURL, http.NoBody)
 
 	controller.GetSurfReportsWithMatchingConditions(c)
 

@@ -15,6 +15,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	testSwellCountry     = "Ireland"
+	testSwellRegion      = "Donegal"
+	testSwellSpot        = "Bundoran"
+	testSwellSpotIDHash  = "Ireland#Donegal#Bundoran"
+	testSwellSpotID      = "Ireland_Donegal_Bundoran"
+	testSwellSpotIDRoss  = "Ireland_Donegal_Rossnowlagh"
+)
+
 func setupSwellPredictionController(repo *mockrepo.SwellPredictionRepo) *SwellPredictionController {
 	svc, _ := service.NewSwellPredictionService(repo)
 	return NewSwellPredictionController(svc)
@@ -23,7 +32,7 @@ func setupSwellPredictionController(repo *mockrepo.SwellPredictionRepo) *SwellPr
 func TestSwellPredictionController_GetSpotSwellPrediction(t *testing.T) {
 	repo := &mockrepo.SwellPredictionRepo{
 		GetSpotPredictionsFn: func(_ context.Context, spotID string, _ time.Time, _ int) ([]model.SwellPrediction, error) {
-			if spotID != "Ireland#Donegal#Bundoran" {
+			if spotID != testSwellSpotIDHash {
 				t.Errorf("unexpected spot ID: %s", spotID)
 			}
 			return []model.SwellPrediction{
@@ -36,7 +45,9 @@ func TestSwellPredictionController_GetSpotSwellPrediction(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/swellPrediction?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+	predictionURL := "/swellPrediction?country=" + testSwellCountry +
+		"&region=" + testSwellRegion + "&spot=" + testSwellSpot
+	c.Request = httptest.NewRequest(http.MethodGet, predictionURL, http.NoBody)
 
 	controller.GetSpotSwellPrediction(c)
 
@@ -62,9 +73,9 @@ func TestSwellPredictionController_GetSpotSwellPrediction_MissingParams(t *testi
 		name string
 		url  string
 	}{
-		{"missing spot", "/swellPrediction?country=Ireland&region=Donegal"},
-		{"missing region", "/swellPrediction?country=Ireland&spot=Bundoran"},
-		{"missing country", "/swellPrediction?region=Donegal&spot=Bundoran"},
+		{"missing spot", "/swellPrediction?country=" + testSwellCountry + "&region=" + testSwellRegion},
+		{"missing region", "/swellPrediction?country=" + testSwellCountry + "&spot=" + testSwellSpot},
+		{"missing country", "/swellPrediction?region=" + testSwellRegion + "&spot=" + testSwellSpot},
 	}
 
 	for _, tt := range tests {
@@ -93,7 +104,9 @@ func TestSwellPredictionController_GetSpotSwellPrediction_NotFound(t *testing.T)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/swellPrediction?country=Ireland&region=Donegal&spot=Unknown", http.NoBody)
+	missingURL := "/swellPrediction?country=" + testSwellCountry +
+		"&region=" + testSwellRegion + "&spot=Unknown"
+	c.Request = httptest.NewRequest(http.MethodGet, missingURL, http.NoBody)
 
 	controller.GetSpotSwellPrediction(c)
 
@@ -119,7 +132,9 @@ func TestSwellPredictionController_GetListSpotsSwellPrediction(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/listSpotsSwellPrediction?country=Ireland&region=Donegal&spots=Bundoran,Rossnowlagh", http.NoBody)
+	listURL := "/listSpotsSwellPrediction?country=" + testSwellCountry +
+		"&region=" + testSwellRegion + "&spots=" + testSwellSpot + ",Rossnowlagh"
+	c.Request = httptest.NewRequest(http.MethodGet, listURL, http.NoBody)
 
 	controller.GetListSpotsSwellPrediction(c)
 
@@ -140,12 +155,12 @@ func TestSwellPredictionController_GetListSpotsSwellPrediction(t *testing.T) {
 func TestSwellPredictionController_GetRegionSwellPrediction(t *testing.T) {
 	repo := &mockrepo.SwellPredictionRepo{
 		GetRegionPredictionsFn: func(_ context.Context, country, region string, _ time.Time, _ int) ([]model.SwellPrediction, error) {
-			if country != "Ireland" || region != "Donegal" {
+			if country != testSwellCountry || region != testSwellRegion {
 				t.Errorf("unexpected location: %s/%s", country, region)
 			}
 			return []model.SwellPrediction{
-				{SpotID: "Ireland_Donegal_Bundoran", Data: map[string]interface{}{"wave_height": 2.5}},
-				{SpotID: "Ireland_Donegal_Rossnowlagh", Data: map[string]interface{}{"wave_height": 3.0}},
+				{SpotID: testSwellSpotID, Data: map[string]interface{}{"wave_height": 2.5}},
+				{SpotID: testSwellSpotIDRoss, Data: map[string]interface{}{"wave_height": 3.0}},
 			}, nil
 		},
 	}
@@ -154,7 +169,7 @@ func TestSwellPredictionController_GetRegionSwellPrediction(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/regionSwellPrediction?country=Ireland&region=Donegal", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodGet, "/regionSwellPrediction?country="+testSwellCountry+"&region="+testSwellRegion, http.NoBody)
 
 	controller.GetRegionSwellPrediction(c)
 
@@ -165,8 +180,8 @@ func TestSwellPredictionController_GetRegionSwellPrediction(t *testing.T) {
 
 func TestSwellPredictionController_GetSpotSwellPredictionRange(t *testing.T) {
 	repo := &mockrepo.SwellPredictionRepo{
-		GetSpotPredictionRangeFn: func(_ context.Context, spotID string, start, end time.Time) ([]model.SwellPrediction, error) {
-			if spotID != "Ireland#Donegal#Bundoran" {
+		GetSpotPredictionRangeFn: func(_ context.Context, spotID string, _, _ time.Time) ([]model.SwellPrediction, error) {
+			if spotID != testSwellSpotIDHash {
 				t.Errorf("unexpected spot ID: %s", spotID)
 			}
 			return []model.SwellPrediction{
@@ -180,7 +195,10 @@ func TestSwellPredictionController_GetSpotSwellPredictionRange(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	// Use the correct time format: 2006-01-02T15:00:00Z
-	c.Request = httptest.NewRequest(http.MethodGet, "/swellPredictionRange?country=Ireland&region=Donegal&spot=Bundoran&startTime=2024-01-01T00:00:00Z&endTime=2024-01-02T00:00:00Z", http.NoBody)
+	rangeURL := "/swellPredictionRange?country=" + testSwellCountry +
+		"&region=" + testSwellRegion + "&spot=" + testSwellSpot +
+		"&startTime=2024-01-01T00:00:00Z&endTime=2024-01-02T00:00:00Z"
+	c.Request = httptest.NewRequest(http.MethodGet, rangeURL, http.NoBody)
 
 	controller.GetSpotSwellPredictionRange(c)
 
@@ -191,9 +209,9 @@ func TestSwellPredictionController_GetSpotSwellPredictionRange(t *testing.T) {
 
 func TestSwellPredictionController_GetRecentSwellPredictions(t *testing.T) {
 	repo := &mockrepo.SwellPredictionRepo{
-		GetRecentPredictionsFn: func(_ context.Context, cutoff time.Time, perSpotLimit int) ([]model.SwellPrediction, error) {
+		GetRecentPredictionsFn: func(_ context.Context, _ time.Time, _ int) ([]model.SwellPrediction, error) {
 			return []model.SwellPrediction{
-				{SpotID: "Ireland_Donegal_Bundoran", Data: map[string]interface{}{"wave_height": 2.5}},
+				{SpotID: testSwellSpotID, Data: map[string]interface{}{"wave_height": 2.5}},
 			}, nil
 		},
 	}
@@ -224,7 +242,9 @@ func TestSwellPredictionController_GetSwellPredictionStatus(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/swellPredictionStatus?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+	statusURL := "/swellPredictionStatus?country=" + testSwellCountry +
+		"&region=" + testSwellRegion + "&spot=" + testSwellSpot
+	c.Request = httptest.NewRequest(http.MethodGet, statusURL, http.NoBody)
 
 	controller.GetSwellPredictionStatus(c)
 
@@ -236,7 +256,7 @@ func TestSwellPredictionController_GetSwellPredictionStatus(t *testing.T) {
 func TestSwellPredictionController_GetClosestAIPredictionForSpot(t *testing.T) {
 	repo := &mockrepo.SwellPredictionRepo{
 		GetClosestPredictionFn: func(_ context.Context, spotID string, _ time.Time) (*model.SwellPrediction, error) {
-			if spotID != "Ireland#Donegal#Bundoran" {
+			if spotID != testSwellSpotIDHash {
 				t.Errorf("unexpected spot ID: %s", spotID)
 			}
 			return &model.SwellPrediction{
@@ -250,7 +270,9 @@ func TestSwellPredictionController_GetClosestAIPredictionForSpot(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/closestAIPrediction?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+	closestURL := "/closestAIPrediction?country=" + testSwellCountry +
+		"&region=" + testSwellRegion + "&spot=" + testSwellSpot
+	c.Request = httptest.NewRequest(http.MethodGet, closestURL, http.NoBody)
 
 	controller.GetClosestAIPredictionForSpot(c)
 

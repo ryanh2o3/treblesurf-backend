@@ -75,7 +75,7 @@ func (r *SpotSubscriptionRepo) GetSubscribersBySpot(ctx context.Context, spotIde
 				unique[*attr.S] = struct{}{}
 			}
 		}
-		if output.LastEvaluatedKey == nil || len(output.LastEvaluatedKey) == 0 {
+		if len(output.LastEvaluatedKey) == 0 {
 			break
 		}
 		input.ExclusiveStartKey = output.LastEvaluatedKey

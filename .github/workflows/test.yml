@@ -1,10 +1,13 @@
-name: CI
+name: Tests
 
 on:
   pull_request:
     branches: ['**']
   push:
-    branches: ['main', 'master', 'develop']
+    branches: ['main', 'develop']
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -25,7 +28,7 @@ jobs:
       
       - name: Start Docker services
         run: |
-          docker-compose up -d
+          docker compose up -d
       
       - name: Wait for DynamoDB to be ready
         run: |
@@ -73,4 +76,4 @@ jobs:
       
       - name: Stop Docker services
         if: always()
-        run: docker-compose down
+        run: docker compose down

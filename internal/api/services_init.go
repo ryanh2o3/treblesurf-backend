@@ -61,12 +61,12 @@ type containerRepositories struct {
 }
 
 // initializeServices creates all application services with their dependencies.
-func initializeServices(storage *containerStorage, cfg containerConfig, appCfg *config.Config) (*containerServices, error) {
+func initializeServices(storage *containerStorage, cfg *containerConfig, appCfg *config.Config) (*containerServices, error) {
 	repos := initRepositories(storage, cfg)
 	return buildServices(repos, storage, cfg, appCfg)
 }
 
-func initRepositories(storage *containerStorage, cfg containerConfig) *containerRepositories {
+func initRepositories(storage *containerStorage, cfg *containerConfig) *containerRepositories {
 	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, "SpotForecastData")
 	return &containerRepositories{
 		userRepo:            repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"),
@@ -89,7 +89,7 @@ func initRepositories(storage *containerStorage, cfg containerConfig) *container
 func buildServices(
 	repos *containerRepositories,
 	storage *containerStorage,
-	cfg containerConfig,
+	cfg *containerConfig,
 	appCfg *config.Config,
 ) (*containerServices, error) {
 	services := &containerServices{
@@ -186,7 +186,7 @@ func initDomainServices(repos *containerRepositories, services *containerService
 func initializeControllers(
 	services *containerServices,
 	storage *containerStorage,
-	cfg containerConfig,
+	cfg *containerConfig,
 ) *containerControllers {
 	return &containerControllers{
 		forecastController:        controller.NewForecastController(services.forecastService, services.tideService),

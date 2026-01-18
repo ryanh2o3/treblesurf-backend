@@ -249,9 +249,9 @@ func (r *ForecastRepo) QueryBetween(
 }
 
 type forecastDataItem struct {
+	Data              map[string]interface{} `dynamodbav:"data"`
 	SpotID            string                 `dynamodbav:"spot_id"`
 	ForecastTimestamp string                 `dynamodbav:"forecast_timestamp"`
-	Data              map[string]interface{} `dynamodbav:"data"`
 }
 
 func unmarshalForecastDataPoints(items []map[string]*dynamodb.AttributeValue) ([]*model.ForecastDataPoint, error) {

@@ -9,9 +9,9 @@ import (
 
 func TestNewTideService(t *testing.T) {
 	tests := []struct {
-		name     string
-		cfg      *config.Config
-		wantDev  bool
+		cfg     *config.Config
+		name    string
+		wantDev bool
 	}{
 		{
 			name:    "development config",
@@ -45,10 +45,10 @@ func TestNewTideService(t *testing.T) {
 
 func TestTideService_GetCurrentTides(t *testing.T) {
 	tests := []struct {
-		name       string
-		location   string
-		isDev      bool
-		wantTides  bool
+		name      string
+		location  string
+		isDev     bool
+		wantTides bool
 	}{
 		{
 			name:      "development mode returns sample tides",
@@ -85,10 +85,8 @@ func TestTideService_GetCurrentTides(t *testing.T) {
 						t.Error("expected tide to have type field")
 					}
 				}
-			} else {
-				if len(tides) != 0 {
-					t.Errorf("expected empty tides, got %d", len(tides))
-				}
+			} else if len(tides) != 0 {
+				t.Errorf("expected empty tides, got %d", len(tides))
 			}
 		})
 	}
@@ -96,7 +94,7 @@ func TestTideService_GetCurrentTides(t *testing.T) {
 
 func TestTideService_GetBeforeAfterTides(t *testing.T) {
 	service := &TideService{isDevelopment: true}
-	location := "Bundoran"
+	location := forecastTestSpot
 
 	prevTide, nextTide := service.GetBeforeAfterTides(location)
 
@@ -141,7 +139,7 @@ func TestTideService_GetBeforeAfterTides(t *testing.T) {
 
 func TestTideService_GetDayTides(t *testing.T) {
 	service := &TideService{isDevelopment: true}
-	location := "Bundoran"
+	location := forecastTestSpot
 	startDay := "2024-01-15"
 
 	tideData := service.GetDayTides(location, startDay)
@@ -243,10 +241,8 @@ func TestTideService_getTides(t *testing.T) {
 				if _, ok := tides["tides"].([]map[string]interface{}); !ok {
 					t.Error("expected tides to have tides array")
 				}
-			} else {
-				if tides != nil {
-					t.Error("expected nil tides in production mode")
-				}
+			} else if tides != nil {
+				t.Error("expected nil tides in production mode")
 			}
 		})
 	}

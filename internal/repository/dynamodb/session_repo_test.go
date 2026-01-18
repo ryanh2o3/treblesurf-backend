@@ -114,8 +114,6 @@ func TestSessionRepo_Save_TTL_Calculation(t *testing.T) {
 	expiresAt := now.Add(24 * time.Hour)
 
 	session := &model.Session{
-		SessionID: "test-session-id",
-		UserID:    "test-user-id",
 		ExpiresAt: expiresAt,
 		TTL:       0, // TTL should be set from ExpiresAt in Save method
 	}
@@ -137,10 +135,7 @@ func TestSession_Expiration_Validation(t *testing.T) {
 	expiredAt := now.Add(-1 * time.Hour) // Expired 1 hour ago
 
 	session := &model.Session{
-		SessionID: "expired-session",
-		UserID:    "test-user-id",
 		ExpiresAt: expiredAt,
-		TTL:       expiredAt.Unix(),
 	}
 
 	// Verify session is expired
@@ -155,10 +150,7 @@ func TestSession_NotExpired(t *testing.T) {
 	futureExpiresAt := now.Add(24 * time.Hour) // Expires in 24 hours
 
 	session := &model.Session{
-		SessionID: "valid-session",
-		UserID:    "test-user-id",
 		ExpiresAt: futureExpiresAt,
-		TTL:       futureExpiresAt.Unix(),
 	}
 
 	// Verify session is not expired

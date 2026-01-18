@@ -14,13 +14,13 @@ import (
 func TestReportService_GetTodaysSurfReports(t *testing.T) {
 	ctx := context.Background()
 	expectedReports := []*model.SurfReport{
-		{CountryRegionSpot: "Ireland_Donegal_Bundoran", Timestamp: time.Now()},
-		{CountryRegionSpot: "Ireland_Donegal_Bundoran", Timestamp: time.Now().Add(-1 * time.Hour)},
+		{CountryRegionSpot: forecastTestSpotID, Timestamp: time.Now()},
+		{CountryRegionSpot: forecastTestSpotID, Timestamp: time.Now().Add(-1 * time.Hour)},
 	}
 
 	reportRepo := &mockrepo.ReportRepo{
 		GetBySpotFn: func(_ context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error) {
-			if country != "Ireland" || region != "Donegal" || spot != "Bundoran" {
+			if country != forecastTestCountry || region != forecastTestRegion || spot != forecastTestSpot {
 				t.Errorf("unexpected location: %s/%s/%s", country, region, spot)
 			}
 			if limit != 1 {
@@ -32,7 +32,7 @@ func TestReportService_GetTodaysSurfReports(t *testing.T) {
 
 	service := &ReportService{reportRepo: reportRepo}
 
-	reports, err := service.GetTodaysSurfReports(ctx, "Ireland", "Donegal", "Bundoran")
+	reports, err := service.GetTodaysSurfReports(ctx, forecastTestCountry, forecastTestRegion, forecastTestSpot)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -43,14 +43,14 @@ func TestReportService_GetTodaysSurfReports(t *testing.T) {
 
 func TestReportService_GetSpotSurfReports(t *testing.T) {
 	tests := []struct {
-		name           string
-		country        string
-		region         string
-		spot           string
-		limit          int
-		setupMock      func() repository.ReportRepository
-		wantErr        bool
-		expectedCount  int
+		setupMock     func() repository.ReportRepository
+		name          string
+		country       string
+		region        string
+		spot          string
+		limit         int
+		expectedCount int
+		wantErr       bool
 	}{
 		{
 			name:    "successful query with limit",
@@ -60,11 +60,11 @@ func TestReportService_GetSpotSurfReports(t *testing.T) {
 			limit:   5,
 			setupMock: func() repository.ReportRepository {
 				return &mockrepo.ReportRepo{
-					GetBySpotFn: func(_ context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error) {
+					GetBySpotFn: func(_ context.Context, _, _, _ string, limit int) ([]*model.SurfReport, error) {
 						reports := make([]*model.SurfReport, limit)
 						for i := 0; i < limit; i++ {
 							reports[i] = &model.SurfReport{
-								CountryRegionSpot: "Ireland_Donegal_Bundoran",
+								CountryRegionSpot: forecastTestSpotID,
 								Timestamp:         time.Now().Add(-time.Duration(i) * time.Hour),
 							}
 						}
@@ -83,7 +83,7 @@ func TestReportService_GetSpotSurfReports(t *testing.T) {
 			limit:   5,
 			setupMock: func() repository.ReportRepository {
 				return &mockrepo.ReportRepo{
-					GetBySpotFn: func(_ context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error) {
+					GetBySpotFn: func(_ context.Context, _, _, _ string, _ int) ([]*model.SurfReport, error) {
 						return nil, errors.New("database error")
 					},
 				}
@@ -99,7 +99,7 @@ func TestReportService_GetSpotSurfReports(t *testing.T) {
 			limit:   5,
 			setupMock: func() repository.ReportRepository {
 				return &mockrepo.ReportRepo{
-					GetBySpotFn: func(_ context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error) {
+					GetBySpotFn: func(_ context.Context, _, _, _ string, _ int) ([]*model.SurfReport, error) {
 						return []*model.SurfReport{}, nil
 					},
 				}
@@ -140,8 +140,8 @@ func TestReportService_convertReportsToMaps(t *testing.T) {
 		{
 			name: "successful conversion",
 			reports: []*model.SurfReport{
-				{CountryRegionSpot: "Ireland_Donegal_Bundoran", Timestamp: time.Now()},
-				{CountryRegionSpot: "Ireland_Donegal_Bundoran", Timestamp: time.Now()},
+				{CountryRegionSpot: forecastTestSpotID, Timestamp: time.Now()},
+				{CountryRegionSpot: forecastTestSpotID, Timestamp: time.Now()},
 			},
 			wantErr: false,
 		},
@@ -153,9 +153,9 @@ func TestReportService_convertReportsToMaps(t *testing.T) {
 		{
 			name: "reports with nil entries",
 			reports: []*model.SurfReport{
-				{CountryRegionSpot: "Ireland_Donegal_Bundoran", Timestamp: time.Now()},
+				{CountryRegionSpot: forecastTestSpotID, Timestamp: time.Now()},
 				nil,
-				{CountryRegionSpot: "Ireland_Donegal_Bundoran", Timestamp: time.Now()},
+				{CountryRegionSpot: forecastTestSpotID, Timestamp: time.Now()},
 			},
 			wantErr: false,
 		},
@@ -190,20 +190,20 @@ func TestReportService_convertReportsToMaps(t *testing.T) {
 
 func TestReportService_normalizeSpotReports(t *testing.T) {
 	tests := []struct {
+		want    func([]map[string]interface{}) bool
 		name    string
 		reports []map[string]interface{}
-		want    func([]map[string]interface{}) bool
 	}{
 		{
 			name: "removes user_email and sets defaults",
 			reports: []map[string]interface{}{
 				{
-					"user_email":    "test@example.com",
+					"user_email":     "test@example.com",
 					"country":        "Ireland",
-					"region":        "Donegal",
-					"spot":          "Bundoran",
-					"surf_size":     "head-high",
-					"wind_amount":   "light",
+					"region":         "Donegal",
+					"spot":           "Bundoran",
+					"surf_size":      "head-high",
+					"wind_amount":    "light",
 					"wind_direction": "offshore",
 				},
 			},

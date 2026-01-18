@@ -46,12 +46,12 @@ type Container struct {
 
 // containerConfig holds configuration values needed for container initialization.
 type containerConfig struct {
-	region     string
-	bucketName string
-	jwtSecret  string
-	isLocal    bool
+	region            string
+	bucketName        string
+	jwtSecret         string
 	websocketEndpoint string
 	websocketStage    string
+	isLocal           bool
 }
 
 // NewContainer creates a new Container with all dependencies wired up.
@@ -79,8 +79,8 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 }
 
 // loadContainerConfig extracts container configuration from the main config.
-func loadContainerConfig(cfg *config.Config) containerConfig {
-	return containerConfig{
+func loadContainerConfig(cfg *config.Config) *containerConfig {
+	return &containerConfig{
 		region:            cfg.AWS.Region,
 		bucketName:        cfg.AWS.BucketName,
 		isLocal:           cfg.IsDevelopment(),

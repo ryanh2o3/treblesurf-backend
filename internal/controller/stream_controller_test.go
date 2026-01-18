@@ -16,6 +16,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	testStreamSpotID = "Ireland_Donegal_Bundoran"
+	testStreamEmail  = "test@example.com"
+)
+
 func setupStreamController(streamSvc *service.StreamService) *StreamController {
 	return NewStreamController(streamSvc)
 }
@@ -31,10 +36,10 @@ func TestStreamController_RequestStreamHandler(t *testing.T) {
 	now := time.Now()
 	repo := &mockrepo.StreamRequestRepo{
 		SaveFn: func(_ context.Context, request *model.StreamRequest) error {
-			if request.SpotID != "Ireland_Donegal_Bundoran" {
+			if request.SpotID != testStreamSpotID {
 				t.Errorf("unexpected spot ID: %s", request.SpotID)
 			}
-			if request.RequestedBy != "test@example.com" {
+			if request.RequestedBy != testStreamEmail {
 				t.Errorf("unexpected requested by: %s", request.RequestedBy)
 			}
 			return nil
@@ -45,7 +50,7 @@ func TestStreamController_RequestStreamHandler(t *testing.T) {
 	controller := setupStreamController(streamSvc)
 
 	requestData := map[string]interface{}{
-		"spot_id": "Ireland_Donegal_Bundoran",
+		"spot_id": testStreamSpotID,
 	}
 
 	jsonData, _ := json.Marshal(requestData)
@@ -53,7 +58,7 @@ func TestStreamController_RequestStreamHandler(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/requestStream", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("email", "test@example.com")
+	c.Set("email", testStreamEmail)
 
 	controller.RequestStreamHandler(c)
 
@@ -100,7 +105,7 @@ func TestStreamController_RequestStreamHandler_Unauthorized(t *testing.T) {
 	controller := setupStreamController(streamSvc)
 
 	requestData := map[string]interface{}{
-		"spot_id": "Ireland_Donegal_Bundoran",
+		"spot_id": testStreamSpotID,
 	}
 
 	jsonData, _ := json.Marshal(requestData)
@@ -128,7 +133,7 @@ func TestStreamController_RequestStreamHandler_InvalidJSON(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/requestStream", bytes.NewBufferString("invalid json"))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("email", "test@example.com")
+	c.Set("email", testStreamEmail)
 
 	controller.RequestStreamHandler(c)
 
@@ -153,7 +158,7 @@ func TestStreamController_RequestStreamHandler_MissingSpotID(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/requestStream", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("email", "test@example.com")
+	c.Set("email", testStreamEmail)
 
 	controller.RequestStreamHandler(c)
 
@@ -166,7 +171,7 @@ func TestStreamController_RequestStreamHandler_ServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	repo := &mockrepo.StreamRequestRepo{
-		SaveFn: func(_ context.Context, request *model.StreamRequest) error {
+		SaveFn: func(_ context.Context, _ *model.StreamRequest) error {
 			return context.DeadlineExceeded // Simulate service error
 		},
 	}
@@ -175,7 +180,7 @@ func TestStreamController_RequestStreamHandler_ServiceError(t *testing.T) {
 	controller := setupStreamController(streamSvc)
 
 	requestData := map[string]interface{}{
-		"spot_id": "Ireland_Donegal_Bundoran",
+		"spot_id": testStreamSpotID,
 	}
 
 	jsonData, _ := json.Marshal(requestData)
@@ -183,7 +188,7 @@ func TestStreamController_RequestStreamHandler_ServiceError(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/requestStream", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("email", "test@example.com")
+	c.Set("email", testStreamEmail)
 
 	controller.RequestStreamHandler(c)
 
@@ -198,12 +203,12 @@ func TestStreamController_CheckStreamRequestHandler(t *testing.T) {
 	now := time.Now()
 	repo := &mockrepo.StreamRequestRepo{
 		GetBySpotIDFn: func(_ context.Context, spotID string) (*model.StreamRequest, error) {
-			if spotID != "Ireland_Donegal_Bundoran" {
+			if spotID != testStreamSpotID {
 				t.Errorf("unexpected spot ID: %s", spotID)
 			}
 			return &model.StreamRequest{
 				SpotID:      spotID,
-				RequestedBy: "test@example.com",
+				RequestedBy: testStreamEmail,
 				RequestedAt: now,
 				Expiration:  now.Add(5 * time.Minute).Unix(),
 			}, nil
@@ -215,7 +220,7 @@ func TestStreamController_CheckStreamRequestHandler(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/checkStreamRequest?spot_id=Ireland_Donegal_Bundoran", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodGet, "/checkStreamRequest?spot_id="+testStreamSpotID, http.NoBody)
 
 	controller.CheckStreamRequestHandler(c)
 
@@ -273,7 +278,7 @@ func TestStreamController_CheckStreamRequestHandler_NotRequested(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	repo := &mockrepo.StreamRequestRepo{
-		GetBySpotIDFn: func(_ context.Context, spotID string) (*model.StreamRequest, error) {
+		GetBySpotIDFn: func(_ context.Context, _ string) (*model.StreamRequest, error) {
 			return nil, nil // No stream request found
 		},
 	}
@@ -283,7 +288,7 @@ func TestStreamController_CheckStreamRequestHandler_NotRequested(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/checkStreamRequest?spot_id=Ireland_Donegal_Bundoran", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodGet, "/checkStreamRequest?spot_id="+testStreamSpotID, http.NoBody)
 
 	controller.CheckStreamRequestHandler(c)
 
@@ -314,7 +319,7 @@ func TestStreamController_CheckStreamRequestHandler_Expired(t *testing.T) {
 		GetBySpotIDFn: func(_ context.Context, spotID string) (*model.StreamRequest, error) {
 			return &model.StreamRequest{
 				SpotID:      spotID,
-				RequestedBy: "test@example.com",
+				RequestedBy: testStreamEmail,
 				RequestedAt: now.Add(-10 * time.Minute), // Requested 10 minutes ago
 				Expiration:  now.Add(-5 * time.Minute).Unix(), // Expired 5 minutes ago
 			}, nil
@@ -326,7 +331,7 @@ func TestStreamController_CheckStreamRequestHandler_Expired(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/checkStreamRequest?spot_id=Ireland_Donegal_Bundoran", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodGet, "/checkStreamRequest?spot_id="+testStreamSpotID, http.NoBody)
 
 	controller.CheckStreamRequestHandler(c)
 
@@ -353,7 +358,7 @@ func TestStreamController_CheckStreamRequestHandler_ServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	repo := &mockrepo.StreamRequestRepo{
-		GetBySpotIDFn: func(_ context.Context, spotID string) (*model.StreamRequest, error) {
+		GetBySpotIDFn: func(_ context.Context, _ string) (*model.StreamRequest, error) {
 			return nil, context.DeadlineExceeded // Simulate service error
 		},
 	}
@@ -363,7 +368,7 @@ func TestStreamController_CheckStreamRequestHandler_ServiceError(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/checkStreamRequest?spot_id=Ireland_Donegal_Bundoran", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodGet, "/checkStreamRequest?spot_id="+testStreamSpotID, http.NoBody)
 
 	controller.CheckStreamRequestHandler(c)
 

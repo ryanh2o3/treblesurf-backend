@@ -4,9 +4,9 @@ import "testing"
 
 func TestIsValidSwellSize(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		swellSize string
-		want     bool
+		want      bool
 	}{
 		{"valid flat", "flat", true},
 		{"valid 0-0.5", "0-0.5", true},
@@ -31,9 +31,9 @@ func TestIsValidSwellSize(t *testing.T) {
 
 func TestIsValidSurfSize(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		swellSize string
-		want     bool
+		want      bool
 	}{
 		{"valid flat", "flat", true},
 		{"valid knee-waist", "knee-waist", true},
@@ -58,9 +58,9 @@ func TestIsValidSurfSize(t *testing.T) {
 
 func TestIsValidWindAmount(t *testing.T) {
 	tests := []struct {
-		name      string
+		name       string
 		windAmount string
-		want      bool
+		want       bool
 	}{
 		{"valid light", "light", true},
 		{"valid moderate", "moderate", true},
@@ -108,9 +108,9 @@ func TestIsValidWindDirection(t *testing.T) {
 
 func TestIsValidSurfConditions(t *testing.T) {
 	tests := []struct {
-		name          string
+		name           string
 		surfConditions string
-		want          bool
+		want           bool
 	}{
 		{"valid mushy", "mushy", true},
 		{"valid average", "average", true},
@@ -159,9 +159,9 @@ func TestIsValidSurfDifficulty(t *testing.T) {
 
 func TestIsValidMessiness(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		messiness string
-		want     bool
+		want      bool
 	}{
 		{"valid clean", "clean", true},
 		{"valid slight-chop", "slight-chop", true},
@@ -185,17 +185,17 @@ func TestIsValidMessiness(t *testing.T) {
 func TestContains(t *testing.T) {
 	tests := []struct {
 		name  string
-		slice []string
 		item  string
+		slice []string
 		want  bool
 	}{
-		{"found in middle", []string{"a", "b", "c"}, "b", true},
-		{"found at start", []string{"a", "b", "c"}, "a", true},
-		{"found at end", []string{"a", "b", "c"}, "c", true},
-		{"not found", []string{"a", "b", "c"}, "d", false},
-		{"empty slice", []string{}, "a", false},
-		{"empty string item", []string{"a", "b", "c"}, "", false},
-		{"case sensitive", []string{"a", "b", "c"}, "A", false},
+		{"found in middle", "b", []string{"a", "b", "c"}, true},
+		{"found at start", "a", []string{"a", "b", "c"}, true},
+		{"found at end", "c", []string{"a", "b", "c"}, true},
+		{"not found", "d", []string{"a", "b", "c"}, false},
+		{"empty slice", "a", []string{}, false},
+		{"empty string item", "", []string{"a", "b", "c"}, false},
+		{"case sensitive", "A", []string{"a", "b", "c"}, false},
 	}
 
 	for _, tt := range tests {

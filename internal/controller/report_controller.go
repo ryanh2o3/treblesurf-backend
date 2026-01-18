@@ -34,6 +34,18 @@ type reportSubmissionConfig struct {
 	logFields    []slog.Attr
 }
 
+func buildReportConfigFromJSON[T any](
+	c *gin.Context,
+	report *T,
+	build func(*T) *reportSubmissionConfig,
+) (*reportSubmissionConfig, bool) {
+	if err := c.BindJSON(report); err != nil {
+		handleReportBindingError(c, err)
+		return nil, false
+	}
+	return build(report), true
+}
+
 func NewReportController(reports *service.ReportService, users *service.UserService) *ReportController {
 	return &ReportController{reports: reports, users: users}
 }
@@ -140,56 +152,93 @@ func (rc *ReportController) handleReportSubmission(
 	)
 }
 
+func buildReportConfig(
+	country string,
+	region string,
+	spot string,
+	logFields []slog.Attr,
+	validate func(*gin.Context) bool,
+	submit func(string, string) error,
+	successLabel string,
+	errorPrefix string,
+) *reportSubmissionConfig {
+	return &reportSubmissionConfig{
+		country:      country,
+		region:       region,
+		spot:         spot,
+		logFields:    logFields,
+		validate:     validate,
+		submit:       submit,
+		successLabel: successLabel,
+		errorPrefix:  errorPrefix,
+	}
+}
+
+func buildReportConfigWithExtraField(
+	country string,
+	region string,
+	spot string,
+	extraKey string,
+	extraValue string,
+	validate func(*gin.Context) bool,
+	submit func(string, string) error,
+	successLabel string,
+	errorPrefix string,
+) *reportSubmissionConfig {
+	logFields := []slog.Attr{
+		slog.String("country", country),
+		slog.String("region", region),
+		slog.String("spot", spot),
+		slog.String(extraKey, extraValue),
+	}
+	return buildReportConfig(
+		country,
+		region,
+		spot,
+		logFields,
+		validate,
+		submit,
+		successLabel,
+		errorPrefix,
+	)
+}
+
 func (rc *ReportController) buildImageReportConfig(c *gin.Context) (*reportSubmissionConfig, bool) {
 	var report model.ReportWithImage
-	if err := c.BindJSON(&report); err != nil {
-		handleReportBindingError(c, err)
-		return nil, false
-	}
-
-	return &reportSubmissionConfig{
-		country: report.Country,
-		region:  report.Region,
-		spot:    report.Spot,
-		logFields: []slog.Attr{
-			slog.String("country", report.Country),
-			slog.String("region", report.Region),
-			slog.String("spot", report.Spot),
-			slog.String("surf_size", report.SurfSize),
-		},
-		validate: func(ctx *gin.Context) bool { return validateReportFields(rc.reports, ctx, &report) },
-		submit: func(email, userName string) error {
-			return rc.reports.SubmitSurfReport(c.Request.Context(), &report, email, userName)
-		},
-		successLabel: "Report",
-		errorPrefix:  "Failed to submit report",
-	}, true
+	return buildReportConfigFromJSON(c, &report, func(r *model.ReportWithImage) *reportSubmissionConfig {
+		return buildReportConfigWithExtraField(
+			r.Country,
+			r.Region,
+			r.Spot,
+			"surf_size",
+			r.SurfSize,
+			func(ctx *gin.Context) bool { return validateReportFields(rc.reports, ctx, r) },
+			func(email, userName string) error {
+				return rc.reports.SubmitSurfReport(c.Request.Context(), r, email, userName)
+			},
+			"Report",
+			"Failed to submit report",
+		)
+	})
 }
 
 func (rc *ReportController) buildS3ReportConfig(c *gin.Context) (*reportSubmissionConfig, bool) {
 	var report model.ReportWithS3Image
-	if err := c.BindJSON(&report); err != nil {
-		handleReportBindingError(c, err)
-		return nil, false
-	}
-
-	return &reportSubmissionConfig{
-		country: report.Country,
-		region:  report.Region,
-		spot:    report.Spot,
-		logFields: []slog.Attr{
-			slog.String("country", report.Country),
-			slog.String("region", report.Region),
-			slog.String("spot", report.Spot),
-			slog.String("image_key", report.ImageKey),
-		},
-		validate: func(ctx *gin.Context) bool { return validateS3ReportFields(rc.reports, ctx, &report) },
-		submit: func(email, userName string) error {
-			return rc.reports.SubmitSurfReportWithS3Image(c.Request.Context(), &report, email, userName)
-		},
-		successLabel: "S3 Image Report",
-		errorPrefix:  "Failed to submit S3 image report",
-	}, true
+	return buildReportConfigFromJSON(c, &report, func(r *model.ReportWithS3Image) *reportSubmissionConfig {
+		return buildReportConfigWithExtraField(
+			r.Country,
+			r.Region,
+			r.Spot,
+			"image_key",
+			r.ImageKey,
+			func(ctx *gin.Context) bool { return validateS3ReportFields(rc.reports, ctx, r) },
+			func(email, userName string) error {
+				return rc.reports.SubmitSurfReportWithS3Image(c.Request.Context(), r, email, userName)
+			},
+			"S3 Image Report",
+			"Failed to submit S3 image report",
+		)
+	})
 }
 
 func attrsToArgs(attrs []slog.Attr) []any {

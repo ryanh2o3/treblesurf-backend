@@ -22,10 +22,10 @@ type WebSocketService struct {
 	subscriptions repository.SpotSubscriptionRepository
 	apiClientErr  error
 	apiClient     *apigatewaymanagementapi.ApiGatewayManagementApi
-	jwtSecret     []byte
-	apiClientOnce sync.Once
 	endpoint      string
 	stage         string
+	jwtSecret     []byte
+	apiClientOnce sync.Once
 }
 
 func NewWebSocketService(

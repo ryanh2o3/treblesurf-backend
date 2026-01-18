@@ -16,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/rekognition"
 )
 
+const testSpotIdentifier = "Ireland/Donegal/Bundoran"
+
 // createTestWebSocketService creates a minimal WebSocketService for testing
 func createTestWebSocketService(
 	getSubscribersFn func(ctx context.Context, spotIdentifier string) ([]string, error),
@@ -34,13 +36,13 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 	os.Setenv("GO_ENV", constants.EnvDevelopment)
 
 	tests := []struct {
-		name      string
 		report    *model.ReportWithImage
+		setupMock func() (*UserService, repository.ReportRepository, repository.MediaRepository, RekognitionAPI, *WebSocketService)
+		name      string
 		userEmail string
 		userName  string
-		setupMock func() (*UserService, repository.ReportRepository, repository.MediaRepository, RekognitionAPI, *WebSocketService)
-		wantErr   bool
 		errMsg    string
+		wantErr   bool
 	}{
 		{
 			name: "successful submission with image",
@@ -68,19 +70,19 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 				userService, _ := NewUserService(userRepo)
 				reportRepo := &mockrepo.ReportRepo{
 					CreateFn: func(_ context.Context, report *model.SurfReport) error {
-						if report.CountryRegionSpot != "Ireland_Donegal_Bundoran" {
+						if report.CountryRegionSpot != forecastTestSpotID {
 							t.Errorf("unexpected country_region_spot: %s", report.CountryRegionSpot)
 						}
 						return nil
 					},
 				}
 				mediaRepo := &mockrepo.MediaRepo{
-					UploadFn: func(_ context.Context, key string, data []byte, contentType string) error {
+					UploadFn: func(_ context.Context, _ string, _ []byte, _ string) error {
 						return nil
 					},
 				}
 				rekognitionClient := &mockRekognitionClient{
-					DetectLabelsFn: func(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
+					DetectLabelsFn: func(_ *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
 						return &rekognition.DetectLabelsOutput{
 							Labels: []*rekognition.Label{
 								{Name: aws.String("Sea"), Confidence: aws.Float64(95.0)},
@@ -88,7 +90,7 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 						}, nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, spotIdentifier string) ([]string, error) {
+				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{"user1", "user2"}, nil
 				})
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
@@ -117,13 +119,13 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				reportRepo := &mockrepo.ReportRepo{
-					CreateFn: func(_ context.Context, report *model.SurfReport) error {
+					CreateFn: func(_ context.Context, _ *model.SurfReport) error {
 						return nil
 					},
 				}
 				mediaRepo := &mockrepo.MediaRepo{}
 				rekognitionClient := &mockRekognitionClient{}
-				wsService := createTestWebSocketService(func(_ context.Context, spotIdentifier string) ([]string, error) {
+				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{}, nil
 				})
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
@@ -141,7 +143,7 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 			userName:  "Test User",
 			setupMock: func() (*UserService, repository.ReportRepository, repository.MediaRepository, RekognitionAPI, *WebSocketService) {
 				userRepo := &mockrepo.UserRepo{
-					GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+					GetByEmailFn: func(_ context.Context, _ string) (*model.User, error) {
 						return nil, repository.ErrNotFound
 					},
 				}
@@ -198,7 +200,7 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				reportRepo := &mockrepo.ReportRepo{
-					CreateFn: func(_ context.Context, report *model.SurfReport) error {
+					CreateFn: func(_ context.Context, _ *model.SurfReport) error {
 						return errors.New("database error")
 					},
 				}
@@ -231,10 +233,8 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 				if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
 					t.Errorf("expected error to contain %q, got %q", tt.errMsg, err.Error())
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}
@@ -247,13 +247,13 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 	os.Setenv("GO_ENV", constants.EnvDevelopment)
 
 	tests := []struct {
-		name      string
 		report    *model.ReportWithS3Image
+		setupMock func() (*UserService, repository.ReportRepository, repository.MediaRepository, RekognitionAPI, *WebSocketService)
+		name      string
 		userEmail string
 		userName  string
-		setupMock func() (*UserService, repository.ReportRepository, repository.MediaRepository, RekognitionAPI, *WebSocketService)
-		wantErr   bool
 		errMsg    string
+		wantErr   bool
 	}{
 		{
 			name: "successful submission with S3 image",
@@ -277,17 +277,17 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				reportRepo := &mockrepo.ReportRepo{
-					CreateFn: func(_ context.Context, report *model.SurfReport) error {
+					CreateFn: func(_ context.Context, _ *model.SurfReport) error {
 						return nil
 					},
 				}
 				mediaRepo := &mockrepo.MediaRepo{
-					DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+					DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 						return []byte("fake-image-data"), nil
 					},
 				}
 				rekognitionClient := &mockRekognitionClient{
-					DetectLabelsFn: func(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
+					DetectLabelsFn: func(_ *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
 						return &rekognition.DetectLabelsOutput{
 							Labels: []*rekognition.Label{
 								{Name: aws.String("Sea"), Confidence: aws.Float64(95.0)},
@@ -295,7 +295,7 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 						}, nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, spotIdentifier string) ([]string, error) {
+				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{"user1"}, nil
 				})
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
@@ -321,7 +321,7 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 				userService, _ := NewUserService(userRepo)
 				reportRepo := &mockrepo.ReportRepo{}
 				mediaRepo := &mockrepo.MediaRepo{
-					DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+					DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 						return nil, repository.ErrNotFound
 					},
 				}
@@ -352,12 +352,12 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 				userService, _ := NewUserService(userRepo)
 				reportRepo := &mockrepo.ReportRepo{}
 				mediaRepo := &mockrepo.MediaRepo{
-					DownloadFn: func(_ context.Context, key string) ([]byte, error) {
+					DownloadFn: func(_ context.Context, _ string) ([]byte, error) {
 						return []byte("fake-image-data"), nil
 					},
 				}
 				rekognitionClient := &mockRekognitionClient{
-					DetectLabelsFn: func(input *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
+					DetectLabelsFn: func(_ *rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
 						return &rekognition.DetectLabelsOutput{
 							Labels: []*rekognition.Label{
 								{Name: aws.String("Person"), Confidence: aws.Float64(95.0)},
@@ -394,10 +394,8 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 				if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
 					t.Errorf("expected error to contain %q, got %q", tt.errMsg, err.Error())
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}
@@ -405,13 +403,13 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 
 func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 	tests := []struct {
-		name      string
 		report    *model.ReportWithIOSValidation
+		setupMock func() (*UserService, repository.ReportRepository, *WebSocketService)
+		name      string
 		userEmail string
 		userName  string
-		setupMock func() (*UserService, repository.ReportRepository, *WebSocketService)
-		wantErr   bool
 		errMsg    string
+		wantErr   bool
 	}{
 		{
 			name: "successful submission with image",
@@ -443,7 +441,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 						return nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, spotIdentifier string) ([]string, error) {
+				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{"user1"}, nil
 				})
 				return userService, reportRepo, wsService
@@ -453,13 +451,13 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 		{
 			name: "successful submission with video",
 			report: &model.ReportWithIOSValidation{
-				Country:       "Ireland",
-				Region:        "Donegal",
-				Spot:          "Bundoran",
-				SurfSize:      "head-high",
-				VideoKey:      "surf-reports/Ireland_Donegal_Bundoran/video.mp4",
-				IOSValidated:  true,
-				Date:          "2024-01-15 14:30:00",
+				Country:      "Ireland",
+				Region:       "Donegal",
+				Spot:         "Bundoran",
+				SurfSize:     "head-high",
+				VideoKey:     "surf-reports/Ireland_Donegal_Bundoran/video.mp4",
+				IOSValidated: true,
+				Date:         "2024-01-15 14:30:00",
 			},
 			userEmail: "test@example.com",
 			userName:  "Test User",
@@ -478,7 +476,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 						return nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, spotIdentifier string) ([]string, error) {
+				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{}, nil
 				})
 				return userService, reportRepo, wsService
@@ -488,14 +486,14 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 		{
 			name: "successful submission with both image and video",
 			report: &model.ReportWithIOSValidation{
-				Country:       "Ireland",
-				Region:        "Donegal",
-				Spot:          "Bundoran",
-				SurfSize:      "head-high",
-				ImageKey:      "surf-reports/Ireland_Donegal_Bundoran/image.jpg",
-				VideoKey:      "surf-reports/Ireland_Donegal_Bundoran/video.mp4",
-				IOSValidated:  true,
-				Date:          "2024-01-15 14:30:00",
+				Country:      "Ireland",
+				Region:       "Donegal",
+				Spot:         "Bundoran",
+				SurfSize:     "head-high",
+				ImageKey:     "surf-reports/Ireland_Donegal_Bundoran/image.jpg",
+				VideoKey:     "surf-reports/Ireland_Donegal_Bundoran/video.mp4",
+				IOSValidated: true,
+				Date:         "2024-01-15 14:30:00",
 			},
 			userEmail: "test@example.com",
 			userName:  "Test User",
@@ -514,7 +512,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 						return nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, spotIdentifier string) ([]string, error) {
+				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{}, nil
 				})
 				return userService, reportRepo, wsService
@@ -532,7 +530,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 			userName:  "Test User",
 			setupMock: func() (*UserService, repository.ReportRepository, *WebSocketService) {
 				userRepo := &mockrepo.UserRepo{
-					GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+					GetByEmailFn: func(_ context.Context, _ string) (*model.User, error) {
 						return nil, repository.ErrNotFound
 					},
 				}
@@ -561,7 +559,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				reportRepo := &mockrepo.ReportRepo{
-					CreateFn: func(_ context.Context, report *model.SurfReport) error {
+					CreateFn: func(_ context.Context, _ *model.SurfReport) error {
 						return errors.New("database error")
 					},
 				}
@@ -590,10 +588,8 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 				if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
 					t.Errorf("expected error to contain %q, got %q", tt.errMsg, err.Error())
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}
@@ -601,13 +597,13 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 
 func TestReportService_getSpotSubscribers(t *testing.T) {
 	tests := []struct {
+		setupMock func() *WebSocketService
 		name      string
 		country   string
 		region    string
 		spot      string
-		setupMock func() *WebSocketService
-		wantErr   bool
 		wantCount int
+		wantErr   bool
 	}{
 		{
 			name:    "successful subscriber retrieval",
@@ -616,7 +612,7 @@ func TestReportService_getSpotSubscribers(t *testing.T) {
 			spot:    "Bundoran",
 			setupMock: func() *WebSocketService {
 				return createTestWebSocketService(func(_ context.Context, spotIdentifier string) ([]string, error) {
-					if spotIdentifier != "Ireland/Donegal/Bundoran" {
+					if spotIdentifier != testSpotIdentifier {
 						t.Errorf("unexpected spot identifier: %s", spotIdentifier)
 					}
 					return []string{"user1", "user2"}, nil
@@ -639,7 +635,7 @@ func TestReportService_getSpotSubscribers(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(_ *testing.T) {
 			ctx := context.Background()
 			wsService := tt.setupMock()
 			service := &ReportService{
@@ -665,10 +661,10 @@ func TestReportService_getSpotSubscribers(t *testing.T) {
 
 func TestReportService_broadcastToUsers(t *testing.T) {
 	tests := []struct {
-		name        string
-		subscribers []string
 		message     interface{}
 		setupMock   func() *WebSocketService
+		name        string
+		subscribers []string
 		wantErr     bool
 	}{
 		{
@@ -710,7 +706,7 @@ func TestReportService_broadcastToUsers(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(_ *testing.T) {
 			ctx := context.Background()
 			wsService := tt.setupMock()
 			service := &ReportService{

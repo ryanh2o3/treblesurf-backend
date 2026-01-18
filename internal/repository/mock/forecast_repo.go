@@ -54,7 +54,12 @@ func (m *ForecastRepo) QuerySince(ctx context.Context, spotID string, since time
 	return nil, nil
 }
 
-func (m *ForecastRepo) QueryBetween(ctx context.Context, spotID string, start, end time.Time, limit int) ([]*model.ForecastDataPoint, error) {
+func (m *ForecastRepo) QueryBetween(
+	ctx context.Context,
+	spotID string,
+	start, end time.Time,
+	limit int,
+) ([]*model.ForecastDataPoint, error) {
 	if m.QueryBetweenFn != nil {
 		return m.QueryBetweenFn(ctx, spotID, start, end, limit)
 	}

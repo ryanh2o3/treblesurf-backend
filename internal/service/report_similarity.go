@@ -137,13 +137,13 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 
 	// Get the specified buoy location
 	buoyLocations := s.getBuoyLocations(ctx)
-	buoyLocation, ok := buoyLocations[buoyName]
+	buoyLoc, ok := buoyLocations[buoyName]
 	if !ok {
 		return nil, fmt.Errorf("buoy %s not found", buoyName)
 	}
 
-	buoyLat := buoyLocation.Latitude
-	buoyLon := buoyLocation.Longitude
+	buoyLat := buoyLoc.Latitude
+	buoyLon := buoyLoc.Longitude
 
 	// Get spot location if provided
 	var spotLat, spotLon float64

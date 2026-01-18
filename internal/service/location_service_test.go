@@ -162,20 +162,20 @@ func TestLocationService_GetCoordinates_Error(t *testing.T) {
 }
 
 func TestLocationService_PopulateImage(t *testing.T) {
-	t.Run("handles nil location", func(t *testing.T) {
+	t.Run("handles nil location", func(_ *testing.T) {
 		service := &LocationService{}
 		service.populateImage(context.Background(), nil, "Ireland", "Donegal")
 		// Should not panic
 	})
 
-	t.Run("handles empty CountryRegionSpot", func(t *testing.T) {
+	t.Run("handles empty CountryRegionSpot", func(_ *testing.T) {
 		service := &LocationService{}
 		location := &model.LocationInfo{CountryRegionSpot: ""}
 		service.populateImage(context.Background(), location, "Ireland", "Donegal")
 		// Should not panic
 	})
 
-	t.Run("handles invalid CountryRegionSpot format", func(t *testing.T) {
+	t.Run("handles invalid CountryRegionSpot format", func(_ *testing.T) {
 		service := &LocationService{}
 		location := &model.LocationInfo{CountryRegionSpot: "invalid"}
 		service.populateImage(context.Background(), location, "Ireland", "Donegal")

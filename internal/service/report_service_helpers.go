@@ -18,6 +18,12 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
+const (
+	mediaTypeBoth  = "both"
+	mediaTypeImage = "image"
+	mediaTypeVideo = "video"
+)
+
 func (s *ReportService) getUserAndValidate(ctx context.Context, userEmail string) (*model.User, error) {
 	user, err := s.userService.GetByEmail(ctx, userEmail)
 	if err != nil {
@@ -230,11 +236,11 @@ func (s *ReportService) processBase64Image(
 func determineMediaType(hasImage, hasVideo bool) string {
 	switch {
 	case hasImage && hasVideo:
-		return "both"
+		return mediaTypeBoth
 	case hasImage:
-		return "image"
+		return mediaTypeImage
 	case hasVideo:
-		return "video"
+		return mediaTypeVideo
 	default:
 		return "none"
 	}
@@ -343,7 +349,7 @@ func (s *ReportService) normalizeSpotReports(reports []map[string]interface{}) {
 
 		// Ensure new fields have defaults if missing
 		setDefaultIfMissing(report, "video_key", "")
-		setDefaultIfMissing(report, "media_type", "image")
+		setDefaultIfMissing(report, "media_type", mediaTypeImage)
 		setDefaultIfMissing(report, "ios_validated", false)
 
 		// Ensure all required fields have defaults

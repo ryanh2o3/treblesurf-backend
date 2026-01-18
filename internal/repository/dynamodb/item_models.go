@@ -37,7 +37,7 @@ func userItemFromModel(u *model.User) userItem {
 	}
 }
 
-func (u userItem) toModel() *model.User {
+func (u *userItem) toModel() *model.User {
 	return &model.User{
 		UUID:       u.UUID,
 		Email:      u.Email,
@@ -117,7 +117,7 @@ func reportItemFromModel(r *model.SurfReport) reportItem {
 	}
 }
 
-func (r reportItem) toModel() *model.SurfReport {
+func (r *reportItem) toModel() *model.SurfReport {
 	return &model.SurfReport{
 		Timestamp:         r.Timestamp,
 		UpdatedAt:         r.UpdatedAt,
@@ -169,7 +169,7 @@ type forecastItem struct {
 	Temperature       float64   `dynamodbav:"temperature"`
 }
 
-func (f forecastItem) toModel() *model.Forecast {
+func (f *forecastItem) toModel() *model.Forecast {
 	return &model.Forecast{
 		CountryRegionSpot: f.CountryRegionSpot,
 		ForecastDate:      f.ForecastDate,
@@ -212,7 +212,7 @@ func sessionItemFromModel(s *model.Session) sessionItem {
 	}
 }
 
-func (s sessionItem) toModel() *model.Session {
+func (s *sessionItem) toModel() *model.Session {
 	return &model.Session{
 		SessionID: s.SessionID,
 		UserID:    s.UserID,
@@ -247,7 +247,7 @@ func apiKeyItemFromModel(k *model.APIKey) apiKeyItem {
 	}
 }
 
-func (k apiKeyItem) toModel() *model.APIKey {
+func (k *apiKeyItem) toModel() *model.APIKey {
 	return &model.APIKey{
 		KeyID:       k.KeyID,
 		KeyValue:    k.KeyValue,
@@ -278,7 +278,7 @@ func streamRequestItemFromModel(r *model.StreamRequest) streamRequestItem {
 	}
 }
 
-func (r streamRequestItem) toModel() *model.StreamRequest {
+func (r *streamRequestItem) toModel() *model.StreamRequest {
 	return &model.StreamRequest{
 		RequestedAt: r.RequestedAt,
 		SpotID:      r.SpotID,
@@ -306,7 +306,7 @@ func spotSnapshotItemFromModel(s *model.SpotSnapshot) spotSnapshotItem {
 	}
 }
 
-func (s spotSnapshotItem) toModel() *model.SpotSnapshot {
+func (s *spotSnapshotItem) toModel() *model.SpotSnapshot {
 	return &model.SpotSnapshot{
 		Timestamp:  s.Timestamp,
 		UploadedAt: s.UploadedAt,
@@ -328,7 +328,7 @@ type buoyDataItem struct {
 	Pressure      float64   `dynamodbav:"pressure"`
 }
 
-func (b buoyDataItem) toModel() *model.BuoyData {
+func (b *buoyDataItem) toModel() *model.BuoyData {
 	return &model.BuoyData{
 		Timestamp:     b.Timestamp,
 		BuoyName:      b.BuoyName,
@@ -352,7 +352,7 @@ type buoyLocationItem struct {
 	Longitude float64 `dynamodbav:"longitude"`
 }
 
-func (b buoyLocationItem) toModel() *model.BuoyLocation {
+func (b *buoyLocationItem) toModel() *model.BuoyLocation {
 	return &model.BuoyLocation{
 		Name:      b.Name,
 		Country:   b.Country,
@@ -390,7 +390,7 @@ func connectionItemFromModel(c *model.ConnectionInfo) connectionItem {
 	}
 }
 
-func (c connectionItem) toModel() *model.ConnectionInfo {
+func (c *connectionItem) toModel() *model.ConnectionInfo {
 	return &model.ConnectionInfo{
 		ConnectionID: c.ConnectionID,
 		UserID:       c.UserID,

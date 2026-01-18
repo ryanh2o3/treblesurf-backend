@@ -9,7 +9,7 @@ import (
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
-const testSpotID = "Ireland_Donegal_Bundoran"
+const snapshotTestSpotID = "Ireland_Donegal_Bundoran"
 
 func TestNewSnapshotService_NilRepository_ReturnsError(t *testing.T) {
 	_, err := NewSnapshotService(nil)
@@ -35,7 +35,7 @@ func TestSnapshotService_StoreSnapshot(t *testing.T) {
 		}
 
 		timestamp := time.Now()
-		snapshot, err := service.StoreSnapshot(ctx, testSpotID, "snapshots/test.jpg", timestamp)
+		snapshot, err := service.StoreSnapshot(ctx, snapshotTestSpotID, "snapshots/test.jpg", timestamp)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -45,7 +45,7 @@ func TestSnapshotService_StoreSnapshot(t *testing.T) {
 		if saved == nil {
 			t.Fatalf("expected snapshot to be saved")
 		}
-		if snapshot.SpotID != testSpotID {
+		if snapshot.SpotID != snapshotTestSpotID {
 			t.Fatalf("unexpected spot ID: %s", snapshot.SpotID)
 		}
 		if snapshot.ImageKey != "snapshots/test.jpg" {
@@ -78,12 +78,12 @@ func TestSnapshotService_GetLatestSnapshot(t *testing.T) {
 	t.Run("returns latest snapshot", func(t *testing.T) {
 		ctx := context.Background()
 		expected := &model.SpotSnapshot{
-			SpotID:   testSpotID,
+			SpotID:   snapshotTestSpotID,
 			ImageKey: "snapshots/latest.jpg",
 		}
 		repo := &mockrepo.SnapshotRepo{
 			GetLatestBySpotFn: func(_ context.Context, spotID string) (*model.SpotSnapshot, error) {
-				if spotID != testSpotID {
+				if spotID != snapshotTestSpotID {
 					t.Fatalf("unexpected spot ID: %s", spotID)
 				}
 				return expected, nil
@@ -95,7 +95,7 @@ func TestSnapshotService_GetLatestSnapshot(t *testing.T) {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
 
-		snapshot, err := service.GetLatestSnapshot(ctx, testSpotID)
+		snapshot, err := service.GetLatestSnapshot(ctx, snapshotTestSpotID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

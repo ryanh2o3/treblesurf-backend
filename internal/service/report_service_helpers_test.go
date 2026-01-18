@@ -12,13 +12,18 @@ import (
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
+const (
+	invalidDateStr = "invalid-date"
+	testSpotID     = "Ireland_Donegal_Bundoran"
+)
+
 func TestReportService_getUserAndValidate(t *testing.T) {
 	tests := []struct {
+		setupMock func() *UserService
 		name      string
 		userEmail string
-		setupMock func() *UserService
-		wantErr   bool
 		errMsg    string
+		wantErr   bool
 	}{
 		{
 			name:      "valid user with UUID",
@@ -39,7 +44,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 			userEmail: "notfound@example.com",
 			setupMock: func() *UserService {
 				userRepo := &mockrepo.UserRepo{
-					GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+					GetByEmailFn: func(_ context.Context, _ string) (*model.User, error) {
 						return nil, repository.ErrNotFound
 					},
 				}
@@ -54,7 +59,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 			userEmail: "nil@example.com",
 			setupMock: func() *UserService {
 				userRepo := &mockrepo.UserRepo{
-					GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+					GetByEmailFn: func(_ context.Context, _ string) (*model.User, error) {
 						return nil, nil
 					},
 				}
@@ -84,7 +89,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 			userEmail: "error@example.com",
 			setupMock: func() *UserService {
 				userRepo := &mockrepo.UserRepo{
-					GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+					GetByEmailFn: func(_ context.Context, _ string) (*model.User, error) {
 						return nil, errors.New("database error")
 					},
 				}
@@ -113,10 +118,9 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 				if user != nil {
 					t.Error("expected nil user on error")
 				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
 				if user == nil {
 					t.Fatal("expected user but got nil")
 				}
@@ -130,9 +134,9 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 
 func TestParseReportDate(t *testing.T) {
 	tests := []struct {
+		wantTime func() time.Time
 		name     string
 		dateStr  string
-		wantTime func() time.Time
 	}{
 		{
 			name:    "valid date string",
@@ -145,12 +149,12 @@ func TestParseReportDate(t *testing.T) {
 		{
 			name:     "empty string uses current time",
 			dateStr:  "",
-			wantTime: func() time.Time { return time.Now() },
+			wantTime: time.Now,
 		},
 		{
 			name:     "invalid format uses current time",
-			dateStr:  "invalid-date",
-			wantTime: func() time.Time { return time.Now() },
+			dateStr:  invalidDateStr,
+			wantTime: time.Now,
 		},
 	}
 
@@ -159,7 +163,7 @@ func TestParseReportDate(t *testing.T) {
 			got := parseReportDate(tt.dateStr)
 			want := tt.wantTime()
 
-			if tt.dateStr == "" || tt.dateStr == "invalid-date" {
+			if tt.dateStr == "" || tt.dateStr == invalidDateStr {
 				// For current time cases, just check it's recent (within 1 second)
 				diff := got.Sub(want)
 				if diff < 0 {
@@ -168,10 +172,8 @@ func TestParseReportDate(t *testing.T) {
 				if diff > time.Second {
 					t.Errorf("expected time close to now, got %v", got)
 				}
-			} else {
-				if !got.Equal(want) {
-					t.Errorf("parseReportDate(%q) = %v, want %v", tt.dateStr, got, want)
-				}
+			} else if !got.Equal(want) {
+				t.Errorf("parseReportDate(%q) = %v, want %v", tt.dateStr, got, want)
 			}
 		})
 	}
@@ -179,60 +181,60 @@ func TestParseReportDate(t *testing.T) {
 
 func TestAddReportFieldsToReport(t *testing.T) {
 	tests := []struct {
-		name         string
-		report       *model.SurfReport
-		surfSize     string
-		windAmount   string
+		report        *model.SurfReport
+		want          *model.SurfReport
+		name          string
+		surfSize      string
+		windAmount    string
 		windDirection string
-		consistency  string
-		quality      string
-		messiness    string
-		want         *model.SurfReport
+		consistency   string
+		quality       string
+		messiness     string
 	}{
 		{
-			name:         "all fields set",
-			report:       &model.SurfReport{},
-			surfSize:     "head-high",
-			windAmount:   "light",
+			name:          "all fields set",
+			report:        &model.SurfReport{},
+			surfSize:      "head-high",
+			windAmount:    "light",
 			windDirection: "offshore",
-			consistency:  "consistent",
-			quality:      "good",
-			messiness:    "clean",
+			consistency:   "consistent",
+			quality:       "good",
+			messiness:     "clean",
 			want: &model.SurfReport{
 				SurfSize:      "head-high",
-				WindAmount:     "light",
-				WindDirection:  "offshore",
+				WindAmount:    "light",
+				WindDirection: "offshore",
 				Consistency:   "consistent",
 				Quality:       "good",
 				Messiness:     "clean",
 			},
 		},
 		{
-			name:         "empty fields not set",
-			report:       &model.SurfReport{SurfSize: "existing"},
-			surfSize:     "",
-			windAmount:   "",
+			name:          "empty fields not set",
+			report:        &model.SurfReport{SurfSize: "existing"},
+			surfSize:      "",
+			windAmount:    "",
 			windDirection: "",
-			consistency:  "",
-			quality:      "",
-			messiness:    "",
+			consistency:   "",
+			quality:       "",
+			messiness:     "",
 			want: &model.SurfReport{
 				SurfSize: "existing",
 			},
 		},
 		{
-			name:         "partial fields",
-			report:       &model.SurfReport{},
-			surfSize:     "overhead",
-			windAmount:   "",
+			name:          "partial fields",
+			report:        &model.SurfReport{},
+			surfSize:      "overhead",
+			windAmount:    "",
 			windDirection: "onshore",
-			consistency:  "",
-			quality:      "excellent",
-			messiness:    "",
+			consistency:   "",
+			quality:       "excellent",
+			messiness:     "",
 			want: &model.SurfReport{
-				SurfSize:     "overhead",
+				SurfSize:      "overhead",
 				WindDirection: "onshore",
-				Quality:      "excellent",
+				Quality:       "excellent",
 			},
 		},
 	}
@@ -272,12 +274,11 @@ func TestAddReportFieldsToReport(t *testing.T) {
 }
 
 func TestReportService_createBaseReport(t *testing.T) {
-	ctx := context.Background()
 	service := &ReportService{}
 	currentTime := time.Date(2024, 1, 15, 14, 30, 0, 0, time.UTC)
 
 	report := service.createBaseReport(
-		"Ireland_Donegal_Bundoran",
+		testSpotID,
 		"2024-01-15T14:30:00Z_test-uuid",
 		"test@example.com",
 		"Test User",
@@ -290,8 +291,8 @@ func TestReportService_createBaseReport(t *testing.T) {
 	if report == nil {
 		t.Fatal("expected report but got nil")
 	}
-	if report.CountryRegionSpot != "Ireland_Donegal_Bundoran" {
-		t.Errorf("CountryRegionSpot = %q, want %q", report.CountryRegionSpot, "Ireland_Donegal_Bundoran")
+	if report.CountryRegionSpot != testSpotID {
+		t.Errorf("CountryRegionSpot = %q, want %q", report.CountryRegionSpot, testSpotID)
 	}
 	if report.UserEmail != "test@example.com" {
 		t.Errorf("UserEmail = %q, want %q", report.UserEmail, "test@example.com")
@@ -311,23 +312,22 @@ func TestReportService_createBaseReport(t *testing.T) {
 	if !report.Timestamp.Equal(currentTime.UTC()) {
 		t.Errorf("Timestamp = %v, want %v", report.Timestamp, currentTime.UTC())
 	}
-	_ = ctx // Suppress unused variable warning
 }
 
 func TestReportService_storeReport(t *testing.T) {
 	tests := []struct {
-		name      string
 		report    *model.SurfReport
 		setupMock func() repository.ReportRepository
+		name      string
 		wantErr   bool
 	}{
 		{
 			name:   "successful store",
-			report: &model.SurfReport{CountryRegionSpot: "Ireland_Donegal_Bundoran"},
+			report: &model.SurfReport{CountryRegionSpot: testSpotID},
 			setupMock: func() repository.ReportRepository {
 				return &mockrepo.ReportRepo{
 					CreateFn: func(_ context.Context, report *model.SurfReport) error {
-						if report.CountryRegionSpot != "Ireland_Donegal_Bundoran" {
+						if report.CountryRegionSpot != testSpotID {
 							return errors.New("unexpected report")
 						}
 						return nil
@@ -346,10 +346,10 @@ func TestReportService_storeReport(t *testing.T) {
 		},
 		{
 			name:   "repository error",
-			report: &model.SurfReport{CountryRegionSpot: "Ireland_Donegal_Bundoran"},
+			report: &model.SurfReport{CountryRegionSpot: testSpotID},
 			setupMock: func() repository.ReportRepository {
 				return &mockrepo.ReportRepo{
-					CreateFn: func(_ context.Context, report *model.SurfReport) error {
+					CreateFn: func(_ context.Context, _ *model.SurfReport) error {
 						return errors.New("database error")
 					},
 				}
@@ -376,4 +376,3 @@ func TestReportService_storeReport(t *testing.T) {
 		})
 	}
 }
-

@@ -68,13 +68,13 @@ type SessionInfo struct {
 
 // Service provides authentication handlers and middleware with injected dependencies.
 type Service struct {
-	userRepo       repository.UserRepository
-	sessionRepo    repository.SessionRepository
-	sessionService *sessions.Service
-	sessionStore   *store.DynamoDBStore
-	logger         *slog.Logger
-	jwtSecret      []byte
+	userRepo        repository.UserRepository
+	sessionRepo     repository.SessionRepository
+	sessionService  *sessions.Service
+	sessionStore    *store.DynamoDBStore
+	logger          *slog.Logger
 	googleClientIDs map[string]bool
+	jwtSecret       []byte
 	cookieSecure    bool
 	isDevelopment   bool
 }

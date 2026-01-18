@@ -25,7 +25,7 @@ type containerStorage struct {
 }
 
 // initializeStorage creates and configures all storage clients based on environment.
-func initializeStorage(cfg containerConfig) (*containerStorage, error) {
+func initializeStorage(cfg *containerConfig) (*containerStorage, error) {
 	storage := &containerStorage{}
 
 	if cfg.isLocal {

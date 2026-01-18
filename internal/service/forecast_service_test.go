@@ -14,6 +14,11 @@ type forecastCtxKey string
 const (
 	forecastCtxKeyValue   forecastCtxKey = "ctx-key"
 	forecastCtxValue      string         = "ctx-value"
+	forecastTestCountry                  = "Ireland"
+	forecastTestRegion                   = "Donegal"
+	forecastTestSpot                     = "Bundoran"
+	forecastTestSpotID                   = "Ireland_Donegal_Bundoran"
+	forecastTestSpotIDRoss               = "Ireland_Donegal_Rossnowlagh"
 )
 
 func TestForecastService_GetSpotForecast_PropagatesContext(t *testing.T) {
@@ -76,12 +81,12 @@ func TestForecastService_GetListSpotsForecast_PropagatesContext(t *testing.T) {
 func TestForecastService_GetRegionForecast(t *testing.T) {
 	ctx := context.Background()
 	expected := []*model.Forecast{
-		{CountryRegionSpot: "Ireland_Donegal_Bundoran"},
-		{CountryRegionSpot: "Ireland_Donegal_Rossnowlagh"},
+		{CountryRegionSpot: forecastTestSpotID},
+		{CountryRegionSpot: forecastTestSpotIDRoss},
 	}
 	repo := &mockrepo.ForecastRepo{
 		GetRegionForecastFn: func(_ context.Context, country, region string, _ time.Time) ([]*model.Forecast, error) {
-			if country != "Ireland" || region != "Donegal" {
+			if country != forecastTestCountry || region != forecastTestRegion {
 				t.Fatalf("unexpected args: %s %s", country, region)
 			}
 			return expected, nil
@@ -93,7 +98,7 @@ func TestForecastService_GetRegionForecast(t *testing.T) {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
 
-	got, err := service.GetRegionForecast(ctx, "Donegal", "Ireland")
+	got, err := service.GetRegionForecast(ctx, forecastTestRegion, forecastTestCountry)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,13 +111,13 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 	t.Run("returns current weather forecast", func(t *testing.T) {
 		ctx := context.Background()
 		expected := &model.Forecast{
-			CountryRegionSpot: "Ireland_Donegal_Bundoran",
+			CountryRegionSpot: forecastTestSpotID,
 			Temperature:       18.5,
 			WindSpeed:         15.0,
 		}
 		repo := &mockrepo.ForecastRepo{
 			GetCurrentConditionsFn: func(_ context.Context, country, region, spot string) (*model.Forecast, error) {
-				if country != "Ireland" || region != "Donegal" || spot != "Bundoran" {
+				if country != forecastTestCountry || region != forecastTestRegion || spot != forecastTestSpot {
 					t.Fatalf("unexpected args: %s %s %s", country, region, spot)
 				}
 				return expected, nil
@@ -124,7 +129,7 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
 
-		got, err := service.GetCurrentWeather(ctx, "Bundoran", "Donegal", "Ireland")
+		got, err := service.GetCurrentWeather(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -149,11 +154,11 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
 
-		got, err := service.GetCurrentWeather(ctx, "Unknown", "Donegal", "Ireland")
+		got, err := service.GetCurrentWeather(ctx, "Unknown", forecastTestRegion, forecastTestCountry)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got != nil && len(got) != 0 {
+		if len(got) != 0 {
 			t.Fatalf("expected nil or empty, got %d items", len(got))
 		}
 	})

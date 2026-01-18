@@ -11,36 +11,45 @@ import (
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
+type similarityMocks func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository)
+
+type matchingConditionsMocks func() (
+	repository.ReportRepository,
+	repository.BuoyRepository,
+	repository.LocationRepository,
+	repository.ForecastDataRepository,
+)
+
 func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 	tests := []struct {
-		name         string
-		waveHeight   float64
+		setupMock     similarityMocks
+		regionName    string
+		spotName      string
+		name          string
+		buoyName      string
+		countryName   string
+		period        float64
 		waveDirection float64
-		period       float64
-		buoyName     string
-		countryName  string
-		regionName   string
-		spotName     string
-		daysBack     int
-		maxResults   int
-		setupMock    func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository)
-		wantErr      bool
-		wantCount    int
+		daysBack      int
+		maxResults    int
+		waveHeight    float64
+		wantCount     int
+		wantErr       bool
 	}{
 		{
-			name:         "successful match with spot filter",
-			waveHeight:   2.0,
+			name:          "successful match with spot filter",
+			waveHeight:    2.0,
 			waveDirection: 180.0,
-			period:       12.0,
-			buoyName:     "test-buoy",
-			countryName:  "Ireland",
-			regionName:   "Donegal",
-			spotName:     "Bundoran",
-			daysBack:     30,
-			maxResults:   10,
+			period:        12.0,
+			buoyName:      "test-buoy",
+			countryName:   "Ireland",
+			regionName:    "Donegal",
+			spotName:      "Bundoran",
+			daysBack:      30,
+			maxResults:    10,
 			setupMock: func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository) {
 				reportRepo := &mockrepo.ReportRepo{
-					GetBySpotAndTimeRangeFn: func(_ context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error) {
+					GetBySpotAndTimeRangeFn: func(_ context.Context, _, _, _ string, _, _ time.Time) ([]*model.SurfReport, error) {
 						return []*model.SurfReport{
 							{
 								CountryRegionSpot: "Ireland_Donegal_Bundoran",
@@ -60,22 +69,22 @@ func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 							},
 						}, nil
 					},
-					GetBatchDataRangesFn: func(_ context.Context, requests []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
+					GetBatchDataRangesFn: func(_ context.Context, _ []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
 						return map[string][]*model.BuoyData{
 							"test-buoy": {
 								{
 									BuoyName:      "test-buoy",
-									Timestamp:      time.Now().Add(-2 * time.Hour),
-									WaveHeight:     2.1,
-									WaveDirection:  180.5,
-									MaxPeriod:      12.2,
+									Timestamp:     time.Now().Add(-2 * time.Hour),
+									WaveHeight:    2.1,
+									WaveDirection: 180.5,
+									MaxPeriod:     12.2,
 								},
 							},
 						}, nil
 					},
 				}
 				locationRepo := &mockrepo.LocationRepo{
-					GetLocationInfoFn: func(_ context.Context, country, region, spot string) (*model.LocationInfo, error) {
+					GetLocationInfoFn: func(_ context.Context, _, _, _ string) (*model.LocationInfo, error) {
 						return &model.LocationInfo{
 							Latitude:  54.5,
 							Longitude: -8.5,
@@ -88,19 +97,19 @@ func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 			wantCount: 1,
 		},
 		{
-			name:         "no matching reports",
-			waveHeight:   2.0,
+			name:          "no matching reports",
+			waveHeight:    2.0,
 			waveDirection: 180.0,
-			period:       12.0,
-			buoyName:     "test-buoy",
-			countryName:  "Ireland",
-			regionName:   "Donegal",
-			spotName:     "Bundoran",
-			daysBack:     30,
-			maxResults:   10,
+			period:        12.0,
+			buoyName:      "test-buoy",
+			countryName:   "Ireland",
+			regionName:    "Donegal",
+			spotName:      "Bundoran",
+			daysBack:      30,
+			maxResults:    10,
 			setupMock: func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository) {
 				reportRepo := &mockrepo.ReportRepo{
-					GetBySpotAndTimeRangeFn: func(_ context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error) {
+					GetBySpotAndTimeRangeFn: func(_ context.Context, _, _, _ string, _, _ time.Time) ([]*model.SurfReport, error) {
 						return []*model.SurfReport{}, nil
 					},
 				}
@@ -116,7 +125,7 @@ func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 					},
 				}
 				locationRepo := &mockrepo.LocationRepo{
-					GetLocationInfoFn: func(_ context.Context, country, region, spot string) (*model.LocationInfo, error) {
+					GetLocationInfoFn: func(_ context.Context, _, _, _ string) (*model.LocationInfo, error) {
 						return &model.LocationInfo{
 							Latitude:  54.5,
 							Longitude: -8.5,
@@ -129,19 +138,19 @@ func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name:         "buoy not found",
-			waveHeight:   2.0,
+			name:          "buoy not found",
+			waveHeight:    2.0,
 			waveDirection: 180.0,
-			period:       12.0,
-			buoyName:     "missing-buoy",
-			countryName:  "Ireland",
-			regionName:   "Donegal",
-			spotName:     "Bundoran",
-			daysBack:     30,
-			maxResults:   10,
+			period:        12.0,
+			buoyName:      "missing-buoy",
+			countryName:   "Ireland",
+			regionName:    "Donegal",
+			spotName:      "Bundoran",
+			daysBack:      30,
+			maxResults:    10,
 			setupMock: func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository) {
 				reportRepo := &mockrepo.ReportRepo{
-					GetBySpotAndTimeRangeFn: func(_ context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error) {
+					GetBySpotAndTimeRangeFn: func(_ context.Context, _, _, _ string, _, _ time.Time) ([]*model.SurfReport, error) {
 						// Return at least one report so the function continues to check the buoy
 						return []*model.SurfReport{
 							{
@@ -164,19 +173,19 @@ func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name:         "repository error",
-			waveHeight:   2.0,
+			name:          "repository error",
+			waveHeight:    2.0,
 			waveDirection: 180.0,
-			period:       12.0,
-			buoyName:     "test-buoy",
-			countryName:  "Ireland",
-			regionName:   "Donegal",
-			spotName:     "Bundoran",
-			daysBack:     30,
-			maxResults:   10,
+			period:        12.0,
+			buoyName:      "test-buoy",
+			countryName:   "Ireland",
+			regionName:    "Donegal",
+			spotName:      "Bundoran",
+			daysBack:      30,
+			maxResults:    10,
 			setupMock: func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository) {
 				reportRepo := &mockrepo.ReportRepo{
-					GetBySpotAndTimeRangeFn: func(_ context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error) {
+					GetBySpotAndTimeRangeFn: func(_ context.Context, _, _, _ string, _, _ time.Time) ([]*model.SurfReport, error) {
 						return nil, errors.New("database error")
 					},
 				}
@@ -198,19 +207,19 @@ func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name:         "scan all reports when no spot filter",
-			waveHeight:   2.0,
+			name:          "scan all reports when no spot filter",
+			waveHeight:    2.0,
 			waveDirection: 180.0,
-			period:       12.0,
-			buoyName:     "test-buoy",
-			countryName:  "",
-			regionName:   "",
-			spotName:     "",
-			daysBack:     30,
-			maxResults:   10,
+			period:        12.0,
+			buoyName:      "test-buoy",
+			countryName:   "",
+			regionName:    "",
+			spotName:      "",
+			daysBack:      30,
+			maxResults:    10,
 			setupMock: func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository) {
 				reportRepo := &mockrepo.ReportRepo{
-					ScanSinceFn: func(_ context.Context, since time.Time, limit int) ([]*model.SurfReport, error) {
+					ScanSinceFn: func(_ context.Context, _ time.Time, _ int) ([]*model.SurfReport, error) {
 						return []*model.SurfReport{
 							{
 								CountryRegionSpot: "Ireland_Donegal_Bundoran",
@@ -230,15 +239,15 @@ func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 							},
 						}, nil
 					},
-					GetBatchDataRangesFn: func(_ context.Context, requests []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
+					GetBatchDataRangesFn: func(_ context.Context, _ []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
 						return map[string][]*model.BuoyData{
 							"test-buoy": {
 								{
 									BuoyName:      "test-buoy",
-									Timestamp:      time.Now().Add(-2 * time.Hour),
-									WaveHeight:     2.1,
-									WaveDirection:  180.5,
-									MaxPeriod:      12.2,
+									Timestamp:     time.Now().Add(-2 * time.Hour),
+									WaveHeight:    2.1,
+									WaveDirection: 180.5,
+									MaxPeriod:     12.2,
 								},
 							},
 						}, nil
@@ -247,7 +256,7 @@ func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 				locationRepo := &mockrepo.LocationRepo{
 					GetLocationInfoFn: func(_ context.Context, country, region, spot string) (*model.LocationInfo, error) {
 						parts := []string{country, region, spot}
-						if parts[0] == "Ireland" && parts[1] == "Donegal" && parts[2] == "Bundoran" {
+						if parts[0] == forecastTestCountry && parts[1] == forecastTestRegion && parts[2] == forecastTestSpot {
 							return &model.LocationInfo{
 								Latitude:  54.5,
 								Longitude: -8.5,
@@ -311,16 +320,187 @@ func TestReportService_GetSurfReportsWithSimilarBuoyData(t *testing.T) {
 }
 
 func TestReportService_GetSurfReportsWithMatchingConditions(t *testing.T) {
+	buildMatchingConditionsSuccess := func() (
+		repository.ReportRepository,
+		repository.BuoyRepository,
+		repository.LocationRepository,
+		repository.ForecastDataRepository,
+	) {
+		reportRepo := &mockrepo.ReportRepo{
+			GetBySpotAndTimeRangeFn: func(_ context.Context, _, _, _ string, _, _ time.Time) ([]*model.SurfReport, error) {
+				return []*model.SurfReport{
+					{
+						CountryRegionSpot: "Ireland_Donegal_Bundoran",
+						Timestamp:         time.Now().Add(-2 * time.Hour),
+						Time:              time.Now().Add(-2 * time.Hour).Format(time.RFC3339),
+					},
+				}, nil
+			},
+		}
+		buoyRepo := &mockrepo.BuoyRepo{
+			GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
+				return map[string]*model.BuoyLocation{
+					"buoy1": {
+						Name:      "buoy1",
+						Latitude:  54.5,
+						Longitude: -8.5,
+					},
+					"buoy2": {
+						Name:      "buoy2",
+						Latitude:  54.6,
+						Longitude: -8.6,
+					},
+				}, nil
+			},
+			GetLiveDataFn: func(_ context.Context, buoyName string) (*model.BuoyData, error) {
+				return &model.BuoyData{
+					BuoyName:      buoyName,
+					WaveHeight:    2.0,
+					WaveDirection: 180.0,
+					MaxPeriod:     12.0,
+				}, nil
+			},
+			GetBatchDataRangesFn: func(_ context.Context, _ []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
+				return map[string][]*model.BuoyData{
+					"buoy1": {
+						{
+							BuoyName:      "buoy1",
+							Timestamp:     time.Now().Add(-2 * time.Hour),
+							WaveHeight:    2.1,
+							WaveDirection: 180.5,
+							MaxPeriod:     12.2,
+						},
+					},
+				}, nil
+			},
+		}
+		locationRepo := &mockrepo.LocationRepo{
+			GetLocationInfoFn: func(_ context.Context, _, _, _ string) (*model.LocationInfo, error) {
+				return &model.LocationInfo{
+					Latitude:  54.5,
+					Longitude: -8.5,
+				}, nil
+			},
+		}
+		forecastRepo := &mockrepo.ForecastRepo{
+			QuerySinceFn: func(_ context.Context, spotID string, _ time.Time, _ int) ([]*model.ForecastDataPoint, error) {
+				return []*model.ForecastDataPoint{
+					{
+						SpotID:            spotID,
+						ForecastTimestamp: time.Now(),
+						Data: map[string]interface{}{
+							"windSpeed":     10.0,
+							"windDirection": 270.0,
+						},
+					},
+				}, nil
+			},
+			QueryBetweenFn: func(_ context.Context, spotID string, _, _ time.Time, _ int) ([]*model.ForecastDataPoint, error) {
+				return []*model.ForecastDataPoint{
+					{
+						SpotID:            spotID,
+						ForecastTimestamp: time.Now().Add(-2 * time.Hour),
+						Data: map[string]interface{}{
+							"windSpeed":     10.5,
+							"windDirection": 270.5,
+						},
+					},
+				}, nil
+			},
+		}
+		return reportRepo, buoyRepo, locationRepo, forecastRepo
+	}
+
+	buildMatchingConditionsNoReports := func() (
+		repository.ReportRepository,
+		repository.BuoyRepository,
+		repository.LocationRepository,
+		repository.ForecastDataRepository,
+	) {
+		reportRepo := &mockrepo.ReportRepo{
+			GetBySpotAndTimeRangeFn: func(_ context.Context, _, _, _ string, _, _ time.Time) ([]*model.SurfReport, error) {
+				return []*model.SurfReport{}, nil
+			},
+		}
+		buoyRepo := &mockrepo.BuoyRepo{
+			GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
+				return map[string]*model.BuoyLocation{
+					"buoy1": {
+						Name:      "buoy1",
+						Latitude:  54.5,
+						Longitude: -8.5,
+					},
+				}, nil
+			},
+			GetLiveDataFn: func(_ context.Context, buoyName string) (*model.BuoyData, error) {
+				return &model.BuoyData{
+					BuoyName:      buoyName,
+					WaveHeight:    2.0,
+					WaveDirection: 180.0,
+					MaxPeriod:     12.0,
+				}, nil
+			},
+		}
+		locationRepo := &mockrepo.LocationRepo{
+			GetLocationInfoFn: func(_ context.Context, _, _, _ string) (*model.LocationInfo, error) {
+				return &model.LocationInfo{
+					Latitude:  54.5,
+					Longitude: -8.5,
+				}, nil
+			},
+		}
+		return reportRepo, buoyRepo, locationRepo, &mockrepo.ForecastRepo{}
+	}
+
+	buildMatchingConditionsLocationNotFound := func() (
+		repository.ReportRepository,
+		repository.BuoyRepository,
+		repository.LocationRepository,
+		repository.ForecastDataRepository,
+	) {
+		reportRepo := &mockrepo.ReportRepo{}
+		buoyRepo := &mockrepo.BuoyRepo{}
+		locationRepo := &mockrepo.LocationRepo{
+			GetLocationInfoFn: func(_ context.Context, _, _, _ string) (*model.LocationInfo, error) {
+				return nil, errors.New("location not found")
+			},
+		}
+		return reportRepo, buoyRepo, locationRepo, &mockrepo.ForecastRepo{}
+	}
+
+	buildMatchingConditionsNoBuoys := func() (
+		repository.ReportRepository,
+		repository.BuoyRepository,
+		repository.LocationRepository,
+		repository.ForecastDataRepository,
+	) {
+		reportRepo := &mockrepo.ReportRepo{}
+		buoyRepo := &mockrepo.BuoyRepo{
+			GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
+				return map[string]*model.BuoyLocation{}, nil
+			},
+		}
+		locationRepo := &mockrepo.LocationRepo{
+			GetLocationInfoFn: func(_ context.Context, _, _, _ string) (*model.LocationInfo, error) {
+				return &model.LocationInfo{
+					Latitude:  54.5,
+					Longitude: -8.5,
+				}, nil
+			},
+		}
+		return reportRepo, buoyRepo, locationRepo, &mockrepo.ForecastRepo{}
+	}
+
 	tests := []struct {
+		setupMock   matchingConditionsMocks
 		name        string
 		countryName string
 		regionName  string
 		spotName    string
 		daysBack    int
 		maxResults  int
-		setupMock   func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository, repository.ForecastDataRepository)
-		wantErr     bool
 		wantCount   int
+		wantErr     bool
 	}{
 		{
 			name:        "successful match",
@@ -329,91 +509,7 @@ func TestReportService_GetSurfReportsWithMatchingConditions(t *testing.T) {
 			spotName:    "Bundoran",
 			daysBack:    30,
 			maxResults:  10,
-			setupMock: func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository, repository.ForecastDataRepository) {
-				reportRepo := &mockrepo.ReportRepo{
-					GetBySpotAndTimeRangeFn: func(_ context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error) {
-						return []*model.SurfReport{
-							{
-								CountryRegionSpot: "Ireland_Donegal_Bundoran",
-								Timestamp:         time.Now().Add(-2 * time.Hour),
-								Time:              time.Now().Add(-2 * time.Hour).Format(time.RFC3339),
-							},
-						}, nil
-					},
-				}
-				buoyRepo := &mockrepo.BuoyRepo{
-					GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
-						return map[string]*model.BuoyLocation{
-							"buoy1": {
-								Name:      "buoy1",
-								Latitude:  54.5,
-								Longitude: -8.5,
-							},
-							"buoy2": {
-								Name:      "buoy2",
-								Latitude:  54.6,
-								Longitude: -8.6,
-							},
-						}, nil
-					},
-					GetLiveDataFn: func(_ context.Context, buoyName string) (*model.BuoyData, error) {
-						return &model.BuoyData{
-							BuoyName:      buoyName,
-							WaveHeight:    2.0,
-							WaveDirection: 180.0,
-							MaxPeriod:     12.0,
-						}, nil
-					},
-					GetBatchDataRangesFn: func(_ context.Context, requests []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {
-						return map[string][]*model.BuoyData{
-							"buoy1": {
-								{
-									BuoyName:      "buoy1",
-									Timestamp:      time.Now().Add(-2 * time.Hour),
-									WaveHeight:     2.1,
-									WaveDirection: 180.5,
-									MaxPeriod:     12.2,
-								},
-							},
-						}, nil
-					},
-				}
-				locationRepo := &mockrepo.LocationRepo{
-					GetLocationInfoFn: func(_ context.Context, country, region, spot string) (*model.LocationInfo, error) {
-						return &model.LocationInfo{
-							Latitude:  54.5,
-							Longitude: -8.5,
-						}, nil
-					},
-				}
-				forecastRepo := &mockrepo.ForecastRepo{
-					QuerySinceFn: func(_ context.Context, spotID string, since time.Time, limit int) ([]*model.ForecastDataPoint, error) {
-						return []*model.ForecastDataPoint{
-							{
-								SpotID:            spotID,
-								ForecastTimestamp: time.Now(),
-								Data: map[string]interface{}{
-									"windSpeed":    10.0,
-									"windDirection": 270.0,
-								},
-							},
-						}, nil
-					},
-					QueryBetweenFn: func(_ context.Context, spotID string, start, end time.Time, limit int) ([]*model.ForecastDataPoint, error) {
-						return []*model.ForecastDataPoint{
-							{
-								SpotID:            spotID,
-								ForecastTimestamp: time.Now().Add(-2 * time.Hour),
-								Data: map[string]interface{}{
-									"windSpeed":    10.5,
-									"windDirection": 270.5,
-								},
-							},
-						}, nil
-					},
-				}
-				return reportRepo, buoyRepo, locationRepo, forecastRepo
-			},
+			setupMock: buildMatchingConditionsSuccess,
 			wantErr:   false,
 			wantCount: 1,
 		},
@@ -424,42 +520,7 @@ func TestReportService_GetSurfReportsWithMatchingConditions(t *testing.T) {
 			spotName:    "Bundoran",
 			daysBack:    30,
 			maxResults:  10,
-			setupMock: func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository, repository.ForecastDataRepository) {
-				reportRepo := &mockrepo.ReportRepo{
-					GetBySpotAndTimeRangeFn: func(_ context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error) {
-						return []*model.SurfReport{}, nil
-					},
-				}
-				buoyRepo := &mockrepo.BuoyRepo{
-					GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
-						return map[string]*model.BuoyLocation{
-							"buoy1": {
-								Name:      "buoy1",
-								Latitude:  54.5,
-								Longitude: -8.5,
-							},
-						}, nil
-					},
-					GetLiveDataFn: func(_ context.Context, buoyName string) (*model.BuoyData, error) {
-						return &model.BuoyData{
-							BuoyName:      buoyName,
-							WaveHeight:    2.0,
-							WaveDirection: 180.0,
-							MaxPeriod:     12.0,
-						}, nil
-					},
-				}
-				locationRepo := &mockrepo.LocationRepo{
-					GetLocationInfoFn: func(_ context.Context, country, region, spot string) (*model.LocationInfo, error) {
-						return &model.LocationInfo{
-							Latitude:  54.5,
-							Longitude: -8.5,
-						}, nil
-					},
-				}
-				forecastRepo := &mockrepo.ForecastRepo{}
-				return reportRepo, buoyRepo, locationRepo, forecastRepo
-			},
+			setupMock: buildMatchingConditionsNoReports,
 			wantErr:   false,
 			wantCount: 0,
 		},
@@ -470,17 +531,7 @@ func TestReportService_GetSurfReportsWithMatchingConditions(t *testing.T) {
 			spotName:    "Bundoran",
 			daysBack:    30,
 			maxResults:  10,
-			setupMock: func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository, repository.ForecastDataRepository) {
-				reportRepo := &mockrepo.ReportRepo{}
-				buoyRepo := &mockrepo.BuoyRepo{}
-				locationRepo := &mockrepo.LocationRepo{
-					GetLocationInfoFn: func(_ context.Context, country, region, spot string) (*model.LocationInfo, error) {
-						return nil, errors.New("location not found")
-					},
-				}
-				forecastRepo := &mockrepo.ForecastRepo{}
-				return reportRepo, buoyRepo, locationRepo, forecastRepo
-			},
+			setupMock: buildMatchingConditionsLocationNotFound,
 			wantErr:   true,
 			wantCount: 0,
 		},
@@ -491,24 +542,7 @@ func TestReportService_GetSurfReportsWithMatchingConditions(t *testing.T) {
 			spotName:    "Bundoran",
 			daysBack:    30,
 			maxResults:  10,
-			setupMock: func() (repository.ReportRepository, repository.BuoyRepository, repository.LocationRepository, repository.ForecastDataRepository) {
-				reportRepo := &mockrepo.ReportRepo{}
-				buoyRepo := &mockrepo.BuoyRepo{
-					GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
-						return map[string]*model.BuoyLocation{}, nil
-					},
-				}
-				locationRepo := &mockrepo.LocationRepo{
-					GetLocationInfoFn: func(_ context.Context, country, region, spot string) (*model.LocationInfo, error) {
-						return &model.LocationInfo{
-							Latitude:  54.5,
-							Longitude: -8.5,
-						}, nil
-					},
-				}
-				forecastRepo := &mockrepo.ForecastRepo{}
-				return reportRepo, buoyRepo, locationRepo, forecastRepo
-			},
+			setupMock: buildMatchingConditionsNoBuoys,
 			wantErr:   true,
 			wantCount: 0,
 		},
@@ -568,12 +602,12 @@ func TestReportService_calculateBuoyConditionSimilarity(t *testing.T) {
 	service := &ReportService{}
 
 	tests := []struct {
+		buoyData    map[string]interface{}
 		name        string
 		predHeight  float64
 		predDir     float64
 		predPeriod  float64
-		buoyData    map[string]interface{}
-		wantSimilar bool // Similarity > 0.7
+		wantSimilar bool
 	}{
 		{
 			name:       "exact match",
@@ -660,12 +694,12 @@ func TestReportService_calculateDistance(t *testing.T) {
 	service := &ReportService{}
 
 	tests := []struct {
-		name     string
-		lat1     float64
-		lon1     float64
-		lat2     float64
-		lon2     float64
-		wantDist float64 // Approximate distance in meters
+		name      string
+		lat1      float64
+		lon1      float64
+		lat2      float64
+		lon2      float64
+		wantDist  float64 // Approximate distance in meters
 		tolerance float64
 	}{
 		{
@@ -706,13 +740,13 @@ func TestReportService_calculateBearing(t *testing.T) {
 	service := &ReportService{}
 
 	tests := []struct {
-		name     string
-		lat1     float64
-		lon1     float64
-		lat2     float64
-		lon2     float64
+		name        string
+		lat1        float64
+		lon1        float64
+		lat2        float64
+		lon2        float64
 		wantBearing float64 // Expected bearing in degrees
-		tolerance float64
+		tolerance   float64
 	}{
 		{
 			name:        "north",
@@ -756,12 +790,12 @@ func TestReportService_calculateWindSimilarity(t *testing.T) {
 	service := &ReportService{}
 
 	tests := []struct {
-		name              string
-		currentSpeed      float64
-		currentDirection  float64
-		historicalSpeed   float64
+		name                string
+		currentSpeed        float64
+		currentDirection    float64
+		historicalSpeed     float64
 		historicalDirection float64
-		wantSimilar       bool // Similarity > 0.5
+		wantSimilar         bool // Similarity > 0.5
 	}{
 		{
 			name:                "exact match",
@@ -818,10 +852,10 @@ func TestReportService_calculateWindSimilarity(t *testing.T) {
 
 func TestBuoyDataCache_getDataAtTime(t *testing.T) {
 	tests := []struct {
-		name       string
-		cacheData  map[string][]*model.BuoyData
-		buoyName   string
 		targetTime time.Time
+		cacheData  map[string][]*model.BuoyData
+		name       string
+		buoyName   string
 		wantData   bool
 	}{
 		{

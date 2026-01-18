@@ -103,10 +103,7 @@ func TestStreamRequest_Expiration_Validation(t *testing.T) {
 	expiredAt := now.Add(-1 * time.Hour).Unix() // Expired 1 hour ago
 
 	request := &model.StreamRequest{
-		SpotID:      "Ireland_Donegal_Bundoran",
-		RequestedBy: "test@example.com",
-		RequestedAt: now.Add(-2 * time.Hour),
-		Expiration:  expiredAt,
+		Expiration: expiredAt,
 	}
 
 	// Verify request is expired
@@ -121,10 +118,7 @@ func TestStreamRequest_NotExpired(t *testing.T) {
 	futureExpiration := now.Add(5 * time.Minute).Unix() // Expires in 5 minutes
 
 	request := &model.StreamRequest{
-		SpotID:      "Ireland_Donegal_Bundoran",
-		RequestedBy: "test@example.com",
-		RequestedAt: now,
-		Expiration:  futureExpiration,
+		Expiration: futureExpiration,
 	}
 
 	// Verify request is not expired

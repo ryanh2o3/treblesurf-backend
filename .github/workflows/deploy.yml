@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - initial-idiosyncratic-go-refactor
   workflow_dispatch:
     inputs:
       branch:

@@ -16,6 +16,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	testUserEmail     = "test@example.com"
+	testUserThemeDark = "dark"
+)
+
 func setupUserController(repo *mockrepo.UserRepo) *UserController {
 	svc, _ := service.NewUserService(repo)
 	return NewUserController(svc)
@@ -27,10 +32,10 @@ func TestUserController_SetUserTheme(t *testing.T) {
 			return &model.User{Email: email, Theme: "light"}, nil
 		},
 		UpdateThemeFn: func(_ context.Context, email, theme string) error {
-			if email != "test@example.com" {
+			if email != testUserEmail {
 				t.Errorf("unexpected email: %s", email)
 			}
-			if theme != "dark" {
+			if theme != testUserThemeDark {
 				t.Errorf("unexpected theme: %s", theme)
 			}
 			return nil
@@ -41,8 +46,8 @@ func TestUserController_SetUserTheme(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPut, "/setTheme?theme=dark", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Request = httptest.NewRequest(http.MethodPut, "/setTheme?theme="+testUserThemeDark, http.NoBody)
+	c.Set("email", testUserEmail)
 
 	controller.SetUserTheme(c)
 
@@ -66,7 +71,7 @@ func TestUserController_SetUserTheme_Unauthorized(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPut, "/setTheme?theme=dark", http.NoBody)
+	c.Request = httptest.NewRequest(http.MethodPut, "/setTheme?theme="+testUserThemeDark, http.NoBody)
 	// No email in context
 
 	controller.SetUserTheme(c)
@@ -88,7 +93,7 @@ func TestUserController_SetUserTheme_MissingTheme(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPut, "/setTheme", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testUserEmail)
 
 	controller.SetUserTheme(c)
 
@@ -99,7 +104,7 @@ func TestUserController_SetUserTheme_MissingTheme(t *testing.T) {
 
 func TestUserController_SetUserTheme_UserNotFound(t *testing.T) {
 	repo := &mockrepo.UserRepo{
-		GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+		GetByEmailFn: func(_ context.Context, _ string) (*model.User, error) {
 			return nil, repository.ErrNotFound
 		},
 	}
@@ -108,8 +113,8 @@ func TestUserController_SetUserTheme_UserNotFound(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPut, "/setTheme?theme=dark", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Request = httptest.NewRequest(http.MethodPut, "/setTheme?theme="+testUserThemeDark, http.NoBody)
+	c.Set("email", testUserEmail)
 
 	controller.SetUserTheme(c)
 
@@ -121,7 +126,7 @@ func TestUserController_SetUserTheme_UserNotFound(t *testing.T) {
 func TestUserController_GetUserTheme(t *testing.T) {
 	repo := &mockrepo.UserRepo{
 		GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
-			return &model.User{Email: email, Theme: "dark"}, nil
+			return &model.User{Email: email, Theme: testUserThemeDark}, nil
 		},
 	}
 
@@ -130,7 +135,7 @@ func TestUserController_GetUserTheme(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/getTheme", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testUserEmail)
 
 	controller.GetUserTheme(c)
 
@@ -143,8 +148,8 @@ func TestUserController_GetUserTheme(t *testing.T) {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
 
-	if response["theme"] != "dark" {
-		t.Errorf("expected theme 'dark', got %v", response["theme"])
+	if response["theme"] != testUserThemeDark {
+		t.Errorf("expected theme %q, got %v", testUserThemeDark, response["theme"])
 	}
 }
 
@@ -170,7 +175,7 @@ func TestUserController_DeleteMyAccount(t *testing.T) {
 			return &model.User{Email: email}, nil
 		},
 		DeleteFn: func(_ context.Context, email string) error {
-			if email != "test@example.com" {
+			if email != testUserEmail {
 				t.Errorf("unexpected email: %s", email)
 			}
 			return nil
@@ -182,7 +187,7 @@ func TestUserController_DeleteMyAccount(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodDelete, "/deleteMyAccount", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testUserEmail)
 
 	controller.DeleteMyAccount(c)
 
@@ -218,7 +223,7 @@ func TestUserController_DeleteMyAccount_Unauthorized(t *testing.T) {
 
 func TestUserController_DeleteMyAccount_UserNotFound(t *testing.T) {
 	repo := &mockrepo.UserRepo{
-		GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+		GetByEmailFn: func(_ context.Context, _ string) (*model.User, error) {
 			return nil, repository.ErrNotFound
 		},
 	}
@@ -228,7 +233,7 @@ func TestUserController_DeleteMyAccount_UserNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodDelete, "/deleteMyAccount", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testUserEmail)
 
 	controller.DeleteMyAccount(c)
 
@@ -242,7 +247,7 @@ func TestUserController_DeleteMyAccount_DeleteError(t *testing.T) {
 		GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
 			return &model.User{Email: email}, nil
 		},
-		DeleteFn: func(_ context.Context, email string) error {
+		DeleteFn: func(_ context.Context, _ string) error {
 			return errors.New("database error")
 		},
 	}
@@ -252,7 +257,7 @@ func TestUserController_DeleteMyAccount_DeleteError(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodDelete, "/deleteMyAccount", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testUserEmail)
 
 	controller.DeleteMyAccount(c)
 

@@ -16,6 +16,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	testAPIKeyEmail       = "test@example.com"
+	testAPIKeyDescription = "Test API Key"
+)
+
 func setupAPIKeyController(repo *mockrepo.APIKeyRepo) *APIKeyController {
 	svc, _ := service.NewAPIKeyService(repo)
 	return NewAPIKeyController(svc)
@@ -26,10 +31,10 @@ func TestAPIKeyController_CreateAPIKeyHandler(t *testing.T) {
 
 	repo := &mockrepo.APIKeyRepo{
 		CreateFn: func(_ context.Context, key *model.APIKey) error {
-			if key.CreatedBy != "test@example.com" {
+			if key.CreatedBy != testAPIKeyEmail {
 				t.Errorf("unexpected created by: %s", key.CreatedBy)
 			}
-			if key.Description != "Test API Key" {
+			if key.Description != testAPIKeyDescription {
 				t.Errorf("unexpected description: %s", key.Description)
 			}
 			return nil
@@ -39,7 +44,7 @@ func TestAPIKeyController_CreateAPIKeyHandler(t *testing.T) {
 	controller := setupAPIKeyController(repo)
 
 	requestData := map[string]interface{}{
-		"description": "Test API Key",
+		"description": testAPIKeyDescription,
 		"scopes":      []string{"stream", "read"},
 		"expiry_days": 30,
 	}
@@ -49,7 +54,7 @@ func TestAPIKeyController_CreateAPIKeyHandler(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/apiKeys", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 
 	controller.CreateAPIKeyHandler(c)
 
@@ -71,8 +76,8 @@ func TestAPIKeyController_CreateAPIKeyHandler(t *testing.T) {
 		t.Fatal("expected key data in response")
 	}
 
-	if keyData["description"] != "Test API Key" {
-		t.Errorf("expected description 'Test API Key', got %v", keyData["description"])
+	if keyData["description"] != testAPIKeyDescription {
+		t.Errorf("expected description %q, got %v", testAPIKeyDescription, keyData["description"])
 	}
 
 	if keyData["key_value"] == nil || keyData["key_value"] == "" {
@@ -87,7 +92,7 @@ func TestAPIKeyController_CreateAPIKeyHandler_Unauthorized(t *testing.T) {
 	controller := setupAPIKeyController(repo)
 
 	requestData := map[string]interface{}{
-		"description": "Test API Key",
+		"description": testAPIKeyDescription,
 		"scopes":      []string{"stream"},
 	}
 
@@ -114,7 +119,7 @@ func TestAPIKeyController_CreateAPIKeyHandler_InvalidJSON(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/apiKeys", bytes.NewBufferString("invalid json"))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 
 	controller.CreateAPIKeyHandler(c)
 
@@ -130,7 +135,7 @@ func TestAPIKeyController_CreateAPIKeyHandler_MissingFields(t *testing.T) {
 	controller := setupAPIKeyController(repo)
 
 	requestData := map[string]interface{}{
-		"description": "Test API Key",
+		"description": testAPIKeyDescription,
 		// Missing scopes
 	}
 
@@ -139,7 +144,7 @@ func TestAPIKeyController_CreateAPIKeyHandler_MissingFields(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/apiKeys", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 
 	controller.CreateAPIKeyHandler(c)
 
@@ -158,7 +163,7 @@ func TestAPIKeyController_ListAPIKeysHandler(t *testing.T) {
 				{
 					KeyID:       "key_123",
 					Description: "Test Key 1",
-					CreatedBy:   "test@example.com",
+					CreatedBy:   testAPIKeyEmail,
 					CreatedAt:   now,
 					ExpiresAt:   now.Add(30 * 24 * time.Hour),
 					Scopes:      []string{"stream"},
@@ -174,7 +179,7 @@ func TestAPIKeyController_ListAPIKeysHandler(t *testing.T) {
 				{
 					KeyID:       "key_789",
 					Description: "Test Key 3",
-					CreatedBy:   "test@example.com",
+					CreatedBy:   testAPIKeyEmail,
 					CreatedAt:   now,
 					ExpiresAt:   now.Add(90 * 24 * time.Hour),
 					Scopes:      []string{"read", "write"},
@@ -188,7 +193,7 @@ func TestAPIKeyController_ListAPIKeysHandler(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/apiKeys", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 
 	controller.ListAPIKeysHandler(c)
 
@@ -206,7 +211,7 @@ func TestAPIKeyController_ListAPIKeysHandler(t *testing.T) {
 		t.Fatal("expected keys array in response")
 	}
 
-	// Should only return keys created by test@example.com (2 keys)
+	// Should only return keys created by testAPIKeyEmail (2 keys)
 	if len(keys) != 2 {
 		t.Fatalf("expected 2 keys, got %d", len(keys))
 	}
@@ -256,7 +261,7 @@ func TestAPIKeyController_RevokeAPIKeyHandler(t *testing.T) {
 			return []*model.APIKey{
 				{
 					KeyID:     keyToRevoke,
-					CreatedBy: "test@example.com",
+					CreatedBy: testAPIKeyEmail,
 					CreatedAt: now,
 				},
 			}, nil
@@ -274,7 +279,7 @@ func TestAPIKeyController_RevokeAPIKeyHandler(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodDelete, "/apiKeys/"+keyToRevoke, http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 	c.Params = gin.Params{{Key: "keyID", Value: keyToRevoke}}
 
 	controller.RevokeAPIKeyHandler(c)
@@ -320,7 +325,7 @@ func TestAPIKeyController_RevokeAPIKeyHandler_MissingKeyID(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodDelete, "/apiKeys/", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 	c.Params = gin.Params{}
 
 	controller.RevokeAPIKeyHandler(c)
@@ -344,7 +349,7 @@ func TestAPIKeyController_RevokeAPIKeyHandler_KeyNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodDelete, "/apiKeys/nonexistent_key", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 	c.Params = gin.Params{{Key: "keyID", Value: "nonexistent_key"}}
 
 	controller.RevokeAPIKeyHandler(c)
@@ -375,7 +380,7 @@ func TestAPIKeyController_RevokeAPIKeyHandler_OtherUserKey(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodDelete, "/apiKeys/key_123", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 	c.Params = gin.Params{{Key: "keyID", Value: "key_123"}}
 
 	controller.RevokeAPIKeyHandler(c)
@@ -392,7 +397,7 @@ func TestAPIKeyController_CreateAPIKeyHandler_InvalidEmailType(t *testing.T) {
 	controller := setupAPIKeyController(repo)
 
 	requestData := map[string]interface{}{
-		"description": "Test API Key",
+		"description": testAPIKeyDescription,
 		"scopes":      []string{"stream"},
 	}
 
@@ -421,7 +426,7 @@ func TestAPIKeyController_CreateAPIKeyHandler_StoreError(t *testing.T) {
 	controller := setupAPIKeyController(repo)
 
 	requestData := map[string]interface{}{
-		"description": "Test API Key",
+		"description": testAPIKeyDescription,
 		"scopes":      []string{"stream"},
 	}
 
@@ -430,7 +435,7 @@ func TestAPIKeyController_CreateAPIKeyHandler_StoreError(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/apiKeys", bytes.NewBuffer(jsonData))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 
 	controller.CreateAPIKeyHandler(c)
 
@@ -470,7 +475,7 @@ func TestAPIKeyController_ListAPIKeysHandler_ServiceError(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/apiKeys", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 
 	controller.ListAPIKeysHandler(c)
 
@@ -507,7 +512,7 @@ func TestAPIKeyController_RevokeAPIKeyHandler_ServiceError(t *testing.T) {
 			return []*model.APIKey{
 				{
 					KeyID:     "key_123",
-					CreatedBy: "test@example.com",
+					CreatedBy: testAPIKeyEmail,
 					CreatedAt: now,
 				},
 			}, nil
@@ -521,7 +526,7 @@ func TestAPIKeyController_RevokeAPIKeyHandler_ServiceError(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodDelete, "/apiKeys/key_123", http.NoBody)
-	c.Set("email", "test@example.com")
+	c.Set("email", testAPIKeyEmail)
 	c.Params = gin.Params{{Key: "keyID", Value: "key_123"}}
 
 	controller.RevokeAPIKeyHandler(c)

@@ -123,7 +123,7 @@ func TestAPIKeyItem_ScopesHandling(t *testing.T) {
 	item = apiKeyItemFromModel(apiKey)
 	convertedKey = item.toModel()
 
-	if convertedKey.Scopes != nil && len(convertedKey.Scopes) != 0 {
+	if len(convertedKey.Scopes) != 0 {
 		t.Errorf("expected nil or empty scopes, got %v", convertedKey.Scopes)
 	}
 }

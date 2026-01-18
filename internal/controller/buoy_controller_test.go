@@ -19,7 +19,7 @@ import (
 
 const (
 	testBuoyNameM4 = "M4"
-	testRegion     = "Atlantic"
+	buoyTestRegion     = "Atlantic"
 )
 
 func TestMain(m *testing.M) {
@@ -97,8 +97,8 @@ func TestBuoyController_GetRegionBuoys(t *testing.T) {
 	repo := &mockrepo.BuoyRepo{
 		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
 			return map[string]*model.BuoyLocation{
-				testBuoyNameM4: {Name: testBuoyNameM4, Region: testRegion, Latitude: 51.0, Longitude: -10.0},
-				"M5":           {Name: "M5", Region: testRegion, Latitude: 51.5, Longitude: -9.5},
+				testBuoyNameM4: {Name: testBuoyNameM4, Region: buoyTestRegion, Latitude: 51.0, Longitude: -10.0},
+				"M5":           {Name: "M5", Region: buoyTestRegion, Latitude: 51.5, Longitude: -9.5},
 			}, nil
 		},
 	}
@@ -129,7 +129,7 @@ func TestBuoyController_GetRegionBuoys_NotFound(t *testing.T) {
 	repo := &mockrepo.BuoyRepo{
 		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
 			return map[string]*model.BuoyLocation{
-				testBuoyNameM4: {Name: testBuoyNameM4, Region: testRegion},
+				testBuoyNameM4: {Name: testBuoyNameM4, Region: buoyTestRegion},
 			}, nil
 		},
 	}
@@ -199,7 +199,7 @@ func TestBuoyController_BuoyLocationInfo(t *testing.T) {
 			return map[string]*model.BuoyLocation{
 				testBuoyNameM4: {
 					Name:      testBuoyNameM4,
-					Region:    testRegion,
+					Region:    buoyTestRegion,
 					Country:   "Ireland",
 					Latitude:  51.0,
 					Longitude: -10.0,
@@ -236,7 +236,7 @@ func TestBuoyController_IndividualBuoyLocationInfo(t *testing.T) {
 			return map[string]*model.BuoyLocation{
 				testBuoyNameM4: {
 					Name:      testBuoyNameM4,
-					Region:    testRegion,
+					Region:    buoyTestRegion,
 					Country:   "Ireland",
 					Latitude:  51.0,
 					Longitude: -10.0,
@@ -271,9 +271,9 @@ func TestBuoyController_IndividualBuoyLocationInfo_WithRegion(t *testing.T) {
 	repo := &mockrepo.BuoyRepo{
 		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
 			return map[string]*model.BuoyLocation{
-				testRegion + "_" + testBuoyNameM4: {
+				buoyTestRegion + "_" + testBuoyNameM4: {
 					Name:      testBuoyNameM4,
-					Region:    testRegion,
+					Region:    buoyTestRegion,
 					Country:   "Ireland",
 					Latitude:  51.0,
 					Longitude: -10.0,
@@ -288,7 +288,7 @@ func TestBuoyController_IndividualBuoyLocationInfo_WithRegion(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(
 		http.MethodGet,
-		fmt.Sprintf("/individualBuoyLocationInfo?buoyName=%s&region=%s", testBuoyNameM4, testRegion),
+		fmt.Sprintf("/individualBuoyLocationInfo?buoyName=%s&region=%s", testBuoyNameM4, buoyTestRegion),
 		http.NoBody,
 	)
 
