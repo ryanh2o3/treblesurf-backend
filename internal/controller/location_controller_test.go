@@ -244,3 +244,121 @@ func TestLocationController_GetLocationInfo_NotFound(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
 	}
 }
+
+func TestLocationController_GetSpots_ServiceError(t *testing.T) {
+	repo := &mockrepo.LocationRepo{
+		GetSpotsFn: func(_ context.Context, _, _ string) ([]*model.LocationInfo, error) {
+			return nil, context.DeadlineExceeded
+		},
+	}
+
+	controller := setupLocationController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/spots?country=Ireland&region=Donegal", http.NoBody)
+
+	controller.GetSpots(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+}
+
+func TestLocationController_GetLocationInfo_ServiceError(t *testing.T) {
+	repo := &mockrepo.LocationRepo{
+		GetLocationInfoFn: func(_ context.Context, _, _, _ string) (*model.LocationInfo, error) {
+			return nil, context.DeadlineExceeded
+		},
+	}
+
+	controller := setupLocationController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/locationInfo?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+
+	controller.GetLocationInfo(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+}
+
+func TestLocationController_GetLocationInfo_MissingParams(t *testing.T) {
+	repo := &mockrepo.LocationRepo{}
+	controller := setupLocationController(repo)
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"missing country", "/locationInfo?region=Donegal&spot=Bundoran"},
+		{"missing region", "/locationInfo?country=Ireland&spot=Bundoran"},
+		{"missing spot", "/locationInfo?country=Ireland&region=Donegal"},
+		{"missing all", "/locationInfo"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, tt.url, http.NoBody)
+
+			controller.GetLocationInfo(c)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+			}
+		})
+	}
+}
+
+func TestLocationController_GetCoordinates_ServiceError(t *testing.T) {
+	repo := &mockrepo.LocationRepo{
+		GetCoordinatesFn: func(_ context.Context, _, _, _ string) (float64, float64, error) {
+			return 0, 0, context.DeadlineExceeded
+		},
+	}
+
+	controller := setupLocationController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/coordinates?country=Ireland&region=Donegal&spot=Bundoran", http.NoBody)
+
+	controller.GetCoordinates(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+}
+
+func TestLocationController_GetCoordinates_MissingParams(t *testing.T) {
+	repo := &mockrepo.LocationRepo{}
+	controller := setupLocationController(repo)
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"missing country", "/coordinates?region=Donegal&spot=Bundoran"},
+		{"missing region", "/coordinates?country=Ireland&spot=Bundoran"},
+		{"missing spot", "/coordinates?country=Ireland&region=Donegal"},
+		{"missing all", "/coordinates"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, tt.url, http.NoBody)
+
+			controller.GetCoordinates(c)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+			}
+		})
+	}
+}

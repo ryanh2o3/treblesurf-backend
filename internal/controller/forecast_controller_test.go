@@ -165,3 +165,84 @@ func TestForecastController_GetRegionForecast(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 }
+
+func TestForecastController_GetBeforeAfterTides(t *testing.T) {
+	controller := setupForecastController(nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/beforeAfterTides?locationName=Bundoran", http.NoBody)
+
+	controller.GetBeforeAfterTides(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if response["prevTide"] == nil || response["nextTide"] == nil {
+		t.Error("expected prevTide and nextTide in response")
+	}
+}
+
+func TestForecastController_GetDayTides(t *testing.T) {
+	controller := setupForecastController(nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/dayTides/Bundoran/2024-01-15", http.NoBody)
+	c.Params = []gin.Param{{Key: "startDay", Value: "2024-01-15"}}
+
+	controller.GetDayTides(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+}
+
+func TestForecastController_CompareSpot(t *testing.T) {
+	t.Run("both nil returns false", func(t *testing.T) {
+		result := compareSpot(nil, nil)
+		if result {
+			t.Error("expected false when both are nil")
+		}
+	})
+
+	t.Run("first nil returns false", func(t *testing.T) {
+		b := &model.Forecast{CountryRegionSpot: "Ireland_Donegal_Bundoran"}
+		result := compareSpot(nil, b)
+		if result {
+			t.Error("expected false when first is nil")
+		}
+	})
+
+	t.Run("second nil returns true", func(t *testing.T) {
+		a := &model.Forecast{CountryRegionSpot: "Ireland_Donegal_Bundoran"}
+		result := compareSpot(a, nil)
+		if !result {
+			t.Error("expected true when second is nil")
+		}
+	})
+
+	t.Run("a < b returns true", func(t *testing.T) {
+		a := &model.Forecast{CountryRegionSpot: "Ireland_Donegal_Bundoran"}
+		b := &model.Forecast{CountryRegionSpot: "Ireland_Donegal_Rossnowlagh"}
+		result := compareSpot(a, b)
+		if !result {
+			t.Error("expected true when a < b")
+		}
+	})
+
+	t.Run("a > b returns false", func(t *testing.T) {
+		a := &model.Forecast{CountryRegionSpot: "Ireland_Donegal_Rossnowlagh"}
+		b := &model.Forecast{CountryRegionSpot: "Ireland_Donegal_Bundoran"}
+		result := compareSpot(a, b)
+		if result {
+			t.Error("expected false when a > b")
+		}
+	})
+}

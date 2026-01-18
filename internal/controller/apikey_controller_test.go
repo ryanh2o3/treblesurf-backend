@@ -384,3 +384,149 @@ func TestAPIKeyController_RevokeAPIKeyHandler_OtherUserKey(t *testing.T) {
 		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusNotFound, w.Code, w.Body.String())
 	}
 }
+
+func TestAPIKeyController_CreateAPIKeyHandler_InvalidEmailType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &mockrepo.APIKeyRepo{}
+	controller := setupAPIKeyController(repo)
+
+	requestData := map[string]interface{}{
+		"description": "Test API Key",
+		"scopes":      []string{"stream"},
+	}
+
+	jsonData, _ := json.Marshal(requestData)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/apiKeys", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("email", 12345) // Invalid type
+
+	controller.CreateAPIKeyHandler(c)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, w.Code)
+	}
+}
+
+func TestAPIKeyController_CreateAPIKeyHandler_StoreError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &mockrepo.APIKeyRepo{
+		CreateFn: func(_ context.Context, _ *model.APIKey) error {
+			return context.DeadlineExceeded
+		},
+	}
+	controller := setupAPIKeyController(repo)
+
+	requestData := map[string]interface{}{
+		"description": "Test API Key",
+		"scopes":      []string{"stream"},
+	}
+
+	jsonData, _ := json.Marshal(requestData)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/apiKeys", bytes.NewBuffer(jsonData))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("email", "test@example.com")
+
+	controller.CreateAPIKeyHandler(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+}
+
+func TestAPIKeyController_ListAPIKeysHandler_InvalidEmailType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &mockrepo.APIKeyRepo{}
+	controller := setupAPIKeyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/apiKeys", http.NoBody)
+	c.Set("email", 12345) // Invalid type
+
+	controller.ListAPIKeysHandler(c)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, w.Code)
+	}
+}
+
+func TestAPIKeyController_ListAPIKeysHandler_ServiceError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &mockrepo.APIKeyRepo{
+		ListFn: func(_ context.Context) ([]*model.APIKey, error) {
+			return nil, context.DeadlineExceeded
+		},
+	}
+	controller := setupAPIKeyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/apiKeys", http.NoBody)
+	c.Set("email", "test@example.com")
+
+	controller.ListAPIKeysHandler(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+}
+
+func TestAPIKeyController_RevokeAPIKeyHandler_InvalidEmailType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &mockrepo.APIKeyRepo{}
+	controller := setupAPIKeyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/apiKeys/key_123", http.NoBody)
+	c.Set("email", 12345) // Invalid type
+	c.Params = gin.Params{{Key: "keyID", Value: "key_123"}}
+
+	controller.RevokeAPIKeyHandler(c)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, w.Code)
+	}
+}
+
+func TestAPIKeyController_RevokeAPIKeyHandler_ServiceError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	now := time.Now()
+	repo := &mockrepo.APIKeyRepo{
+		ListFn: func(_ context.Context) ([]*model.APIKey, error) {
+			return []*model.APIKey{
+				{
+					KeyID:     "key_123",
+					CreatedBy: "test@example.com",
+					CreatedAt: now,
+				},
+			}, nil
+		},
+		RevokeFn: func(_ context.Context, _ string) error {
+			return context.DeadlineExceeded
+		},
+	}
+	controller := setupAPIKeyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/apiKeys/key_123", http.NoBody)
+	c.Set("email", "test@example.com")
+	c.Params = gin.Params{{Key: "keyID", Value: "key_123"}}
+
+	controller.RevokeAPIKeyHandler(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+}

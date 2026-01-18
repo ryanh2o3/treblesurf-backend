@@ -2,7 +2,26 @@ package service
 
 import (
 	"testing"
+
+	mockrepo "treblesurf-backend/internal/repository/mock"
 )
+
+func TestNewReportService(t *testing.T) {
+	service := NewReportService(
+		&mockrepo.MediaRepo{},
+		&mockrepo.ReportRepo{},
+		&mockrepo.BuoyRepo{},
+		&mockrepo.LocationRepo{},
+		&mockrepo.ForecastRepo{},
+		nil, // rekognitionClient
+		&UserService{},
+		&WebSocketService{},
+	)
+
+	if service == nil {
+		t.Fatal("expected non-nil service")
+	}
+}
 
 func TestReportService_IsValidSurfSize(t *testing.T) {
 	service := &ReportService{}

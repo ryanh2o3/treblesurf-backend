@@ -135,6 +135,59 @@ func TestAPIKeyService_RevokeAPIKey(t *testing.T) {
 	}
 }
 
+func TestAPIKeyService_ListAPIKeys(t *testing.T) {
+	ctx := context.Background()
+	allKeys := []*model.APIKey{
+		{KeyID: "key1", CreatedBy: "user1@example.com"},
+		{KeyID: "key2", CreatedBy: "user2@example.com"},
+		{KeyID: "key3", CreatedBy: "user1@example.com"},
+	}
+	repo := &mockrepo.APIKeyRepo{
+		ListFn: func(_ context.Context) ([]*model.APIKey, error) {
+			return allKeys, nil
+		},
+	}
+
+	service, err := NewAPIKeyService(repo)
+	if err != nil {
+		t.Fatalf("unexpected error creating service: %v", err)
+	}
+
+	// Filter by user1@example.com
+	got, err := service.ListAPIKeys(ctx, "user1@example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 keys for user1, got %d", len(got))
+	}
+
+	// Verify all returned keys belong to user1
+	for _, key := range got {
+		if key.CreatedBy != "user1@example.com" {
+			t.Fatalf("expected key created by user1@example.com, got %s", key.CreatedBy)
+		}
+	}
+
+	// Filter by user2@example.com
+	got, err = service.ListAPIKeys(ctx, "user2@example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 key for user2, got %d", len(got))
+	}
+
+	// Filter by non-existent user
+	got, err = service.ListAPIKeys(ctx, "nonexistent@example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 keys for nonexistent user, got %d", len(got))
+	}
+}
+
 func TestNewAPIKeyService_NilRepository_ReturnsError(t *testing.T) {
 	_, err := NewAPIKeyService(nil)
 	if err == nil {

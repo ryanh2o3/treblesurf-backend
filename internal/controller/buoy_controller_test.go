@@ -229,3 +229,209 @@ func TestBuoyController_BuoyLocationInfo(t *testing.T) {
 		t.Fatalf("expected 1 location, got %d", len(response))
 	}
 }
+
+func TestBuoyController_IndividualBuoyLocationInfo(t *testing.T) {
+	repo := &mockrepo.BuoyRepo{
+		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
+			return map[string]*model.BuoyLocation{
+				testBuoyNameM4: {
+					Name:      testBuoyNameM4,
+					Region:    testRegion,
+					Country:   "Ireland",
+					Latitude:  51.0,
+					Longitude: -10.0,
+				},
+			}, nil
+		},
+	}
+
+	controller := setupBuoyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/individualBuoyLocationInfo?buoyName=%s", testBuoyNameM4), http.NoBody)
+
+	controller.IndividualBuoyLocationInfo(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response buoyLocationResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if response.Name != testBuoyNameM4 {
+		t.Fatalf("expected buoy name %s, got %s", testBuoyNameM4, response.Name)
+	}
+}
+
+func TestBuoyController_IndividualBuoyLocationInfo_WithRegion(t *testing.T) {
+	repo := &mockrepo.BuoyRepo{
+		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
+			return map[string]*model.BuoyLocation{
+				testRegion + "_" + testBuoyNameM4: {
+					Name:      testBuoyNameM4,
+					Region:    testRegion,
+					Country:   "Ireland",
+					Latitude:  51.0,
+					Longitude: -10.0,
+				},
+			}, nil
+		},
+	}
+
+	controller := setupBuoyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/individualBuoyLocationInfo?buoyName=%s&region=%s", testBuoyNameM4, testRegion),
+		http.NoBody,
+	)
+
+	controller.IndividualBuoyLocationInfo(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+}
+
+func TestBuoyController_IndividualBuoyLocationInfo_NotFound(t *testing.T) {
+	repo := &mockrepo.BuoyRepo{
+		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
+			return map[string]*model.BuoyLocation{}, nil
+		},
+	}
+
+	controller := setupBuoyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/individualBuoyLocationInfo?buoyName=Unknown", http.NoBody)
+
+	controller.IndividualBuoyLocationInfo(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestBuoyController_GetLast24HoursBuoyData(t *testing.T) {
+	repo := &mockrepo.BuoyRepo{
+		GetDataRangeFn: func(_ context.Context, buoyName string, _, _ time.Time) ([]*model.BuoyData, error) {
+			if buoyName != testBuoyNameM4 {
+				t.Fatalf("unexpected buoy name: %s", buoyName)
+			}
+			return []*model.BuoyData{
+				{BuoyName: buoyName, WaveHeight: 2.0, Timestamp: time.Now().Add(-12 * time.Hour)},
+				{BuoyName: buoyName, WaveHeight: 2.5, Timestamp: time.Now()},
+			}, nil
+		},
+	}
+
+	controller := setupBuoyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/getLast24HoursBuoyData?buoyName=%s", testBuoyNameM4), http.NoBody)
+
+	controller.GetLast24HoursBuoyData(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response []buoyDataResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if len(response) != 2 {
+		t.Fatalf("expected 2 data points, got %d", len(response))
+	}
+}
+
+func TestBuoyController_GetLast24HoursBuoyData_NotFound(t *testing.T) {
+	repo := &mockrepo.BuoyRepo{
+		GetDataRangeFn: func(_ context.Context, _ string, _, _ time.Time) ([]*model.BuoyData, error) {
+			return []*model.BuoyData{}, nil
+		},
+	}
+
+	controller := setupBuoyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/getLast24HoursBuoyData?buoyName=%s", testBuoyNameM4), http.NoBody)
+
+	controller.GetLast24HoursBuoyData(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestBuoyController_GetMultipleBuoyData(t *testing.T) {
+	repo := &mockrepo.BuoyRepo{
+		GetLiveDataFn: func(_ context.Context, buoyName string) (*model.BuoyData, error) {
+			return &model.BuoyData{
+				BuoyName:   buoyName,
+				WaveHeight: 2.5,
+				Timestamp:  time.Now(),
+			}, nil
+		},
+	}
+
+	controller := setupBuoyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/getMultipleBuoyData?buoys=M4,M5,Blackstones", http.NoBody)
+
+	controller.GetMultipleBuoyData(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response []buoyDataResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if len(response) != 3 {
+		t.Fatalf("expected 3 data points, got %d", len(response))
+	}
+}
+
+func TestBuoyController_GetMultipleBuoyData_EmptyQuery(t *testing.T) {
+	repo := &mockrepo.BuoyRepo{
+		GetLiveDataFn: func(_ context.Context, _ string) (*model.BuoyData, error) {
+			return nil, nil
+		},
+	}
+
+	controller := setupBuoyController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/getMultipleBuoyData?buoys=", http.NoBody)
+
+	controller.GetMultipleBuoyData(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response []buoyDataResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if len(response) != 0 {
+		t.Fatalf("expected empty response, got %d items", len(response))
+	}
+}
