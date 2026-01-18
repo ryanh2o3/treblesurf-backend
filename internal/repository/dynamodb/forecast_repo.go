@@ -401,8 +401,14 @@ func forecastFromData(
 	}
 
 	date := parseForecastDate(mapString(item.Data, "date"), dateForecastedFor, item.ForecastTimestamp)
+	hour := mapInt(item.Data, "hour")
+	if hour == 0 && !date.IsZero() {
+		hour = date.Hour()
+	}
 
 	return &model.Forecast{
+		ForecastTimestamp: item.ForecastTimestamp,
+		SpotID:            chooseString(stringValue(raw["spot_id"]), item.SpotID),
 		CountryRegionSpot: countryRegionSpot,
 		ForecastDate:      chooseString(forecastDate, date.Format("2006-01-02")),
 		Date:              date,
@@ -412,7 +418,7 @@ func forecastFromData(
 		Spot:              spot,
 		DateForecastedFor: dateForecastedFor,
 		Location:          mapString(item.Data, "location"),
-		Hour:              mapInt(item.Data, "hour"),
+		Hour:              hour,
 		WindSpeed:         mapFloat(item.Data, "wind_speed", "windSpeed"),
 		WindDirection:     mapFloat(item.Data, "wind_direction", "windDirection"),
 		WaveHeight:        mapFloat(item.Data, "wave_height", "waveHeight", "swellHeight"),
@@ -420,6 +426,7 @@ func forecastFromData(
 		MaxPeriod:         mapFloat(item.Data, "max_period", "maxPeriod"),
 		WaveDirection:     mapFloat(item.Data, "wave_direction", "waveDirection", "swellDirection"),
 		Temperature:       mapFloat(item.Data, "temperature", "waterTemperature"),
+		Data:              item.Data,
 	}
 }
 
