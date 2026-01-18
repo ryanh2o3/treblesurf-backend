@@ -23,7 +23,7 @@ func setupSwellPredictionController(repo *mockrepo.SwellPredictionRepo) *SwellPr
 func TestSwellPredictionController_GetSpotSwellPrediction(t *testing.T) {
 	repo := &mockrepo.SwellPredictionRepo{
 		GetSpotPredictionsFn: func(_ context.Context, spotID string, _ time.Time, _ int) ([]model.SwellPrediction, error) {
-			if spotID != "Ireland_Donegal_Bundoran" {
+			if spotID != "Ireland#Donegal#Bundoran" {
 				t.Errorf("unexpected spot ID: %s", spotID)
 			}
 			return []model.SwellPrediction{
@@ -104,10 +104,14 @@ func TestSwellPredictionController_GetSpotSwellPrediction_NotFound(t *testing.T)
 
 func TestSwellPredictionController_GetListSpotsSwellPrediction(t *testing.T) {
 	repo := &mockrepo.SwellPredictionRepo{
-		GetSpotPredictionsFn: func(_ context.Context, spotID string, _ time.Time, _ int) ([]model.SwellPrediction, error) {
-			return []model.SwellPrediction{
-				{SpotID: spotID, Data: map[string]interface{}{"wave_height": 2.5}},
-			}, nil
+		GetListSpotsPredictionsFn: func(_ context.Context, spotIDs []string, _ time.Time, _ int) ([][]model.SwellPrediction, error) {
+			result := make([][]model.SwellPrediction, len(spotIDs))
+			for i, spotID := range spotIDs {
+				result[i] = []model.SwellPrediction{
+					{SpotID: spotID, Data: map[string]interface{}{"wave_height": 2.5}},
+				}
+			}
+			return result, nil
 		},
 	}
 
@@ -162,7 +166,7 @@ func TestSwellPredictionController_GetRegionSwellPrediction(t *testing.T) {
 func TestSwellPredictionController_GetSpotSwellPredictionRange(t *testing.T) {
 	repo := &mockrepo.SwellPredictionRepo{
 		GetSpotPredictionRangeFn: func(_ context.Context, spotID string, start, end time.Time) ([]model.SwellPrediction, error) {
-			if spotID != "Ireland_Donegal_Bundoran" {
+			if spotID != "Ireland#Donegal#Bundoran" {
 				t.Errorf("unexpected spot ID: %s", spotID)
 			}
 			return []model.SwellPrediction{
@@ -175,7 +179,8 @@ func TestSwellPredictionController_GetSpotSwellPredictionRange(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/swellPredictionRange?country=Ireland&region=Donegal&spot=Bundoran&startTime=2024-01-01&endTime=2024-01-02", http.NoBody)
+	// Use the correct time format: 2006-01-02T15:00:00Z
+	c.Request = httptest.NewRequest(http.MethodGet, "/swellPredictionRange?country=Ireland&region=Donegal&spot=Bundoran&startTime=2024-01-01T00:00:00Z&endTime=2024-01-02T00:00:00Z", http.NoBody)
 
 	controller.GetSpotSwellPredictionRange(c)
 
@@ -230,9 +235,13 @@ func TestSwellPredictionController_GetSwellPredictionStatus(t *testing.T) {
 
 func TestSwellPredictionController_GetClosestAIPredictionForSpot(t *testing.T) {
 	repo := &mockrepo.SwellPredictionRepo{
-		GetSpotPredictionsFn: func(_ context.Context, spotID string, _ time.Time, _ int) ([]model.SwellPrediction, error) {
-			return []model.SwellPrediction{
-				{SpotID: spotID, Data: map[string]interface{}{"wave_height": 2.5}},
+		GetClosestPredictionFn: func(_ context.Context, spotID string, _ time.Time) (*model.SwellPrediction, error) {
+			if spotID != "Ireland#Donegal#Bundoran" {
+				t.Errorf("unexpected spot ID: %s", spotID)
+			}
+			return &model.SwellPrediction{
+				SpotID: spotID,
+				Data:   map[string]interface{}{"wave_height": 2.5},
 			}, nil
 		},
 	}
