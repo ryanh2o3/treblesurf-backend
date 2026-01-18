@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - attempt-local-fix
   workflow_dispatch:
     inputs:
       branch:
