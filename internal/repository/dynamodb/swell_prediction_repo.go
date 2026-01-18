@@ -369,8 +369,15 @@ func extractPrediction(
 
 func stringValue(value interface{}) string {
 	switch v := value.(type) {
+	case nil:
+		return ""
 	case string:
 		return v
+	case *string:
+		if v == nil {
+			return ""
+		}
+		return *v
 	case fmt.Stringer:
 		return v.String()
 	default:
