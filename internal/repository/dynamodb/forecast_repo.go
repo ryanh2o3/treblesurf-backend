@@ -2,8 +2,10 @@ package dynamodb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"treblesurf-backend/internal/model"
@@ -56,11 +58,11 @@ func (r *ForecastRepo) GetSpotForecast(
 
 	forecasts := make([]*model.Forecast, 0, len(result.Items))
 	for _, item := range result.Items {
-		var forecastRecord forecastItem
-		if err := dynamodbattribute.UnmarshalMap(item, &forecastRecord); err != nil {
-			return nil, fmt.Errorf("unmarshaling forecast: %w", err)
+		forecast, err := parseForecastItem(item, country, region, spot)
+		if err != nil {
+			return nil, err
 		}
-		forecasts = append(forecasts, forecastRecord.toModel())
+		forecasts = append(forecasts, forecast)
 	}
 
 	return forecasts, nil
@@ -96,12 +98,12 @@ func (r *ForecastRepo) GetCurrentConditions(
 		return nil, model.ErrForecastNotFound
 	}
 
-	var forecastRecord forecastItem
-	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &forecastRecord); err != nil {
-		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
+	forecast, err := parseForecastItem(result.Items[0], country, region, spot)
+	if err != nil {
+		return nil, err
 	}
 
-	return forecastRecord.toModel(), nil
+	return forecast, nil
 }
 
 func (r *ForecastRepo) GetForecastAtTime(
@@ -135,12 +137,12 @@ func (r *ForecastRepo) GetForecastAtTime(
 		return nil, model.ErrForecastNotFound
 	}
 
-	var forecastRecord forecastItem
-	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &forecastRecord); err != nil {
-		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
+	forecast, err := parseForecastItem(result.Items[0], country, region, spot)
+	if err != nil {
+		return nil, err
 	}
 
-	return forecastRecord.toModel(), nil
+	return forecast, nil
 }
 
 func (r *ForecastRepo) GetRegionForecast(
@@ -173,11 +175,11 @@ func (r *ForecastRepo) GetRegionForecast(
 
 	forecasts := make([]*model.Forecast, 0, len(result.Items))
 	for _, item := range result.Items {
-		var forecastRecord forecastItem
-		if err := dynamodbattribute.UnmarshalMap(item, &forecastRecord); err != nil {
-			return nil, fmt.Errorf("unmarshaling forecast: %w", err)
+		forecast, err := parseForecastItem(item, country, region, "")
+		if err != nil {
+			return nil, err
 		}
-		forecasts = append(forecasts, forecastRecord.toModel())
+		forecasts = append(forecasts, forecast)
 	}
 
 	return forecasts, nil
@@ -285,4 +287,259 @@ func parseForecastTimestamp(value string) (time.Time, error) {
 		return parsed.UTC(), nil
 	}
 	return time.Time{}, fmt.Errorf("unrecognized forecast timestamp: %s", value)
+}
+
+func parseForecastItem(
+	item map[string]*dynamodb.AttributeValue,
+	fallbackCountry, fallbackRegion, fallbackSpot string,
+) (*model.Forecast, error) {
+	var flat forecastItem
+	if err := dynamodbattribute.UnmarshalMap(item, &flat); err != nil {
+		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
+	}
+	if flat.isPopulated() {
+		return flat.toModel(), nil
+	}
+
+	var raw map[string]interface{}
+	if err := dynamodbattribute.UnmarshalMap(item, &raw); err != nil {
+		return flat.toModel(), nil
+	}
+
+	dataMap := extractForecastData(item, raw)
+	if len(dataMap) == 0 {
+		return flat.toModel(), nil
+	}
+
+	dataItem := forecastDataItem{
+		Data:              dataMap,
+		SpotID:            stringValue(raw["spot_id"]),
+		ForecastTimestamp: stringValue(raw["forecast_timestamp"]),
+	}
+
+	return forecastFromData(raw, dataItem, fallbackCountry, fallbackRegion, fallbackSpot), nil
+}
+
+func extractForecastData(
+	item map[string]*dynamodb.AttributeValue,
+	raw map[string]interface{},
+) map[string]interface{} {
+	for _, key := range []string{"data", "Data"} {
+		if attr, ok := item[key]; ok {
+			var data map[string]interface{}
+			if err := dynamodbattribute.Unmarshal(attr, &data); err == nil && len(data) > 0 {
+				return data
+			}
+		}
+	}
+
+	for _, key := range []string{"data", "Data"} {
+		if value, ok := raw[key]; ok {
+			switch v := value.(type) {
+			case map[string]interface{}:
+				if len(v) > 0 {
+					return v
+				}
+			case string:
+				var data map[string]interface{}
+				if err := json.Unmarshal([]byte(v), &data); err == nil && len(data) > 0 {
+					return data
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (f forecastItem) isPopulated() bool {
+	return f.CountryRegionSpot != "" ||
+		f.ForecastDate != "" ||
+		!f.Date.IsZero() ||
+		f.Conditions != "" ||
+		f.Country != "" ||
+		f.Region != "" ||
+		f.Spot != "" ||
+		f.DateForecastedFor != "" ||
+		f.Location != "" ||
+		f.Hour != 0 ||
+		f.WindSpeed != 0 ||
+		f.WindDirection != 0 ||
+		f.WaveHeight != 0 ||
+		f.WavePeriod != 0 ||
+		f.MaxPeriod != 0 ||
+		f.WaveDirection != 0 ||
+		f.Temperature != 0
+}
+
+func forecastFromData(
+	raw map[string]interface{},
+	item forecastDataItem,
+	fallbackCountry, fallbackRegion, fallbackSpot string,
+) *model.Forecast {
+	country := fallbackCountry
+	region := fallbackRegion
+	spot := fallbackSpot
+
+	if spotID := stringValue(raw["spot_id"]); spotID != "" {
+		if parsedCountry, parsedRegion, parsedSpot, ok := splitSpotID(spotID); ok {
+			country = chooseString(country, parsedCountry)
+			region = chooseString(region, parsedRegion)
+			spot = chooseString(spot, parsedSpot)
+		}
+	}
+
+	countryRegionSpot := stringValue(raw["country_region_spot"])
+	if countryRegionSpot == "" && country != "" && region != "" && spot != "" {
+		countryRegionSpot = fmt.Sprintf("%s_%s_%s", country, region, spot)
+	}
+
+	dateForecastedFor := mapString(item.Data, "dateForecastedFor", "date_forecasted_for")
+	forecastDate := stringValue(raw["ForecastDate"])
+	if forecastDate == "" {
+		forecastDate = mapString(item.Data, "forecast_date", "ForecastDate")
+	}
+
+	date := parseForecastDate(mapString(item.Data, "date"), dateForecastedFor, item.ForecastTimestamp)
+
+	return &model.Forecast{
+		CountryRegionSpot: countryRegionSpot,
+		ForecastDate:      chooseString(forecastDate, date.Format("2006-01-02")),
+		Date:              date,
+		Conditions:        mapString(item.Data, "conditions", "surfMessiness"),
+		Country:           country,
+		Region:            region,
+		Spot:              spot,
+		DateForecastedFor: dateForecastedFor,
+		Location:          mapString(item.Data, "location"),
+		Hour:              mapInt(item.Data, "hour"),
+		WindSpeed:         mapFloat(item.Data, "wind_speed", "windSpeed"),
+		WindDirection:     mapFloat(item.Data, "wind_direction", "windDirection"),
+		WaveHeight:        mapFloat(item.Data, "wave_height", "waveHeight", "swellHeight"),
+		WavePeriod:        mapFloat(item.Data, "wave_period", "wavePeriod", "swellPeriod"),
+		MaxPeriod:         mapFloat(item.Data, "max_period", "maxPeriod"),
+		WaveDirection:     mapFloat(item.Data, "wave_direction", "waveDirection", "swellDirection"),
+		Temperature:       mapFloat(item.Data, "temperature", "waterTemperature"),
+	}
+}
+
+func parseForecastDate(dateValue, dateForecastedFor, forecastTimestamp string) time.Time {
+	if parsed := parseTimeValue(dateValue); !parsed.IsZero() {
+		return parsed
+	}
+	if parsed := parseTimeValue(dateForecastedFor); !parsed.IsZero() {
+		return parsed
+	}
+	if forecastTimestamp != "" {
+		if parsed, err := parseForecastTimestamp(forecastTimestamp); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func parseTimeValue(value string) time.Time {
+	if value == "" {
+		return time.Time{}
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed.UTC()
+	}
+	if parsed, err := time.Parse("2006-01-02 15:04:05", value); err == nil {
+		return parsed.UTC()
+	}
+	if unixSeconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return time.Unix(unixSeconds, 0).UTC()
+	}
+	return time.Time{}
+}
+
+func splitSpotID(spotID string) (string, string, string, bool) {
+	parts := strings.SplitN(spotID, "#", 3)
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
+}
+
+func chooseString(primary, fallback string) string {
+	if primary != "" {
+		return primary
+	}
+	return fallback
+}
+
+func mapString(data map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := data[key]; ok {
+			if str := stringValue(value); str != "" {
+				return str
+			}
+		}
+	}
+	return ""
+}
+
+func mapFloat(data map[string]interface{}, keys ...string) float64 {
+	for _, key := range keys {
+		if value, ok := data[key]; ok {
+			if out, ok := floatValue(value); ok {
+				return out
+			}
+		}
+	}
+	return 0
+}
+
+func mapInt(data map[string]interface{}, keys ...string) int {
+	for _, key := range keys {
+		if value, ok := data[key]; ok {
+			if out, ok := intValue(value); ok {
+				return out
+			}
+		}
+	}
+	return 0
+}
+
+func floatValue(value interface{}) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case string:
+		if v == "" {
+			return 0, false
+		}
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
+}
+
+func intValue(value interface{}) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case float64:
+		return int(v), true
+	case string:
+		if v == "" {
+			return 0, false
+		}
+		if parsed, err := strconv.Atoi(v); err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
 }
