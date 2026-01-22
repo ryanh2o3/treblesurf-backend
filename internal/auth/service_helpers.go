@@ -67,18 +67,18 @@ func (s *Service) handleNewUser(ctx context.Context, email, name, picture, famil
 		return nil, err
 	}
 
-	s.logger.Info("created new user", slog.String("email", email))
+	slog.Info("created new user", slog.String("email", email))
 	return s.getUserByEmail(ctx, email)
 }
 
 // handleExistingUser updates last login and ensures UUID, returns updated user.
 func (s *Service) handleExistingUser(ctx context.Context, email string) (*User, error) {
 	if err := s.updateUserLastLogin(ctx, email); err != nil {
-		s.logger.Warn("error updating last login", slog.Any("error", err))
+		slog.Warn("error updating last login", slog.Any("error", err))
 	}
 
 	if err := s.ensureUserHasUUID(ctx, email); err != nil {
-		s.logger.Warn("error ensuring user has UUID", slog.Any("error", err))
+		slog.Warn("error ensuring user has UUID", slog.Any("error", err))
 	}
 
 	userData, err := s.getUserByEmail(ctx, email)
@@ -86,7 +86,7 @@ func (s *Service) handleExistingUser(ctx context.Context, email string) (*User, 
 		return nil, err
 	}
 
-	s.logger.Info("user logged in", slog.String("email", email))
+	slog.Info("user logged in", slog.String("email", email))
 	return userData, nil
 }
 
@@ -132,7 +132,7 @@ func (s *Service) createSession(email, csrfToken string, c *gin.Context) {
 
 	_, err = s.sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
 	if err != nil {
-		s.logger.Warn("error creating session", slog.Any("error", err))
+		slog.Warn("error creating session", slog.Any("error", err))
 	}
 }
 
@@ -198,12 +198,12 @@ func (s *Service) ensureUserUUID(ctx context.Context, userData *User, email stri
 	}
 
 	if err := s.ensureUserHasUUID(ctx, email); err != nil {
-		s.logger.Warn("error ensuring user has UUID", slog.Any("error", err))
+		slog.Warn("error ensuring user has UUID", slog.Any("error", err))
 	}
 
 	updatedUser, err := s.getUserByEmail(ctx, email)
 	if err != nil {
-		s.logger.Warn("error getting updated user data", slog.Any("error", err))
+		slog.Warn("error getting updated user data", slog.Any("error", err))
 		return userData
 	}
 

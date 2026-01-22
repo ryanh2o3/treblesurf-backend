@@ -3,7 +3,6 @@ package httphandler
 
 import (
 	"fmt"
-	"log/slog"
 
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/config"
@@ -129,7 +128,7 @@ func initAuthAndUserServices(
 	repos *containerRepositories,
 	services *containerServices,
 ) error {
-	authService, err := auth.NewService(appCfg, repos.userRepo, repos.sessionRepo, slog.Default())
+	authService, err := auth.NewService(appCfg, repos.userRepo, repos.sessionRepo)
 	if err != nil {
 		return fmt.Errorf("creating auth service: %w", err)
 	}

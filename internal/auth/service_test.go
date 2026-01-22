@@ -32,7 +32,7 @@ func TestGenerateCSRFToken(t *testing.T) {
 
 func TestNewService_NilDependencies(t *testing.T) {
 	t.Run("empty jwt secret", func(t *testing.T) {
-		_, err := NewService(&config.Config{}, nil, nil, nil)
+		_, err := NewService(&config.Config{}, nil, nil)
 		if err == nil {
 			t.Fatalf("expected error for empty jwt secret")
 		}
@@ -43,7 +43,7 @@ func TestNewService_NilDependencies(t *testing.T) {
 			Env:  config.EnvDevelopment,
 			Auth: config.AuthConfig{JWTSecret: "test-secret"},
 		}
-		_, err := NewService(cfg, nil, nil, nil)
+		_, err := NewService(cfg, nil, nil)
 		if err == nil {
 			t.Fatalf("expected error for nil user repository")
 		}

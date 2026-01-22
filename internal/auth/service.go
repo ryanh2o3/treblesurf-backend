@@ -72,7 +72,6 @@ type Service struct {
 	sessionRepo     repository.SessionRepository
 	sessionService  *sessions.Service
 	sessionStore    *store.DynamoDBStore
-	logger          *slog.Logger
 	googleClientIDs map[string]bool
 	jwtSecret       []byte
 	cookieSecure    bool
@@ -84,7 +83,6 @@ func NewService(
 	cfg *config.Config,
 	users repository.UserRepository,
 	sessionsRepo repository.SessionRepository,
-	logger *slog.Logger,
 ) (*Service, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config must be set")
@@ -98,15 +96,11 @@ func NewService(
 	if sessionsRepo == nil {
 		return nil, fmt.Errorf("session repository must be set")
 	}
-	if logger == nil {
-		logger = slog.Default()
-	}
 
 	service := &Service{
 		jwtSecret:       []byte(cfg.Auth.JWTSecret),
 		userRepo:        users,
 		sessionRepo:     sessionsRepo,
-		logger:          logger,
 		googleClientIDs: buildClientIDMap(cfg.Auth.GoogleClientIDs),
 		cookieSecure:    cfg.Auth.CookieSecure,
 		isDevelopment:   cfg.IsDevelopment(),
@@ -128,7 +122,7 @@ func (s *Service) initSessionService() error {
 	}
 
 	if err := sessionStore.EnableTTL(); err != nil {
-		s.logger.Warn("failed to enable TTL on sessions table", slog.Any("error", err))
+		slog.Warn("failed to enable TTL on sessions table", slog.Any("error", err))
 	}
 
 	authService, err := auth.New(auth.Options{
@@ -209,7 +203,7 @@ func (s *Service) ensureUserHasUUID(ctx context.Context, email string) error {
 		return fmt.Errorf("failed to update user with UUID: %w", err)
 	}
 
-	s.logger.Info("assigned UUID to user", slog.String("uuid", newUUID.String()), slog.String("email", email))
+	slog.Info("assigned UUID to user", slog.String("uuid", newUUID.String()), slog.String("email", email))
 	return nil
 }
 
@@ -310,12 +304,12 @@ func (s *Service) validateAndExtractGoogleClaims(
 
 	email, name, picture, familyName, givenName, err := extractUserClaims(payload)
 	if err != nil || email == "" {
-		s.logger.Warn("missing or invalid email claim in JWT")
+		slog.Warn("missing or invalid email claim in JWT")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token: missing email"})
 		return nil, "", "", "", "", ""
 	}
 
-	s.logger.Info("validated user email", slog.String("email", email))
+	slog.Info("validated user email", slog.String("email", email))
 	return payload, email, name, picture, familyName, givenName
 }
 
@@ -325,7 +319,7 @@ func (s *Service) processGoogleAuthUser(
 ) (authUser *User, authType string) {
 	existingUser, err := s.getUserByEmail(c.Request.Context(), email)
 	if err != nil {
-		s.logger.Error("error checking user", slog.Any("error", err))
+		slog.Error("error checking user", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return nil, ""
 	}
@@ -336,14 +330,14 @@ func (s *Service) processGoogleAuthUser(
 	if existingUser == nil {
 		finalUser, err = s.handleNewUser(c.Request.Context(), email, name, picture, familyName, givenName)
 		if err != nil {
-			s.logger.Error("error creating user", slog.Any("error", err))
+			slog.Error("error creating user", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return nil, ""
 		}
 	} else {
 		finalUser, err = s.handleExistingUser(c.Request.Context(), email)
 		if err != nil {
-			s.logger.Error("error handling existing user", slog.Any("error", err))
+			slog.Error("error handling existing user", slog.Any("error", err))
 		}
 		if finalUser != nil {
 			authType = finalUser.Theme
@@ -364,7 +358,7 @@ func (s *Service) ValidateTokenHandler(c *gin.Context) {
 	setCacheControlHeaders(c)
 
 	if s.isDevelopment {
-		s.logger.Info("development mode: returning mock user for validation")
+		slog.Info("development mode: returning mock user for validation")
 		c.JSON(http.StatusOK, gin.H{
 			"valid":     true,
 			"auth_type": "development",
@@ -407,7 +401,7 @@ func (s *Service) ValidateTokenHandler(c *gin.Context) {
 	userData = s.ensureUserUUID(c.Request.Context(), userData, email)
 	updateSessionLastActive(userSession, c)
 	if err := s.sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
-		s.logger.Warn("failed to extend user session", slog.Any("error", err))
+		slog.Warn("failed to extend user session", slog.Any("error", err))
 	}
 
 	c.JSON(http.StatusOK, buildValidateTokenResponse(userData, "session"))
@@ -438,7 +432,7 @@ func (s *Service) LogoutHandler(c *gin.Context) {
 		userSession, err := s.sessionService.GetUserSession(c.Request)
 		if err == nil && userSession != nil {
 			if err := s.sessionService.ClearUserSession(userSession, c.Writer); err != nil {
-				s.logger.Warn("failed to clear user session", slog.Any("error", err))
+				slog.Warn("failed to clear user session", slog.Any("error", err))
 			}
 		}
 	}
@@ -577,7 +571,7 @@ func (s *Service) GetWebSocketTokenHandler(c *gin.Context) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString(s.jwtSecret)
 	if err != nil {
-		s.logger.Error("failed to sign websocket token", slog.Any("error", err))
+		slog.Error("failed to sign websocket token", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
@@ -626,14 +620,14 @@ func (s *Service) SessionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userSession, err := s.sessionService.GetUserSession(c.Request)
 		if err != nil {
-			s.logger.Warn("error fetching session", slog.Any("error", err))
+			slog.Warn("error fetching session", slog.Any("error", err))
 		}
 
 		if userSession != nil {
 			c.Set("session", userSession)
 
 			if err := s.sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
-				s.logger.Warn("failed to extend user session", slog.Any("error", err))
+				slog.Warn("failed to extend user session", slog.Any("error", err))
 			}
 
 			var sessionData SessionJSON

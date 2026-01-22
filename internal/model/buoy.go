@@ -24,6 +24,7 @@ type BuoyData struct {
 
 type BuoyLocation struct {
 	Name      string  `json:"name"`
+	RegionBuoy string `json:"region_buoy,omitempty"`
 	Country   string  `json:"country"`
 	Region    string  `json:"region"`
 	Spot      string  `json:"spot"`

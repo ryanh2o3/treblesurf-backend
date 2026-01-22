@@ -19,6 +19,7 @@ type BuoyController struct {
 
 type buoyLocationResponse struct {
 	Name      string  `json:"name"`
+	RegionBuoy string `json:"region_buoy,omitempty"`
 	Region    string  `json:"region"`
 	Country   string  `json:"country"`
 	Spot      string  `json:"spot"`
@@ -235,6 +236,7 @@ func buoyLocationToResponse(name string, location *model.BuoyLocation) *buoyLoca
 		Region:    location.Region,
 		Country:   location.Country,
 		Spot:      location.Spot,
+		RegionBuoy: location.RegionBuoy,
 	}
 }
 

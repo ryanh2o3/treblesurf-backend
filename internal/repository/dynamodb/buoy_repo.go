@@ -52,12 +52,15 @@ func (r *BuoyRepo) GetLiveData(ctx context.Context, buoyName string) (*model.Buo
 		return nil, model.ErrBuoyDataNotFound
 	}
 
-	var dataRecord buoyDataItem
-	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &dataRecord); err != nil {
-		return nil, fmt.Errorf("unmarshaling buoy data: %w", err)
+	dataRecord, err := parseBuoyData(result.Items[0])
+	if err != nil {
+		return nil, err
+	}
+	if dataRecord == nil {
+		return nil, model.ErrBuoyDataNotFound
 	}
 
-	return dataRecord.toModel(), nil
+	return dataRecord, nil
 }
 
 func (r *BuoyRepo) GetDataAtTime(ctx context.Context, buoyName string, t time.Time) (*model.BuoyData, error) {
@@ -95,11 +98,13 @@ func (r *BuoyRepo) GetDataRange(ctx context.Context, buoyName string, start, end
 
 	data := make([]*model.BuoyData, 0, len(result.Items))
 	for _, item := range result.Items {
-		var entryRecord buoyDataItem
-		if err := dynamodbattribute.UnmarshalMap(item, &entryRecord); err != nil {
-			return nil, fmt.Errorf("unmarshaling buoy data: %w", err)
+		entryRecord, err := parseBuoyData(item)
+		if err != nil {
+			return nil, err
 		}
-		data = append(data, entryRecord.toModel())
+		if entryRecord != nil {
+			data = append(data, entryRecord)
+		}
 	}
 
 	return data, nil
@@ -150,17 +155,9 @@ func (r *BuoyRepo) GetLocations(ctx context.Context) (map[string]*model.BuoyLoca
 
 	locations := make(map[string]*model.BuoyLocation)
 	for _, item := range result.Items {
-		var locationRecord buoyLocationItem
-		if err := dynamodbattribute.UnmarshalMap(item, &locationRecord); err != nil {
-			return nil, fmt.Errorf("unmarshaling buoy location: %w", err)
-		}
-		locationModel := locationRecord.toModel()
-		key := locationModel.Name
-		if key == "" {
-			if regionBuoyAttr, ok := item["region_buoy"]; ok && regionBuoyAttr.S != nil {
-				parts := strings.Split(*regionBuoyAttr.S, "_")
-				key = parts[len(parts)-1]
-			}
+		locationModel, key, err := parseBuoyLocation(item)
+		if err != nil {
+			return nil, err
 		}
 		if key != "" {
 			locations[key] = locationModel
@@ -168,4 +165,140 @@ func (r *BuoyRepo) GetLocations(ctx context.Context) (map[string]*model.BuoyLoca
 	}
 
 	return locations, nil
+}
+
+func parseBuoyData(item map[string]*dynamodb.AttributeValue) (*model.BuoyData, error) {
+	var raw map[string]interface{}
+	if err := dynamodbattribute.UnmarshalMap(item, &raw); err != nil {
+		return nil, fmt.Errorf("unmarshaling buoy data: %w", err)
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	timestamp := parseBuoyTimestamp(raw)
+	buoyName := mapString(raw, "buoy_name", "BuoyName")
+	if buoyName == "" {
+		if regionBuoy := mapString(raw, "region_buoy", "RegionBuoy"); regionBuoy != "" {
+			buoyName = buoyNameFromRegionBuoy(regionBuoy)
+		}
+	}
+
+	return &model.BuoyData{
+		Timestamp:     timestamp,
+		BuoyName:      buoyName,
+		WaveHeight:    firstFloat(raw, "wave_height", "WaveHeight"),
+		WavePeriod:    firstFloat(raw, "wave_period", "WavePeriod"),
+		MaxPeriod:     firstFloat(raw, "max_period", "MaxPeriod"),
+		WaveDirection: firstFloat(raw, "wave_direction", "WaveDirection"),
+		WindSpeed:     firstFloat(raw, "wind_speed", "WindSpeed"),
+		WindDirection: firstFloat(raw, "wind_direction", "WindDirection"),
+		Temperature:   firstFloat(raw, "temperature", "Temperature"),
+		Pressure:      firstFloat(raw, "pressure", "Pressure"),
+	}, nil
+}
+
+func parseBuoyTimestamp(raw map[string]interface{}) time.Time {
+	timeValue := mapString(raw, "dataDateTime", "DataDateTime", "timestamp", "Timestamp")
+	if timeValue == "" {
+		return time.Time{}
+	}
+	if parsed, err := time.Parse(time.RFC3339, timeValue); err == nil {
+		return parsed.UTC()
+	}
+	if parsed, err := time.Parse("2006-01-02T15:04:05Z", timeValue); err == nil {
+		return parsed.UTC()
+	}
+	return time.Time{}
+}
+
+func parseBuoyLocation(item map[string]*dynamodb.AttributeValue) (*model.BuoyLocation, string, error) {
+	var raw map[string]interface{}
+	if err := dynamodbattribute.UnmarshalMap(item, &raw); err != nil {
+		return nil, "", fmt.Errorf("unmarshaling buoy location: %w", err)
+	}
+
+	regionBuoy := stringValue(raw["region_buoy"])
+	name := firstString(raw, "name", "Name")
+	if name == "" && regionBuoy != "" {
+		name = buoyNameFromRegionBuoy(regionBuoy)
+	}
+
+	region := firstString(raw, "region", "Region")
+	if region == "" && regionBuoy != "" {
+		region = buoyRegionFromRegionBuoy(regionBuoy)
+	}
+
+	country := firstString(raw, "country", "Country")
+	if country == "" && region != "" {
+		country = region
+	}
+
+	spot := firstString(raw, "spot", "Spot")
+	if spot == "" {
+		spot = name
+	}
+
+	latitude := firstFloat(raw, "latitude", "Latitude")
+	longitude := firstFloat(raw, "longitude", "Longitude")
+
+	location := &model.BuoyLocation{
+		Name:       name,
+		RegionBuoy: regionBuoy,
+		Country:    country,
+		Region:     region,
+		Spot:       spot,
+		Latitude:   latitude,
+		Longitude:  longitude,
+	}
+
+	key := name
+	if key == "" {
+		key = buoyNameFromRegionBuoy(regionBuoy)
+	}
+	return location, key, nil
+}
+
+func buoyNameFromRegionBuoy(regionBuoy string) string {
+	if regionBuoy == "" {
+		return ""
+	}
+	parts := strings.Split(regionBuoy, "_")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+func buoyRegionFromRegionBuoy(regionBuoy string) string {
+	if regionBuoy == "" {
+		return ""
+	}
+	parts := strings.SplitN(regionBuoy, "_", 2)
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
+}
+
+func firstString(values map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := values[key]; ok {
+			if str := stringValue(value); str != "" {
+				return str
+			}
+		}
+	}
+	return ""
+}
+
+func firstFloat(values map[string]interface{}, keys ...string) float64 {
+	for _, key := range keys {
+		if value, ok := values[key]; ok {
+			if out, ok := floatValue(value); ok {
+				return out
+			}
+		}
+	}
+	return 0
 }

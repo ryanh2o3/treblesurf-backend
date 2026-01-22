@@ -345,6 +345,7 @@ func (b *buoyDataItem) toModel() *model.BuoyData {
 
 type buoyLocationItem struct {
 	Name      string  `dynamodbav:"name"`
+	RegionBuoy string `dynamodbav:"region_buoy,omitempty"`
 	Country   string  `dynamodbav:"country"`
 	Region    string  `dynamodbav:"region"`
 	Spot      string  `dynamodbav:"spot"`
@@ -355,6 +356,7 @@ type buoyLocationItem struct {
 func (b *buoyLocationItem) toModel() *model.BuoyLocation {
 	return &model.BuoyLocation{
 		Name:      b.Name,
+		RegionBuoy: b.RegionBuoy,
 		Country:   b.Country,
 		Region:    b.Region,
 		Spot:      b.Spot,
