@@ -192,6 +192,7 @@ func RateLimitMiddlewareWithLimiter(limiter *rateLimiter) gin.HandlerFunc {
 type rateLimiter struct {
 	clients       map[string]*clientBucket
 	cleanupTicker *time.Ticker
+	done          chan struct{}
 	rps           int
 	mu            sync.Mutex
 	stopOnce      sync.Once
@@ -210,12 +211,18 @@ func newRateLimiter(rps int) *rateLimiter {
 		clients:       make(map[string]*clientBucket),
 		rps:           rps,
 		cleanupTicker: time.NewTicker(time.Minute),
+		done:          make(chan struct{}),
 	}
 
 	// Cleanup old entries periodically
 	go func() {
-		for range rl.cleanupTicker.C {
-			rl.cleanup()
+		for {
+			select {
+			case <-rl.done:
+				return
+			case <-rl.cleanupTicker.C:
+				rl.cleanup()
+			}
 		}
 	}()
 
@@ -224,6 +231,7 @@ func newRateLimiter(rps int) *rateLimiter {
 
 func (rl *rateLimiter) stop() {
 	rl.stopOnce.Do(func() {
+		close(rl.done)
 		if rl.cleanupTicker != nil {
 			rl.cleanupTicker.Stop()
 		}
