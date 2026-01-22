@@ -1,17 +1,29 @@
 package controller
 
 import (
-	"log"
+	"errors"
+	"log/slog"
 	"net/http"
+
+	"treblesurf-backend/internal/repository"
+	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-// This controller uses the shared service registry
-// Note: Session handlers (TerminateSessionHandler, GetUserSessionsHandler, GetWebSocketTokenHandler)
-// are implemented in internal/auth/service.go and routed from there
+// UserController handles user-related routes.
+type UserController struct {
+	users *service.UserService
+}
 
-func SetUserTheme(c *gin.Context) {
+func NewUserController(users *service.UserService) *UserController {
+	return &UserController{users: users}
+}
+
+// Note: Session handlers (TerminateSessionHandler, GetUserSessionsHandler, GetWebSocketTokenHandler)
+// are implemented in internal/auth/service.go and routed from there.
+
+func (uc *UserController) SetUserTheme(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -25,14 +37,18 @@ func SetUserTheme(c *gin.Context) {
 	}
 
 	// First check if the user exists
-	user, err := UserService.GetUserByEmail(emailStr)
+	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return
 	}
 
 	if user == nil {
-		log.Print("email address", emailStr)
+		slog.Info("email address", slog.String("email", emailStr))
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
@@ -42,7 +58,7 @@ func SetUserTheme(c *gin.Context) {
 		return
 	}
 
-	err = UserService.UpdateUserTheme(emailStr, theme)
+	err = uc.users.UpdateTheme(c.Request.Context(), emailStr, theme)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update theme"})
 		return
@@ -51,7 +67,7 @@ func SetUserTheme(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Theme updated successfully"})
 }
 
-func DeleteMyAccount(c *gin.Context) {
+func (uc *UserController) DeleteMyAccount(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -65,8 +81,12 @@ func DeleteMyAccount(c *gin.Context) {
 	}
 
 	// First check if the user exists
-	user, err := UserService.GetUserByEmail(emailStr)
+	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return
 	}
@@ -77,7 +97,7 @@ func DeleteMyAccount(c *gin.Context) {
 	}
 
 	// Delete the user account
-	err = UserService.DeleteUser(emailStr)
+	err = uc.users.Delete(c.Request.Context(), emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete account"})
 		return
@@ -92,7 +112,7 @@ func DeleteMyAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
 }
 
-func GetUserTheme(c *gin.Context) {
+func (uc *UserController) GetUserTheme(c *gin.Context) {
 	email, exists := c.Get("email")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -106,8 +126,12 @@ func GetUserTheme(c *gin.Context) {
 	}
 
 	// First check if the user exists
-	user, err := UserService.GetUserByEmail(emailStr)
+	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
 		return
 	}
@@ -119,4 +143,38 @@ func GetUserTheme(c *gin.Context) {
 
 	theme := user.Theme
 	c.JSON(http.StatusOK, gin.H{"theme": theme})
+}
+
+// GetUserPreferences returns basic user preference data for the iOS client.
+func (uc *UserController) GetUserPreferences(c *gin.Context) {
+	email, exists := c.Get("email")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+		return
+	}
+
+	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
+		return
+	}
+
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"theme": user.Theme,
+	})
 }

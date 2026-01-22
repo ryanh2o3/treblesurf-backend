@@ -3,16 +3,16 @@ package model
 import "time"
 
 type User struct {
-	UUID       string `json:"uuid" dynamodbav:"uuid"`
-	Email      string `json:"email" dynamodbav:"email"`
-	Name       string `json:"name" dynamodbav:"name"`
-	Picture    string `json:"picture" dynamodbav:"picture"`
-	FamilyName string `json:"family_name" dynamodbav:"family_name"`
-	GivenName  string `json:"given_name" dynamodbav:"given_name"`
-	CreatedAt  string `json:"created_at" dynamodbav:"created_at"`
-	LastLogin  string `json:"last_login" dynamodbav:"last_login"`
-	Theme      string `json:"theme" dynamodbav:"theme"`
-	Role       string `json:"role,omitempty" dynamodbav:"role,omitempty"`
+	UUID       string `json:"uuid"`
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+	Picture    string `json:"picture"`
+	FamilyName string `json:"family_name"`
+	GivenName  string `json:"given_name"`
+	CreatedAt  string `json:"created_at"`
+	LastLogin  string `json:"last_login"`
+	Theme      string `json:"theme"`
+	Role       string `json:"role,omitempty"`
 }
 
 type UserSession struct {

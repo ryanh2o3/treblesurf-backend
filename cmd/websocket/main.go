@@ -2,11 +2,10 @@
 package main
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
 	"os"
-	"treblesurf-backend/internal/service"
-	"treblesurf-backend/internal/storage"
+	"treblesurf-backend/internal/app"
+	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/websocket"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -16,31 +15,18 @@ import (
 var websocketHandler *websocket.Handler
 
 func initialize() error {
-	// Get configuration from environment
-	region := os.Getenv("AWS_REGION")
-	if region == "" {
-		region = "eu-west-1" // default
-	}
-
-	// Initialize storage
-	dbStorage, err := storage.NewDynamoDBStorage(region)
+	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("failed to initialize DynamoDB storage: %w", err)
+		return err
 	}
 
-	// Get JWT secret from environment
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		return fmt.Errorf("JWT_SECRET environment variable is required")
+	application, err := app.NewWebSocket(cfg)
+	if err != nil {
+		return err
 	}
 
-	// Initialize WebSocket service
-	websocketService := service.NewWebSocketService(dbStorage, []byte(jwtSecret))
-
-	// Initialize WebSocket handler
-	websocketHandler = websocket.NewHandler(websocketService)
-
-	log.Println("WebSocket handler initialized successfully")
+	websocketHandler = application.Handler()
+	slog.Info("websocket handler initialized")
 	return nil
 }
 
@@ -51,7 +37,8 @@ func Handler(req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxy
 
 func main() {
 	if err := initialize(); err != nil {
-		log.Fatal(err)
+		slog.Error("failed to initialize websocket handler", slog.Any("error", err))
+		os.Exit(1)
 	}
 	lambda.Start(Handler)
 }

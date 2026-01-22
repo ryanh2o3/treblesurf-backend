@@ -1,17 +1,16 @@
-FROM python:3.8-slim-buster
+FROM golang:1.24-alpine AS builder
 
-RUN pip install flask
-RUN pip install flask-cors
-RUN pip install gunicorn pyopenssl
-RUN pip install firebase-admin
-RUN pip install arrow
-
-COPY . /app
 WORKDIR /app
 
-ENV FLASK_APP=surfable_flask.py
-ENV ENV=production
+COPY go.mod go.sum ./
+RUN go mod download
 
-EXPOSE 5000
+COPY . .
 
-CMD ["gunicorn", "surfable_flask:APP", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "2"]
+RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
+
+FROM gcr.io/distroless/static-debian12
+
+COPY --from=builder /server /server
+
+ENTRYPOINT ["/server"]

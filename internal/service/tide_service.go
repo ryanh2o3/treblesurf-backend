@@ -2,15 +2,20 @@ package service
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
+
+	"treblesurf-backend/internal/config"
 )
 
 type TideService struct {
-	// Add any dependencies here if needed
+	isDevelopment bool
 }
 
-func NewTideService() *TideService {
-	return &TideService{}
+func NewTideService(cfg *config.Config) *TideService {
+	isDevelopment := cfg != nil && cfg.IsDevelopment()
+
+	return &TideService{isDevelopment: isDevelopment}
 }
 
 func (s *TideService) GetCurrentTides(locationName string) []map[string]interface{} {
@@ -24,21 +29,21 @@ func (s *TideService) GetCurrentTides(locationName string) []map[string]interfac
 
 	// Collect all tide data into a slice
 	var result []map[string]interface{}
-	
+
 	// Add yesterday's tides if they exist
 	if queryYesterday != nil {
 		if tides, ok := queryYesterday["tides"].([]map[string]interface{}); ok {
 			result = append(result, tides...)
 		}
 	}
-	
+
 	// Add today's tides if they exist
 	if queryToday != nil {
 		if tides, ok := queryToday["tides"].([]map[string]interface{}); ok {
 			result = append(result, tides...)
 		}
 	}
-	
+
 	// Add tomorrow's tides if they exist
 	if queryTomorrow != nil {
 		if tides, ok := queryTomorrow["tides"].([]map[string]interface{}); ok {
@@ -58,12 +63,12 @@ func (s *TideService) GetBeforeAfterTides(locationName string) (prevTide, nextTi
 		if !ok {
 			continue // Skip if time field is not a string
 		}
-		
+
 		tideTime, err := time.Parse("2006-01-02 15:04:05", tideTimeStr)
 		if err != nil {
 			continue // Skip if time parsing fails
 		}
-		
+
 		// Find the most recent tide before now
 		if tideTime.Before(now) {
 			if prevTide == nil {
@@ -80,7 +85,7 @@ func (s *TideService) GetBeforeAfterTides(locationName string) (prevTide, nextTi
 				}
 			}
 		}
-		
+
 		// Find the earliest tide after now
 		if tideTime.After(now) {
 			if nextTide == nil {
@@ -129,43 +134,46 @@ func (s *TideService) GetDayTides(locationName, startDay string) map[string]inte
 }
 
 func (s *TideService) getTides(locationName, date string) map[string]interface{} {
-	// TODO: Implement the logic to get tides from DynamoDB
-	// This is a placeholder implementation that returns sample tide data
-	// In a real implementation, this would query DynamoDB for tide information
-	
+	if !s.isDevelopment {
+		slog.Warn("tide data not configured; returning empty response",
+			slog.String("location", locationName),
+			slog.String("date", date),
+		)
+		return nil
+	}
+	// Development-only placeholder data until DynamoDB integration is available.
+
 	// Generate sample tide times for the given date
 	sampleTides := []map[string]interface{}{
 		{
-			"time":        date + " 06:00:00",
-			"height":      2.5,
-			"type":        "high",
-			"location":    locationName,
+			"time":     date + " 06:00:00",
+			"height":   2.5,
+			"type":     "high",
+			"location": locationName,
 		},
 		{
-			"time":        date + " 12:00:00",
-			"height":      0.5,
-			"type":        "low",
-			"location":    locationName,
+			"time":     date + " 12:00:00",
+			"height":   0.5,
+			"type":     "low",
+			"location": locationName,
 		},
 		{
-			"time":        date + " 18:00:00",
-			"height":      2.8,
-			"type":        "high",
-			"location":    locationName,
+			"time":     date + " 18:00:00",
+			"height":   2.8,
+			"type":     "high",
+			"location": locationName,
 		},
 		{
-			"time":        date + " 23:30:00",
-			"height":      0.3,
-			"type":        "low",
-			"location":    locationName,
+			"time":     date + " 23:30:00",
+			"height":   0.3,
+			"type":     "low",
+			"location": locationName,
 		},
 	}
-	
+
 	return map[string]interface{}{
 		"location": locationName,
 		"date":     date,
 		"tides":    sampleTides,
 	}
 }
-
-

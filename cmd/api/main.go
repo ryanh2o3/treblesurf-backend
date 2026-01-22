@@ -3,8 +3,11 @@ package main
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"strings"
-	httphandler "treblesurf-backend/internal/api"
+	"treblesurf-backend/internal/app"
+	"treblesurf-backend/internal/config"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -14,12 +17,16 @@ import (
 var ginLambda *ginadapter.GinLambda
 
 func initialize() error {
-	container, err := httphandler.NewContainer()
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
-	r := httphandler.SetupRouter(container)
-	ginLambda = ginadapter.New(r)
+
+	application, err := app.New(cfg)
+	if err != nil {
+		return err
+	}
+	ginLambda = ginadapter.New(application.GinEngine())
 	return nil
 }
 
@@ -36,7 +43,8 @@ func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.API
 
 func main() {
 	if err := initialize(); err != nil {
-		panic(err)
+		slog.Error("failed to initialize api handler", slog.Any("error", err))
+		os.Exit(1)
 	}
 	lambda.Start(Handler)
 }

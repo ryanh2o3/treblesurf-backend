@@ -1,0 +1,82 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: ['main', 'develop']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.0'
+          cache-dependency-path: go.sum
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Start Docker services
+        run: |
+          docker compose up -d
+      
+      - name: Wait for DynamoDB to be ready
+        run: |
+          timeout=60
+          elapsed=0
+          while ! curl -s http://localhost:8000 > /dev/null; do
+            if [ $elapsed -ge $timeout ]; then
+              echo "DynamoDB failed to start within $timeout seconds"
+              exit 1
+            fi
+            echo "Waiting for DynamoDB to be ready..."
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo "DynamoDB is ready"
+      
+      - name: Wait for LocalStack to be ready
+        run: |
+          timeout=180
+          elapsed=0
+          while true; do
+            if curl -s http://localhost:4566/_localstack/health | grep -Eq '"s3"\s*:\s*"(running|available)"'; then
+              echo "LocalStack is ready"
+              break
+            fi
+            if [ $elapsed -ge $timeout ]; then
+              echo "LocalStack failed to start within $timeout seconds"
+              exit 1
+            fi
+            echo "Waiting for LocalStack to be ready..."
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+      
+      - name: Create S3 bucket in LocalStack
+        run: |
+          docker exec treblesurf-localstack awslocal s3 mb s3://treblesurf-images || true
+      
+      - name: Download dependencies
+        run: go mod download
+      
+      - name: Run tests
+        run: make test
+        env:
+          GO_ENV: test
+          AWS_ENDPOINT_URL: http://localhost:4566
+          DYNAMODB_ENDPOINT: http://localhost:8000
+      
+      - name: Stop Docker services
+        if: always()
+        run: docker compose down

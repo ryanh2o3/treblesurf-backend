@@ -3,29 +3,41 @@ package model
 import "time"
 
 type SurfReport struct {
-	Timestamp      time.Time `json:"timestamp" dynamodbav:"timestamp"`
-	UpdatedAt      time.Time `json:"updated_at" dynamodbav:"updated_at"`
-	CreatedAt      time.Time `json:"created_at" dynamodbav:"created_at"`
-	SwellSize      string    `json:"swell_size" dynamodbav:"swell_size"`
-	Spot           string    `json:"spot" dynamodbav:"spot"`
-	Region         string    `json:"region" dynamodbav:"region"`
-	ID             string    `json:"id" dynamodbav:"id"`
-	WindAmount     string    `json:"wind_amount" dynamodbav:"wind_amount"`
-	WindDirection  string    `json:"wind_direction" dynamodbav:"wind_direction"`
-	SurfConditions string    `json:"surf_conditions" dynamodbav:"surf_conditions"`
-	SurfDifficulty string    `json:"surf_difficulty" dynamodbav:"surf_difficulty"`
-	ImageKey       string    `json:"image_key,omitempty" dynamodbav:"image_key,omitempty"`
-	Notes          string    `json:"notes,omitempty" dynamodbav:"notes,omitempty"`
-	Country        string    `json:"country" dynamodbav:"country"`
-	UserEmail      string    `json:"user_email" dynamodbav:"user_email"`
+	Timestamp         time.Time `json:"timestamp"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	CreatedAt         time.Time `json:"created_at"`
+	Notes             string    `json:"notes,omitempty"`
+	UserEmail         string    `json:"user_email,omitempty"`
+	Region            string    `json:"region"`
+	ID                string    `json:"id"`
+	WindAmount        string    `json:"wind_amount,omitempty"`
+	WindDirection     string    `json:"wind_direction,omitempty"`
+	SurfConditions    string    `json:"surf_conditions"`
+	SurfDifficulty    string    `json:"surf_difficulty"`
+	ImageKey          string    `json:"image_key,omitempty"`
+	SwellSize         string    `json:"swell_size,omitempty"`
+	Country           string    `json:"country"`
+	Spot              string    `json:"spot"`
+	VideoKey          string    `json:"video_key,omitempty"`
+	Reporter          string    `json:"reporter,omitempty"`
+	ReportedBy        string    `json:"reported_by,omitempty"`
+	MediaType         string    `json:"media_type,omitempty"`
+	CountryRegionSpot string    `json:"country_region_spot,omitempty"`
+	SurfSize          string    `json:"surf_size,omitempty"`
+	Consistency       string    `json:"consistency,omitempty"`
+	Quality           string    `json:"quality,omitempty"`
+	Messiness         string    `json:"messiness,omitempty"`
+	Time              string    `json:"time,omitempty"`
+	DateReported      string    `json:"date_reported,omitempty"`
+	IOSValidated      bool      `json:"ios_validated,omitempty"`
 }
 
 type ReportImage struct {
-	UploadedAt  time.Time `json:"uploaded_at" dynamodbav:"uploaded_at"`
-	Key         string    `json:"key" dynamodbav:"key"`
-	ReportID    string    `json:"report_id" dynamodbav:"report_id"`
-	ContentType string    `json:"content_type" dynamodbav:"content_type"`
-	ImageData   []byte    `json:"image_data" dynamodbav:"image_data"`
+	UploadedAt  time.Time `json:"uploaded_at"`
+	Key         string    `json:"key"`
+	ReportID    string    `json:"report_id"`
+	ContentType string    `json:"content_type"`
+	ImageData   []byte    `json:"image_data"`
 }
 
 type ReportWithImage struct {

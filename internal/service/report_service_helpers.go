@@ -2,24 +2,34 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-func (s *ReportService) getUserAndValidate(userEmail string) (*model.User, error) {
-	user, err := s.userService.GetUserByEmail(userEmail)
+const (
+	mediaTypeBoth  = "both"
+	mediaTypeImage = "image"
+	mediaTypeVideo = "video"
+)
+
+func (s *ReportService) getUserAndValidate(ctx context.Context, userEmail string) (*model.User, error) {
+	user, err := s.userService.GetByEmail(ctx, userEmail)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, fmt.Errorf("user not found")
+		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 	if user == nil {
@@ -38,7 +48,7 @@ func parseReportDate(dateStr string) time.Time {
 
 	parsedDate, err := time.Parse("2006-01-02 15:04:05", dateStr)
 	if err != nil {
-		log.Printf("Failed to parse date '%s': %v, using current time", dateStr, err)
+		slog.Warn("failed to parse report date, using current time", slog.String("date", dateStr), slog.Any("error", err))
 		return time.Now()
 	}
 
@@ -56,7 +66,7 @@ func extractDateFromImageData(imageData []byte, currentTime time.Time) time.Time
 		return currentTime
 	}
 
-	log.Printf("Extracted EXIF time from image: %v", dateTime)
+	slog.Debug("extracted EXIF time from image", slog.Time("time", dateTime))
 	return dateTime
 }
 
@@ -72,27 +82,27 @@ func decodeBase64ImageData(base64String string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(base64String)
 }
 
-func addReportFieldsToItem(
-	item map[string]*dynamodb.AttributeValue,
+func addReportFieldsToReport(
+	report *model.SurfReport,
 	surfSize, windAmount, windDirection, consistency, quality, messiness string,
 ) {
 	if surfSize != "" {
-		item["SurfSize"] = &dynamodb.AttributeValue{S: aws.String(surfSize)}
+		report.SurfSize = surfSize
 	}
 	if windAmount != "" {
-		item["WindAmount"] = &dynamodb.AttributeValue{S: aws.String(windAmount)}
+		report.WindAmount = windAmount
 	}
 	if windDirection != "" {
-		item["WindDirection"] = &dynamodb.AttributeValue{S: aws.String(windDirection)}
+		report.WindDirection = windDirection
 	}
 	if consistency != "" {
-		item["Consistency"] = &dynamodb.AttributeValue{S: aws.String(consistency)}
+		report.Consistency = consistency
 	}
 	if quality != "" {
-		item["Quality"] = &dynamodb.AttributeValue{S: aws.String(quality)}
+		report.Quality = quality
 	}
 	if messiness != "" {
-		item["Messiness"] = &dynamodb.AttributeValue{S: aws.String(messiness)}
+		report.Messiness = messiness
 	}
 }
 
@@ -126,52 +136,63 @@ func buildWebSocketMessage(
 	}
 }
 
-func (s *ReportService) broadcastReportMessage(country, region, spot string, message map[string]interface{}) {
-	subscribers, err := s.getSpotSubscribers(country, region, spot)
+func (s *ReportService) broadcastReportMessage(
+	ctx context.Context,
+	country, region, spot string,
+	message map[string]interface{},
+) {
+	subscribers, err := s.getSpotSubscribers(ctx, country, region, spot)
 	if err != nil {
-		log.Printf("Failed to get subscribers: %v", err)
+		slog.Warn("failed to get subscribers", slog.Any("error", err))
+		return
+	}
+	if len(subscribers) == 0 {
 		return
 	}
 
 	go func() {
-		s.broadcastToUsers(subscribers, message)
+		broadcastCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s.broadcastToUsers(broadcastCtx, subscribers, message)
 	}()
 }
 
-func (s *ReportService) createBaseReportItem(
+func (s *ReportService) createBaseReport(
 	countryRegionSpot, dateReported, userEmail, userName, userUUID string,
 	currentTime time.Time,
 	mediaType string,
 	iosValidated bool,
-) map[string]*dynamodb.AttributeValue {
-	return map[string]*dynamodb.AttributeValue{
-		"country_region_spot": {S: aws.String(countryRegionSpot)},
-		"dateReported":        {S: aws.String(dateReported)},
-		"UserEmail":           {S: aws.String(userEmail)},
-		"Reporter":            {S: aws.String(userName)},
-		"Time":                {S: aws.String(currentTime.String())},
-		"reportedBy":          {S: aws.String(userUUID)},
-		"MediaType":           {S: aws.String(mediaType)},
-		"IOSValidated":        {BOOL: aws.Bool(iosValidated)},
+) *model.SurfReport {
+	normalizedTime := currentTime.UTC()
+	return &model.SurfReport{
+		CountryRegionSpot: countryRegionSpot,
+		DateReported:      dateReported,
+		Timestamp:         normalizedTime,
+		CreatedAt:         normalizedTime,
+		UpdatedAt:         normalizedTime,
+		UserEmail:         userEmail,
+		Reporter:          userName,
+		Time:              normalizedTime.Format(time.RFC3339),
+		ReportedBy:        userUUID,
+		MediaType:         mediaType,
+		IOSValidated:      iosValidated,
 	}
 }
 
-func (s *ReportService) storeReport(item map[string]*dynamodb.AttributeValue) error {
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("SurfReports"),
-		Item:      item,
+func (s *ReportService) storeReport(ctx context.Context, report *model.SurfReport) error {
+	if report == nil {
+		return fmt.Errorf("report is nil")
 	}
-
-	_, err := s.dbStorage.PutItem(input)
-	if err != nil {
+	if err := s.reportRepo.Create(ctx, report); err != nil {
 		return fmt.Errorf("failed to store report: %w", err)
 	}
 
-	log.Print("done putting")
+	slog.Debug("stored surf report")
 	return nil
 }
 
 func (s *ReportService) processBase64Image(
+	ctx context.Context,
 	imageDataStr, dateStr, countryRegionSpot, userUUID string,
 	currentTime *time.Time,
 ) (string, error) {
@@ -204,7 +225,7 @@ func (s *ReportService) processBase64Image(
 		currentTime.UTC().Format("2006-01-02T15:04:05Z"),
 		userUUID,
 	)
-	s3Key, err := s.uploadImageToS3(decoded, imageKey)
+	s3Key, err := s.uploadImageToS3(ctx, decoded, imageKey)
 	if err != nil {
 		return "", model.NewImageValidationError(err, "failed to upload image")
 	}
@@ -215,59 +236,62 @@ func (s *ReportService) processBase64Image(
 func determineMediaType(hasImage, hasVideo bool) string {
 	switch {
 	case hasImage && hasVideo:
-		return "both"
+		return mediaTypeBoth
 	case hasImage:
-		return "image"
+		return mediaTypeImage
 	case hasVideo:
-		return "video"
+		return mediaTypeVideo
 	default:
 		return "none"
 	}
 }
 
 func (s *ReportService) processS3ImageForReport(
+	ctx context.Context,
 	imageKey string,
-	item map[string]*dynamodb.AttributeValue,
+	report *model.SurfReport,
 ) (string, error) {
 	if imageKey == "" {
 		return "", nil
 	}
 
-	imageData, err := s.s3Storage.GetObject(s.bucketName, imageKey)
+	imageData, err := s.mediaRepo.Download(ctx, imageKey)
 	if err != nil {
-		log.Printf("Failed to retrieve pre-uploaded image %s: %v", imageKey, err)
-		if delErr := s.s3Storage.DeleteObject(s.bucketName, imageKey); delErr != nil {
-			log.Printf("Failed to cleanup image %s: %v", imageKey, delErr)
+		slog.Warn("failed to retrieve pre-uploaded image", slog.String("key", imageKey), slog.Any("error", err))
+		if delErr := s.mediaRepo.Delete(ctx, imageKey); delErr != nil {
+			slog.Warn("failed to cleanup image", slog.String("key", imageKey), slog.Any("error", delErr))
 		}
 		return "", model.ErrImageRetrievalFailed
 	}
 
 	valid, err := s.validateImageWithRekognition(imageData)
 	if err != nil {
-		log.Printf("Failed to validate pre-uploaded image %s: %v", imageKey, err)
-		if delErr := s.s3Storage.DeleteObject(s.bucketName, imageKey); delErr != nil {
-			log.Printf("Failed to cleanup image %s: %v", imageKey, delErr)
+		slog.Warn("failed to validate pre-uploaded image", slog.String("key", imageKey), slog.Any("error", err))
+		if delErr := s.mediaRepo.Delete(ctx, imageKey); delErr != nil {
+			slog.Warn("failed to cleanup image", slog.String("key", imageKey), slog.Any("error", delErr))
 		}
 		return "", err
 	}
 	if !valid {
-		log.Printf("Pre-uploaded image %s failed validation, deleting", imageKey)
-		if delErr := s.s3Storage.DeleteObject(s.bucketName, imageKey); delErr != nil {
-			log.Printf("Failed to cleanup image %s: %v", imageKey, delErr)
+		slog.Warn("pre-uploaded image failed validation, deleting", slog.String("key", imageKey))
+		if delErr := s.mediaRepo.Delete(ctx, imageKey); delErr != nil {
+			slog.Warn("failed to cleanup image", slog.String("key", imageKey), slog.Any("error", delErr))
 		}
 		return "", model.ErrImageNotSurfRelated
 	}
 
-	item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(imageKey)}
+	if report != nil {
+		report.ImageKey = imageKey
+	}
 	return imageKey, nil
 }
 
-func (s *ReportService) storeReportWithCleanup(item map[string]*dynamodb.AttributeValue, s3Key string) error {
-	err := s.storeReport(item)
+func (s *ReportService) storeReportWithCleanup(ctx context.Context, report *model.SurfReport, s3Key string) error {
+	err := s.storeReport(ctx, report)
 	if err != nil && s3Key != "" {
-		log.Printf("Database insertion failed, cleaning up image %s", s3Key)
-		if delErr := s.s3Storage.DeleteObject(s.bucketName, s3Key); delErr != nil {
-			log.Printf("Failed to cleanup image %s: %v", s3Key, delErr)
+		slog.Warn("database insertion failed, cleaning up image", slog.String("key", s3Key))
+		if delErr := s.mediaRepo.Delete(ctx, s3Key); delErr != nil {
+			slog.Warn("failed to cleanup image", slog.String("key", s3Key), slog.Any("error", delErr))
 		}
 	}
 	return err
@@ -275,78 +299,67 @@ func (s *ReportService) storeReportWithCleanup(item map[string]*dynamodb.Attribu
 
 func (s *ReportService) processIOSMediaKeys(
 	imageKey, videoKey string,
-	item map[string]*dynamodb.AttributeValue,
+	report *model.SurfReport,
 ) (s3KeyReport, videoKeyReport string) {
 	if imageKey != "" {
-		log.Printf("iOS validated report with image: %s", imageKey)
-		item["ImageKey"] = &dynamodb.AttributeValue{S: aws.String(imageKey)}
+		slog.Debug("iOS validated report with image", slog.String("key", imageKey))
+		if report != nil {
+			report.ImageKey = imageKey
+		}
 		s3KeyReport = imageKey
 	}
 
 	if videoKey != "" {
-		log.Printf("iOS validated report with video: %s", videoKey)
-		item["VideoKey"] = &dynamodb.AttributeValue{S: aws.String(videoKey)}
+		slog.Debug("iOS validated report with video", slog.String("key", videoKey))
+		if report != nil {
+			report.VideoKey = videoKey
+		}
 		videoKeyReport = videoKey
 	}
 
 	return s3KeyReport, videoKeyReport
 }
 
-// buildSpotReportsQueryInput builds a DynamoDB query input for retrieving spot reports.
-func (s *ReportService) buildSpotReportsQueryInput(
-	countryRegionSpot string,
-	limit int,
-	lastEvaluatedKey map[string]*dynamodb.AttributeValue,
-) *dynamodb.QueryInput {
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("SurfReports"),
-		KeyConditionExpression: aws.String("country_region_spot = :crs"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":crs": {S: aws.String(countryRegionSpot)},
-		},
-		ScanIndexForward: aws.Bool(false), // Sort in descending order
-	}
-
-	if limit > 0 {
-		input.Limit = aws.Int64(int64(limit))
-	}
-	if lastEvaluatedKey != nil {
-		input.ExclusiveStartKey = lastEvaluatedKey
-	}
-
-	return input
-}
-
-// unmarshalSpotReports unmarshals DynamoDB items into report maps.
-func (s *ReportService) unmarshalSpotReports(
-	items []map[string]*dynamodb.AttributeValue,
+// convertReportsToMaps converts report structs into response-friendly maps.
+func (s *ReportService) convertReportsToMaps(
+	reports []*model.SurfReport,
 ) ([]map[string]interface{}, error) {
-	var reports []map[string]interface{}
-	err := dynamodbattribute.UnmarshalListOfMaps(items, &reports)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal reports: %w", err)
+	out := make([]map[string]interface{}, 0, len(reports))
+	for _, report := range reports {
+		if report == nil {
+			continue
+		}
+		item, err := json.Marshal(report)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal report to json: %w", err)
+		}
+		var reportMap map[string]interface{}
+		if err := json.Unmarshal(item, &reportMap); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal report json: %w", err)
+		}
+		out = append(out, reportMap)
 	}
-	return reports, nil
+	return out, nil
 }
 
 // normalizeSpotReports normalizes report maps by removing sensitive fields and adding defaults.
 func (s *ReportService) normalizeSpotReports(reports []map[string]interface{}) {
 	for _, report := range reports {
-		delete(report, "UserEmail") // Remove sensitive field
+		delete(report, "user_email") // Remove sensitive field
 
 		// Ensure new fields have defaults if missing
-		setDefaultIfMissing(report, "VideoKey", "")
-		setDefaultIfMissing(report, "MediaType", "image")
-		setDefaultIfMissing(report, "IOSValidated", false)
+		setDefaultIfMissing(report, "video_key", "")
+		setDefaultIfMissing(report, "media_type", mediaTypeImage)
+		setDefaultIfMissing(report, "ios_validated", false)
 
 		// Ensure all required fields have defaults
-		setDefaultIfMissing(report, "Consistency", "")
-		setDefaultIfMissing(report, "Messiness", "")
-		setDefaultIfMissing(report, "Quality", "")
-		setDefaultIfMissing(report, "SurfSize", "")
-		setDefaultIfMissing(report, "WindAmount", "")
-		setDefaultIfMissing(report, "WindDirection", "")
-		setDefaultIfMissing(report, "Reporter", "Anonymous")
+		setDefaultIfMissing(report, "consistency", "")
+		setDefaultIfMissing(report, "messiness", "")
+		setDefaultIfMissing(report, "quality", "")
+		setDefaultIfMissing(report, "surf_size", "")
+		setDefaultIfMissing(report, "wind_amount", "")
+		setDefaultIfMissing(report, "wind_direction", "")
+		setDefaultIfMissing(report, "reporter", "Anonymous")
 	}
 }
 
@@ -358,77 +371,43 @@ func setDefaultIfMissing(m map[string]interface{}, key string, defaultValue inte
 }
 
 // queryCurrentForecast queries for the most recent forecast data.
-func (s *ReportService) queryCurrentForecast(spotID string) (*dynamodb.QueryOutput, error) {
-	currentEpoch := time.Now().Unix()
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("SpotForecastData"),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":current_time": {
-				S: aws.String(fmt.Sprintf("%d", currentEpoch-3600)), // 1 hour ago
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
-		Limit:            aws.Int64(1),
+func (s *ReportService) queryCurrentForecast(ctx context.Context, spotID string) (*model.ForecastDataPoint, error) {
+	currentTime := time.Now().Add(-1 * time.Hour)
+	forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, currentTime, 1)
+	if err != nil {
+		return nil, err
 	}
-
-	return s.dbStorage.Query(input)
+	if len(forecasts) == 0 {
+		return nil, nil
+	}
+	return forecasts[0], nil
 }
 
 // queryHistoricalForecast queries for forecast data looking backwards up to 24 hours.
 //
 //nolint:unparam // Error return maintained for API consistency
-func (s *ReportService) queryHistoricalForecast(spotID string) (*dynamodb.QueryOutput, error) {
-	currentEpoch := time.Now().Unix()
+func (s *ReportService) queryHistoricalForecast(ctx context.Context, spotID string) (*model.ForecastDataPoint, error) {
+	currentTime := time.Now()
 
 	for i := 1; i <= 24; i++ {
-		pastEpoch := currentEpoch - int64(i*3600)
-		input := &dynamodb.QueryInput{
-			TableName:              aws.String("SpotForecastData"),
-			KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":spot_id": {
-					S: aws.String(spotID),
-				},
-				":current_time": {
-					S: aws.String(fmt.Sprintf("%d", pastEpoch)),
-				},
-			},
-			ScanIndexForward: aws.Bool(true),
-			Limit:            aws.Int64(1),
-		}
-
-		result, err := s.dbStorage.Query(input)
-		if err == nil && len(result.Items) > 0 {
-			return result, nil
+		pastTime := currentTime.Add(-time.Duration(i) * time.Hour)
+		forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, pastTime, 1)
+		if err == nil && len(forecasts) > 0 {
+			return forecasts[0], nil
 		}
 	}
 
-	return &dynamodb.QueryOutput{}, nil
-}
-
-// unmarshalForecast unmarshals a DynamoDB item into a forecast map.
-func (s *ReportService) unmarshalForecast(item map[string]*dynamodb.AttributeValue) (map[string]interface{}, error) {
-	var forecast map[string]interface{}
-	err := dynamodbattribute.UnmarshalMap(item, &forecast)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal forecast: %w", err)
-	}
-	return forecast, nil
+	return nil, nil
 }
 
 // extractWindData extracts wind speed and direction from forecast data.
-func (s *ReportService) extractWindData(forecast map[string]interface{}) (windSpeed, windDirection float64, err error) {
-	data, ok := forecast["data"].(map[string]interface{})
-	if !ok {
+func (s *ReportService) extractWindData(forecast *model.ForecastDataPoint) (windSpeed, windDirection float64, err error) {
+	if forecast == nil || forecast.Data == nil {
 		return 0, 0, fmt.Errorf("invalid forecast data structure")
 	}
 
-	windSpeed = extractFloatFromData(data, "windSpeed")
-	windDirection = extractFloatFromData(data, "windDirection")
+	windSpeed = extractFloatFromData(forecast.Data, "windSpeed")
+	windDirection = extractFloatFromData(forecast.Data, "windDirection")
 
 	return windSpeed, windDirection, nil
 }

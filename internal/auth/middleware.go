@@ -3,7 +3,7 @@ package auth
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,13 +12,13 @@ import (
 )
 
 // Middleware returns a Gin middleware function that validates user sessions.
-func Middleware() gin.HandlerFunc {
+func (s *Service) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		setCacheHeaders(c)
-		logRequestDetails(c)
+		s.logRequestDetails(c)
 
-		if !handleSessionAuth(c) {
-			log.Printf("Authentication failed - denying access")
+		if !s.handleSessionAuth(c) {
+			slog.Warn("authentication failed - denying access")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired or invalid"})
 		}
 	}
@@ -31,46 +31,47 @@ func setCacheHeaders(c *gin.Context) {
 }
 
 // logRequestDetails logs request details for debugging.
-func logRequestDetails(c *gin.Context) {
-	log.Printf("=== Auth Middleware ===")
-	log.Printf("Path: %s", c.Request.URL.Path)
-	log.Printf("User-Agent: %s", c.Request.UserAgent())
-	log.Printf("Method: %s", c.Request.Method)
-	log.Printf("Origin: %s", c.GetHeader("Origin"))
-	log.Printf("Referer: %s", c.GetHeader("Referer"))
+func (s *Service) logRequestDetails(c *gin.Context) {
+	slog.Debug("auth middleware request",
+		slog.String("path", c.Request.URL.Path),
+		slog.String("user_agent", c.Request.UserAgent()),
+		slog.String("method", c.Request.Method),
+		slog.String("origin", c.GetHeader("Origin")),
+		slog.String("referer", c.GetHeader("Referer")),
+	)
 }
 
 // handleSessionAuth handles session authentication and returns true if successful.
-func handleSessionAuth(c *gin.Context) bool {
-	if sessionService == nil {
-		log.Printf("Session service is nil")
+func (s *Service) handleSessionAuth(c *gin.Context) bool {
+	if s.sessionService == nil {
+		slog.Warn("session service is nil")
 		return false
 	}
 
-	userSession, err := sessionService.GetUserSession(c.Request)
+	userSession, err := s.sessionService.GetUserSession(c.Request)
 	switch {
 	case err != nil:
-		log.Printf("Session service error: %v", err)
+		slog.Warn("session service error", slog.Any("error", err))
 		return false
 	case userSession != nil:
-		return processValidSession(c, userSession)
+		return s.processValidSession(c, userSession)
 	default:
-		log.Printf("No valid session found")
+		slog.Debug("no valid session found")
 		return false
 	}
 }
 
 // processValidSession processes a valid user session.
-func processValidSession(c *gin.Context, userSession *user.Session) bool {
-	log.Printf("Valid session found for user: %s", userSession.UserID)
+func (s *Service) processValidSession(c *gin.Context, userSession *user.Session) bool {
+	slog.Debug("valid session found", slog.String("user_id", userSession.UserID))
 	c.Set("email", userSession.UserID)
 	c.Set("session", userSession)
 
-	processSessionData(c, userSession)
+	s.processSessionData(c, userSession)
 
 	// Extend session
-	if err := sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
-		log.Printf("Failed to extend user session: %v", err)
+	if err := s.sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
+		slog.Warn("failed to extend user session", slog.Any("error", err))
 	}
 
 	c.Next()
@@ -78,7 +79,7 @@ func processValidSession(c *gin.Context, userSession *user.Session) bool {
 }
 
 // processSessionData processes session JSON data and updates CSRF token if needed.
-func processSessionData(c *gin.Context, userSession *user.Session) {
+func (s *Service) processSessionData(c *gin.Context, userSession *user.Session) {
 	var sessionData SessionJSON
 	if err := json.Unmarshal([]byte(userSession.JSON), &sessionData); err != nil {
 		return
@@ -88,30 +89,30 @@ func processSessionData(c *gin.Context, userSession *user.Session) {
 
 	// Refresh CSRF token if it's getting old (older than 1 hour)
 	if time.Since(sessionData.CreatedAt) > time.Hour {
-		log.Printf("Refreshing CSRF token for user: %s", userSession.UserID)
+		slog.Debug("refreshing CSRF token", slog.String("user_id", userSession.UserID))
 		newCSRFToken, err := GenerateCSRFToken()
 		if err == nil {
 			sessionData.CSRF = newCSRFToken
 			sessionData.CreatedAt = time.Now()
-			log.Printf("CSRF token refreshed successfully")
+			slog.Debug("CSRF token refreshed successfully")
 		}
 	}
 
 	updatedJSON, err := json.Marshal(sessionData)
 	if err != nil {
-		log.Printf("Failed to marshal session data: %v", err)
+		slog.Warn("failed to marshal session data", slog.Any("error", err))
 	} else {
 		userSession.JSON = string(updatedJSON)
 	}
 
 	if sessionData.CSRF != "" {
 		c.Header("X-CSRF-Token", sessionData.CSRF)
-		log.Printf("CSRF token set in header: %s", sessionData.CSRF)
+		slog.Debug("CSRF token set in header")
 	}
 }
 
 // CSRFMiddleware returns a Gin middleware function that adds CSRF protection to routes that modify state.
-func CSRFMiddleware() gin.HandlerFunc {
+func (s *Service) CSRFMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Only check POST, PUT, DELETE requests
 		if c.Request.Method == "GET" || c.Request.Method == "HEAD" || c.Request.Method == "OPTIONS" {
@@ -124,8 +125,8 @@ func CSRFMiddleware() gin.HandlerFunc {
 
 		// Try to get token from session data first (preferred method)
 		var serverToken string
-		if sessionService != nil {
-			userSession, err := sessionService.GetUserSession(c.Request)
+		if s.sessionService != nil {
+			userSession, err := s.sessionService.GetUserSession(c.Request)
 			if err == nil && userSession != nil {
 				// Parse session JSON to get CSRF token
 				var sessionData SessionJSON

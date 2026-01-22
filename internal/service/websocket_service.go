@@ -1,32 +1,46 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"os"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 	"treblesurf-backend/internal/model"
-	"treblesurf-backend/internal/storage"
+	"treblesurf-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/apigatewaymanagementapi"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type WebSocketService struct {
-	dbStorage storage.DynamoDBStorage
-	jwtSecret []byte
+	connections   repository.WebSocketRepository
+	subscriptions repository.SpotSubscriptionRepository
+	apiClientErr  error
+	apiClient     *apigatewaymanagementapi.ApiGatewayManagementApi
+	endpoint      string
+	stage         string
+	jwtSecret     []byte
+	apiClientOnce sync.Once
 }
 
-func NewWebSocketService(dbStorage storage.DynamoDBStorage, jwtSecret []byte) *WebSocketService {
+func NewWebSocketService(
+	connections repository.WebSocketRepository,
+	subscriptions repository.SpotSubscriptionRepository,
+	jwtSecret []byte,
+	endpoint string,
+	stage string,
+) *WebSocketService {
 	return &WebSocketService{
-		dbStorage: dbStorage,
-		jwtSecret: jwtSecret,
+		connections:   connections,
+		subscriptions: subscriptions,
+		jwtSecret:     jwtSecret,
+		endpoint:      endpoint,
+		stage:         stage,
 	}
 }
 
@@ -36,164 +50,71 @@ func (s *WebSocketService) ValidateWebSocketToken(token string) (*jwt.Token, err
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return s.jwtSecret, nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}))
 }
 
-func (s *WebSocketService) SaveConnection(conn *model.ConnectionInfo) error {
-	conn.TTL = time.Now().Add(24 * time.Hour).Unix()
-
-	item, err := dynamodbattribute.MarshalMap(conn)
-	if err != nil {
-		return err
+// GetEmailFromToken extracts the email claim from a validated WebSocket token.
+func (s *WebSocketService) GetEmailFromToken(token *jwt.Token) (string, error) {
+	claims, okClaims := token.Claims.(jwt.MapClaims)
+	if !okClaims {
+		return "", fmt.Errorf("invalid token claims")
 	}
 
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Item:      item,
+	// Check subject is "websocket"
+	if sub, okSub := claims["sub"].(string); !okSub || sub != "websocket" {
+		return "", fmt.Errorf("invalid token subject")
 	}
 
-	_, err = s.dbStorage.PutItem(input)
-	return err
+	email, ok := claims["email"].(string)
+	if !ok || email == "" {
+		return "", fmt.Errorf("email claim not found in token")
+	}
+
+	return email, nil
 }
 
-func (s *WebSocketService) DeleteConnection(connectionID string) error {
-	input := &dynamodb.DeleteItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
+func (s *WebSocketService) SaveConnection(ctx context.Context, conn *model.ConnectionInfo) error {
+	if conn.TTL == 0 {
+		conn.TTL = time.Now().Add(24 * time.Hour).Unix()
 	}
-
-	_, err := s.dbStorage.DeleteItem(input)
-	return err
+	return s.connections.SaveConnection(ctx, conn)
 }
 
-func (s *WebSocketService) UpdateConnectionLastActive(connectionID string) error {
-	newTTL := time.Now().Add(24 * time.Hour).Unix()
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
-		UpdateExpression: aws.String("SET LastActive = :time, ttl = :ttl"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":time": {
-				S: aws.String(time.Now().Format(time.RFC3339)),
-			},
-			":ttl": {
-				N: aws.String(fmt.Sprintf("%d", newTTL)),
-			},
-		},
-	}
-
-	_, err := s.dbStorage.UpdateItem(input)
-	return err
+func (s *WebSocketService) DeleteConnection(ctx context.Context, connectionID string) error {
+	return s.connections.DeleteConnection(ctx, connectionID)
 }
 
-func (s *WebSocketService) GetConnection(connectionID string) (*model.ConnectionInfo, error) {
-	input := &dynamodb.GetItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
-	}
-
-	result, err := s.dbStorage.GetItem(input)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(result.Item) == 0 {
-		return nil, fmt.Errorf("connection not found")
-	}
-
-	var connection model.ConnectionInfo
-	err = dynamodbattribute.UnmarshalMap(result.Item, &connection)
-	if err != nil {
-		return nil, err
-	}
-
-	return &connection, nil
+func (s *WebSocketService) UpdateConnectionLastActive(ctx context.Context, connectionID string) error {
+	return s.connections.UpdateLastActive(ctx, connectionID)
 }
 
-func (s *WebSocketService) UpdateConnectionSpot(connectionID, spotIdentifier string) error {
-	newTTL := time.Now().Add(24 * time.Hour).Unix()
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String("WebSocketConnections"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
-		UpdateExpression: aws.String("SET CurrentSpot = :spot, LastActive = :time, ttl = :ttl"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot": {
-				S: aws.String(spotIdentifier),
-			},
-			":time": {
-				S: aws.String(time.Now().Format(time.RFC3339)),
-			},
-			":ttl": {
-				N: aws.String(fmt.Sprintf("%d", newTTL)),
-			},
-		},
-	}
-
-	_, err := s.dbStorage.UpdateItem(input)
-	return err
+func (s *WebSocketService) GetConnection(ctx context.Context, connectionID string) (*model.ConnectionInfo, error) {
+	return s.connections.GetConnection(ctx, connectionID)
 }
 
-func (s *WebSocketService) SaveSubscription(spotIdentifier, userID, connectionID string) error {
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String("SpotSubscriptions"),
-		Item: map[string]*dynamodb.AttributeValue{
-			"spot_id": {
-				S: aws.String(spotIdentifier),
-			},
-			"user_id": {
-				S: aws.String(userID),
-			},
-			"subscribed_at": {
-				S: aws.String(time.Now().Format(time.RFC3339)),
-			},
-			"connection_id": {
-				S: aws.String(connectionID),
-			},
-		},
-	}
+func (s *WebSocketService) UpdateConnectionSpot(ctx context.Context, connectionID, spotIdentifier string) error {
+	return s.connections.UpdateSpot(ctx, connectionID, spotIdentifier)
+}
 
-	_, err := s.dbStorage.PutItem(input)
-	return err
+func (s *WebSocketService) SaveSubscription(ctx context.Context, spotIdentifier, userID, connectionID string) error {
+	return s.subscriptions.Save(ctx, spotIdentifier, userID, connectionID)
+}
+
+func (s *WebSocketService) GetSubscribersBySpot(ctx context.Context, spotIdentifier string) ([]string, error) {
+	if s.subscriptions == nil {
+		return nil, fmt.Errorf("subscription repository not initialized")
+	}
+	return s.subscriptions.GetSubscribersBySpot(ctx, spotIdentifier)
 }
 
 // SendToConnection sends a message to a specific WebSocket client
 func (s *WebSocketService) SendToConnection(connectionID, message string) error {
-	// Get endpoint and stage from environment variables
-	endpoint := os.Getenv("WEBSOCKET_API_ENDPOINT")
-	if endpoint == "" {
-		return fmt.Errorf("WEBSOCKET_API_ENDPOINT not configured")
+	client, err := s.apiGatewayClient()
+	if err != nil {
+		return err
 	}
 
-	stage := os.Getenv("WEBSOCKET_API_STAGE")
-	if stage == "" {
-		stage = "production" // Default stage name
-	}
-
-	sess := session.Must(session.NewSession())
-
-	// Create API Gateway Management API client
-	apiEndpoint := fmt.Sprintf("https://%s/%s", endpoint, stage)
-	client := apigatewaymanagementapi.New(sess, aws.NewConfig().WithEndpoint(apiEndpoint))
-
-	_, err := client.PostToConnection(&apigatewaymanagementapi.PostToConnectionInput{
+	_, err = client.PostToConnection(&apigatewaymanagementapi.PostToConnectionInput{
 		ConnectionId: aws.String(connectionID),
 		Data:         []byte(message),
 	})
@@ -242,22 +163,22 @@ func (s *WebSocketService) CreatePongResponse() *model.WebSocketResponse {
 }
 
 // BroadcastToUsers sends a message to multiple users via their WebSocket connections
-func (s *WebSocketService) BroadcastToUsers(userIDs []string, message interface{}) error {
+func (s *WebSocketService) BroadcastToUsers(ctx context.Context, userIDs []string, message interface{}) error {
 	// Get all connections for the given user IDs
-	connections, err := s.GetConnectionsByUserIDs(userIDs)
+	connections, err := s.GetConnectionsByUserIDs(ctx, userIDs)
 	if err != nil {
-		return fmt.Errorf("failed to get connections: %v", err)
+		return fmt.Errorf("failed to get connections: %w", err)
 	}
 
 	// Send message to each connection
 	messageJSON, err := json.Marshal(message)
 	if err != nil {
-		return fmt.Errorf("failed to marshal message: %v", err)
+		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
 	for _, conn := range connections {
 		if err := s.SendToConnection(conn.ConnectionID, string(messageJSON)); err != nil {
-			log.Printf("Failed to send message to connection %s: %v", conn.ConnectionID, err)
+			slog.Warn("failed to send message to connection", slog.String("connection_id", conn.ConnectionID), slog.Any("error", err))
 			// Continue with other connections
 		}
 	}
@@ -265,35 +186,36 @@ func (s *WebSocketService) BroadcastToUsers(userIDs []string, message interface{
 	return nil
 }
 
-func (s *WebSocketService) GetConnectionsByUserIDs(userIDs []string) ([]*model.ConnectionInfo, error) {
-	var allConnections []*model.ConnectionInfo
+func (s *WebSocketService) GetConnectionsByUserIDs(ctx context.Context, userIDs []string) ([]*model.ConnectionInfo, error) {
+	return s.connections.GetConnectionsByUserIDs(ctx, userIDs)
+}
 
-	for _, userID := range userIDs {
-		input := &dynamodb.ScanInput{
-			TableName:        aws.String("WebSocketConnections"),
-			FilterExpression: aws.String("user_id = :user_id"),
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":user_id": {
-					S: aws.String(userID),
-				},
-			},
+func (s *WebSocketService) apiGatewayClient() (*apigatewaymanagementapi.ApiGatewayManagementApi, error) {
+	s.apiClientOnce.Do(func() {
+		if s.endpoint == "" {
+			s.apiClientErr = fmt.Errorf("WEBSOCKET_API_ENDPOINT not configured")
+			return
+		}
+		stage := s.stage
+		if stage == "" {
+			stage = "production"
 		}
 
-		result, err := s.dbStorage.Scan(input)
+		sess, err := session.NewSession()
 		if err != nil {
-			log.Printf("Error scanning connections for user %s: %v", userID, err)
-			continue
+			s.apiClientErr = fmt.Errorf("failed to create AWS session: %w", err)
+			return
 		}
 
-		for _, item := range result.Items {
-			var conn model.ConnectionInfo
-			if err := dynamodbattribute.UnmarshalMap(item, &conn); err != nil {
-				log.Printf("Error unmarshalling connection: %v", err)
-				continue
-			}
-			allConnections = append(allConnections, &conn)
-		}
+		apiEndpoint := fmt.Sprintf("https://%s/%s", s.endpoint, stage)
+		s.apiClient = apigatewaymanagementapi.New(sess, aws.NewConfig().WithEndpoint(apiEndpoint))
+	})
+
+	if s.apiClientErr != nil {
+		return nil, s.apiClientErr
 	}
-
-	return allConnections, nil
+	if s.apiClient == nil {
+		return nil, fmt.Errorf("websocket api client not initialized")
+	}
+	return s.apiClient, nil
 }

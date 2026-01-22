@@ -3,24 +3,27 @@ package controller
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
+	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 // logRequestDetails logs request metadata for debugging.
 func logRequestDetails(c *gin.Context, prefix string) {
-	log.Printf("=== %s ===", prefix)
-	log.Printf("User-Agent: %s", c.Request.UserAgent())
-	log.Printf("Method: %s", c.Request.Method)
-	log.Printf("Content-Type: %s", c.GetHeader("Content-Type"))
-	log.Printf("X-CSRF-Token: %s", c.GetHeader("X-CSRF-Token"))
-	log.Printf("Origin: %s", c.GetHeader("Origin"))
-	log.Printf("Referer: %s", c.GetHeader("Referer"))
+	slog.Info(prefix,
+		slog.String("user_agent", c.Request.UserAgent()),
+		slog.String("method", c.Request.Method),
+		slog.String("content_type", c.GetHeader("Content-Type")),
+		slog.String("csrf_token", c.GetHeader("X-CSRF-Token")),
+		slog.String("origin", c.GetHeader("Origin")),
+		slog.String("referer", c.GetHeader("Referer")),
+	)
 }
 
 // validateReportLocation validates that required location fields are present.
@@ -37,54 +40,54 @@ func validateReportLocation(c *gin.Context, country, region, spot string) bool {
 }
 
 // validateReportFields validates all surf report fields using the report service.
-func validateReportFields(c *gin.Context, report *model.ReportWithImage) bool {
-	if err := validateSurfSize(c, report.SurfSize); err != nil {
+func validateReportFields(reportSvc *service.ReportService, c *gin.Context, report *model.ReportWithImage) bool {
+	if err := validateSurfSize(reportSvc, c, report.SurfSize); err != nil {
 		return false
 	}
-	if err := validateWindAmount(c, report.WindAmount); err != nil {
+	if err := validateWindAmount(reportSvc, c, report.WindAmount); err != nil {
 		return false
 	}
-	if err := validateWindDirection(c, report.WindDirection); err != nil {
+	if err := validateWindDirection(reportSvc, c, report.WindDirection); err != nil {
 		return false
 	}
-	if err := validateConsistency(c, report.Consistency); err != nil {
+	if err := validateConsistency(reportSvc, c, report.Consistency); err != nil {
 		return false
 	}
-	if err := validateQuality(c, report.Quality); err != nil {
+	if err := validateQuality(reportSvc, c, report.Quality); err != nil {
 		return false
 	}
-	if err := validateMessiness(c, report.Messiness); err != nil {
+	if err := validateMessiness(reportSvc, c, report.Messiness); err != nil {
 		return false
 	}
 	return true
 }
 
 // validateS3ReportFields validates all surf report fields for S3 image reports.
-func validateS3ReportFields(c *gin.Context, report *model.ReportWithS3Image) bool {
-	if err := validateSurfSize(c, report.SurfSize); err != nil {
+func validateS3ReportFields(reportSvc *service.ReportService, c *gin.Context, report *model.ReportWithS3Image) bool {
+	if err := validateSurfSize(reportSvc, c, report.SurfSize); err != nil {
 		return false
 	}
-	if err := validateWindAmount(c, report.WindAmount); err != nil {
+	if err := validateWindAmount(reportSvc, c, report.WindAmount); err != nil {
 		return false
 	}
-	if err := validateWindDirection(c, report.WindDirection); err != nil {
+	if err := validateWindDirection(reportSvc, c, report.WindDirection); err != nil {
 		return false
 	}
-	if err := validateConsistency(c, report.Consistency); err != nil {
+	if err := validateConsistency(reportSvc, c, report.Consistency); err != nil {
 		return false
 	}
-	if err := validateQuality(c, report.Quality); err != nil {
+	if err := validateQuality(reportSvc, c, report.Quality); err != nil {
 		return false
 	}
-	if err := validateMessiness(c, report.Messiness); err != nil {
+	if err := validateMessiness(reportSvc, c, report.Messiness); err != nil {
 		return false
 	}
 	return true
 }
 
 // validateSurfSize validates the surf size field.
-func validateSurfSize(c *gin.Context, surfSize string) error {
-	if surfSize != "" && !ReportService.IsValidSurfSize(surfSize) {
+func validateSurfSize(reportSvc *service.ReportService, c *gin.Context, surfSize string) error {
+	if surfSize != "" && !reportSvc.IsValidSurfSize(surfSize) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid surf size",
 			"message": fmt.Sprintf("Surf size '%s' is not valid", surfSize),
@@ -96,8 +99,8 @@ func validateSurfSize(c *gin.Context, surfSize string) error {
 }
 
 // validateWindAmount validates the wind amount field.
-func validateWindAmount(c *gin.Context, windAmount string) error {
-	if windAmount != "" && !ReportService.IsValidWindAmount(windAmount) {
+func validateWindAmount(reportSvc *service.ReportService, c *gin.Context, windAmount string) error {
+	if windAmount != "" && !reportSvc.IsValidWindAmount(windAmount) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid wind amount",
 			"message": fmt.Sprintf("Wind amount '%s' is not valid", windAmount),
@@ -109,8 +112,8 @@ func validateWindAmount(c *gin.Context, windAmount string) error {
 }
 
 // validateWindDirection validates the wind direction field.
-func validateWindDirection(c *gin.Context, windDirection string) error {
-	if windDirection != "" && !ReportService.IsValidWindDirection(windDirection) {
+func validateWindDirection(reportSvc *service.ReportService, c *gin.Context, windDirection string) error {
+	if windDirection != "" && !reportSvc.IsValidWindDirection(windDirection) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid wind direction",
 			"message": fmt.Sprintf("Wind direction '%s' is not valid", windDirection),
@@ -122,8 +125,8 @@ func validateWindDirection(c *gin.Context, windDirection string) error {
 }
 
 // validateConsistency validates the consistency field.
-func validateConsistency(c *gin.Context, consistency string) error {
-	if consistency != "" && !ReportService.IsValidSurfDifficulty(consistency) {
+func validateConsistency(reportSvc *service.ReportService, c *gin.Context, consistency string) error {
+	if consistency != "" && !reportSvc.IsValidSurfDifficulty(consistency) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid consistency",
 			"message": fmt.Sprintf("Consistency '%s' is not valid", consistency),
@@ -135,8 +138,8 @@ func validateConsistency(c *gin.Context, consistency string) error {
 }
 
 // validateQuality validates the quality field.
-func validateQuality(c *gin.Context, quality string) error {
-	if quality != "" && !ReportService.IsValidSurfConditions(quality) {
+func validateQuality(reportSvc *service.ReportService, c *gin.Context, quality string) error {
+	if quality != "" && !reportSvc.IsValidSurfConditions(quality) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid quality",
 			"message": fmt.Sprintf("Quality '%s' is not valid", quality),
@@ -148,8 +151,8 @@ func validateQuality(c *gin.Context, quality string) error {
 }
 
 // validateMessiness validates the messiness field.
-func validateMessiness(c *gin.Context, messiness string) error {
-	if messiness != "" && !ReportService.IsValidMessiness(messiness) {
+func validateMessiness(reportSvc *service.ReportService, c *gin.Context, messiness string) error {
+	if messiness != "" && !reportSvc.IsValidMessiness(messiness) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid messiness",
 			"message": fmt.Sprintf("Messiness '%s' is not valid", messiness),
@@ -164,7 +167,7 @@ func validateMessiness(c *gin.Context, messiness string) error {
 func getAuthenticatedUserEmail(c *gin.Context) (string, bool) {
 	email, exists := c.Get("email")
 	if !exists {
-		log.Printf("No email found in context - authentication issue")
+		slog.Warn("no email found in context - authentication issue")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "Authentication required",
 			"message": "You must be logged in to submit a surf report",
@@ -174,7 +177,7 @@ func getAuthenticatedUserEmail(c *gin.Context) (string, bool) {
 	}
 	emailStr, ok := email.(string)
 	if !ok {
-		log.Printf("Invalid email type in context")
+		slog.Warn("invalid email type in context")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "Authentication required",
 			"message": "Invalid authentication data",
@@ -187,8 +190,8 @@ func getAuthenticatedUserEmail(c *gin.Context) (string, bool) {
 
 // handleReportBindingError handles JSON binding errors for report requests.
 func handleReportBindingError(c *gin.Context, err error) {
-	log.Printf("Failed to bind JSON: %v", err)
-	log.Printf("Request body: %+v", c.Request.Body)
+	slog.Warn("failed to bind JSON", slog.Any("error", err))
+	slog.Debug("request body", slog.Any("body", c.Request.Body))
 	c.JSON(http.StatusBadRequest, gin.H{
 		"error":   "Invalid request format",
 		"message": "The request data is not in the correct format",
@@ -197,23 +200,23 @@ func handleReportBindingError(c *gin.Context, err error) {
 }
 
 // validateIOSReportFields validates all surf report fields for iOS validated reports.
-func validateIOSReportFields(c *gin.Context, report *model.ReportWithIOSValidation) bool {
-	if err := validateSurfSize(c, report.SurfSize); err != nil {
+func validateIOSReportFields(reportSvc *service.ReportService, c *gin.Context, report *model.ReportWithIOSValidation) bool {
+	if err := validateSurfSize(reportSvc, c, report.SurfSize); err != nil {
 		return false
 	}
-	if err := validateWindAmount(c, report.WindAmount); err != nil {
+	if err := validateWindAmount(reportSvc, c, report.WindAmount); err != nil {
 		return false
 	}
-	if err := validateWindDirection(c, report.WindDirection); err != nil {
+	if err := validateWindDirection(reportSvc, c, report.WindDirection); err != nil {
 		return false
 	}
-	if err := validateConsistency(c, report.Consistency); err != nil {
+	if err := validateConsistency(reportSvc, c, report.Consistency); err != nil {
 		return false
 	}
-	if err := validateQuality(c, report.Quality); err != nil {
+	if err := validateQuality(reportSvc, c, report.Quality); err != nil {
 		return false
 	}
-	if err := validateMessiness(c, report.Messiness); err != nil {
+	if err := validateMessiness(reportSvc, c, report.Messiness); err != nil {
 		return false
 	}
 	return true
@@ -247,7 +250,7 @@ func validateMediaProvided(c *gin.Context, imageKey, videoKey string) bool {
 
 // handleIOSReportError handles errors from iOS report submission.
 func handleIOSReportError(c *gin.Context, err error) {
-	log.Printf("Failed to submit iOS validated report: %v", err)
+	slog.Warn("failed to submit iOS validated report", slog.Any("error", err))
 
 	// Handle specific error types
 	switch {
@@ -352,7 +355,7 @@ func parseOptionalIntParam(c *gin.Context, paramName string, defaultValue int) i
 
 // handleVideoViewURLError handles errors from video view URL generation.
 func handleVideoViewURLError(c *gin.Context, err error) {
-	log.Printf("Failed to generate video view URL: %v", err)
+	slog.Warn("failed to generate video view URL", slog.Any("error", err))
 	errStr := err.Error()
 
 	switch {
@@ -413,10 +416,17 @@ func validateMediaDeletionRequest(c *gin.Context, mediaKey, mediaType string) bo
 }
 
 // verifyMediaAccess verifies that the user has permission to access the media.
-func verifyMediaAccess(c *gin.Context, email, mediaKey, mediaType string) (*model.User, bool) {
-	user, err := getUserByEmail(email)
+func verifyMediaAccess(userSvc *service.UserService, c *gin.Context, email, mediaKey, mediaType string) (*model.User, bool) {
+	user, err := userSvc.GetByEmail(c.Request.Context(), email)
 	if err != nil {
-		log.Printf("Failed to fetch user information: %v", err)
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":   "User not found",
+				"message": "Unable to retrieve your user profile",
+			})
+			return nil, false
+		}
+		slog.Warn("failed to fetch user information", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "User information error",
 			"message": "Unable to retrieve your user profile",
@@ -426,7 +436,7 @@ func verifyMediaAccess(c *gin.Context, email, mediaKey, mediaType string) (*mode
 	}
 
 	if !canUserAccessMedia(mediaKey, user.UUID, mediaType) {
-		log.Printf("User %s attempted to delete media they don't own: %s", email, mediaKey)
+		slog.Warn("user attempted to delete media they don't own", slog.String("user", email), slog.String("media_key", mediaKey))
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "Access denied",
 			"message": "You don't have permission to delete this media",
@@ -440,7 +450,7 @@ func verifyMediaAccess(c *gin.Context, email, mediaKey, mediaType string) (*mode
 
 // handleMediaDeletionError handles errors from media deletion.
 func handleMediaDeletionError(c *gin.Context, err error) {
-	log.Printf("Failed to delete media: %v", err)
+	slog.Warn("failed to delete media", slog.Any("error", err))
 	errStr := err.Error()
 
 	if strings.Contains(errStr, "not found") || strings.Contains(errStr, "NoSuchKey") {
@@ -464,16 +474,24 @@ func handleReportSubmissionCommon(
 	c *gin.Context,
 	country, region, spot string,
 	validateFunc func(*gin.Context) bool,
+	userSvc *service.UserService,
 ) (string, *model.User, bool) {
 	email, ok := getAuthenticatedUserEmail(c)
 	if !ok {
 		return "", nil, false
 	}
 
-	log.Printf("User email from context: %s", email)
-	user, err := getUserByEmail(email)
+	slog.Info("user email from context", slog.String("email", email))
+	user, err := userSvc.GetByEmail(c.Request.Context(), email)
 	if err != nil {
-		log.Printf("Failed to fetch user information: %v", err)
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":   "User not found",
+				"message": "Unable to retrieve your user profile",
+			})
+			return "", nil, false
+		}
+		slog.Warn("failed to fetch user information", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "User information error",
 			"message": "Unable to retrieve your user profile",
@@ -495,7 +513,7 @@ func handleReportSubmissionCommon(
 
 // handleReportSubmissionSuccess handles the success response for report submissions.
 func handleReportSubmissionSuccess(c *gin.Context, email, reportType string) {
-	log.Printf("%s submitted successfully for user: %s", reportType, email)
+	slog.Info("report submitted successfully", slog.String("type", reportType), slog.String("user", email))
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
@@ -516,7 +534,7 @@ func validateUploadURLParams(c *gin.Context) (country, region, spot, email strin
 
 	emailVal, exists := c.Get("email")
 	if !exists {
-		log.Printf("No email found in context - authentication issue")
+		slog.Warn("no email found in context - authentication issue")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "Authentication required",
 			"message": "You must be logged in to generate an upload URL",
@@ -527,7 +545,7 @@ func validateUploadURLParams(c *gin.Context) (country, region, spot, email strin
 
 	emailStr, ok := emailVal.(string)
 	if !ok {
-		log.Printf("Invalid email type in context")
+		slog.Warn("invalid email type in context")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "Authentication required",
 			"message": "Invalid authentication data",
@@ -541,7 +559,7 @@ func validateUploadURLParams(c *gin.Context) (country, region, spot, email strin
 
 // handleUploadURLError handles errors from upload URL generation.
 func handleUploadURLError(c *gin.Context, mediaType string, err error) {
-	log.Printf("Failed to generate %s upload URL: %v", mediaType, err)
+	slog.Warn("failed to generate upload URL", slog.String("media_type", mediaType), slog.Any("error", err))
 
 	if strings.Contains(err.Error(), "failed to generate presigned URL") {
 		c.JSON(http.StatusInternalServerError, gin.H{

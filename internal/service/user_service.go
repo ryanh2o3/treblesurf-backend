@@ -1,113 +1,54 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
-	"treblesurf-backend/internal/model"
+	"context"
+	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 )
 
+// UserService provides business logic for user operations.
 type UserService struct {
-	db *dynamodb.DynamoDB
+	users repository.UserRepository
 }
 
-func NewUserService(db *dynamodb.DynamoDB) *UserService {
-	return &UserService{db: db}
-}
-
-func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
-	input := &dynamodb.GetItemInput{
-		TableName: aws.String("Users"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
-		},
+// NewUserService creates a new UserService with the given repository.
+// Returns an error if the repository is nil.
+func NewUserService(users repository.UserRepository) (*UserService, error) {
+	if users == nil {
+		return nil, fmt.Errorf("user repository is required")
 	}
+	return &UserService{users: users}, nil
+}
 
-	result, err := s.db.GetItem(input)
+// GetByEmail retrieves a user by email with context propagation.
+func (s *UserService) GetByEmail(ctx context.Context, email string) (*model.User, error) {
+	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
+	return user, nil
+}
 
-	if result.Item == nil {
-		return nil, nil
-	}
-
-	var user model.User
-	err = dynamodbattribute.UnmarshalMap(result.Item, &user)
+// GetByUUID retrieves a user by UUID with context propagation.
+func (s *UserService) GetByUUID(ctx context.Context, uuid string) (*model.User, error) {
+	user, err := s.users.GetByUUID(ctx, uuid)
 	if err != nil {
 		return nil, err
 	}
-
-	return &user, nil
+	return user, nil
 }
 
-func (s *UserService) GetUserByUUID(uuid string) (*model.User, error) {
-	// Since UUID is not the primary key, we need to scan the table
-	// In production, you might want to create a GSI on UUID
-	input := &dynamodb.ScanInput{
-		TableName:        aws.String("Users"),
-		FilterExpression: aws.String("#uuid = :uuid"),
-		ExpressionAttributeNames: map[string]*string{
-			"#uuid": aws.String("uuid"),
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":uuid": {
-				S: aws.String(uuid),
-			},
-		},
-	}
-
-	result, err := s.db.Scan(input)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(result.Items) == 0 {
-		return nil, nil
-	}
-
-	var user model.User
-	err = dynamodbattribute.UnmarshalMap(result.Items[0], &user)
-	if err != nil {
-		return nil, err
-	}
-
-	return &user, nil
+// UpdateTheme updates a user's theme with context propagation.
+func (s *UserService) UpdateTheme(ctx context.Context, email, theme string) error {
+	return s.users.UpdateTheme(ctx, email, theme)
 }
 
-func (s *UserService) UpdateUserTheme(email, theme string) error {
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String("Users"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
-		},
-		UpdateExpression: aws.String("SET theme = :theme"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":theme": {
-				S: aws.String(theme),
-			},
-		},
-	}
-
-	_, err := s.db.UpdateItem(input)
-	return err
+// Delete removes a user by email with context propagation.
+func (s *UserService) Delete(ctx context.Context, email string) error {
+	return s.users.Delete(ctx, email)
 }
 
-func (s *UserService) DeleteUser(email string) error {
-	input := &dynamodb.DeleteItemInput{
-		TableName: aws.String("Users"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
-		},
-	}
-
-	_, err := s.db.DeleteItem(input)
-	return err
-}
+// Legacy helpers removed - use context-aware methods.

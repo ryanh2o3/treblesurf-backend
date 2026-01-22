@@ -1,41 +1,37 @@
 package websocket
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"treblesurf-backend/internal/model"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/golang-jwt/jwt"
 )
 
 // validateWebSocketToken validates the WebSocket token and extracts user information.
-func (h *Handler) validateWebSocketToken(token string) (userID, sessionID string, err error) {
+func (h *Handler) validateWebSocketToken(token string) (string, error) {
 	if token == "" {
-		return "", "", nil
+		return "", nil
 	}
 
 	wsToken, err := h.websocketService.ValidateWebSocketToken(token)
 	if err != nil || !wsToken.Valid {
-		return "", "", err
+		return "", err
 	}
 
-	claims, ok := wsToken.Claims.(jwt.MapClaims)
-	if !ok {
-		return "", "", nil
+	// Extract email from the new JWT-based WebSocket token
+	email, err := h.websocketService.GetEmailFromToken(wsToken)
+	if err != nil {
+		return "", err
 	}
 
-	var ok2 bool
-	userID, ok2 = claims["user_id"].(string)
-	if !ok2 {
-		return "", "", nil
-	}
+	return email, nil
+}
 
-	if sessionIDVal, ok2 := claims["session_id"].(string); ok2 {
-		sessionID = sessionIDVal
-	}
-	return userID, sessionID, nil
+func requestContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 10*time.Second)
 }
 
 // createConnectionInfo creates a ConnectionInfo from the request.

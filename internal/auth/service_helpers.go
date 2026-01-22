@@ -3,8 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"log"
-	"os"
+	"log/slog"
 	"time"
 
 	"github.com/adam-hanna/sessions/user"
@@ -12,32 +11,13 @@ import (
 	"google.golang.org/api/idtoken"
 )
 
-// getGoogleClientIDs retrieves Google OAuth client IDs from environment variables.
-//nolint:unparam // Error return maintained for API consistency
-func getGoogleClientIDs() (map[string]bool, error) {
-	clientID := os.Getenv("GOOGLE_CLIENT_ID")
-	if clientID == "" {
-		return nil, nil
-	}
-
-	clientIDs := make(map[string]bool)
-	clientIDs[clientID] = true
-
-	iosClientID := os.Getenv("GOOGLE_IOS_CLIENT_ID")
-	if iosClientID != "" {
-		clientIDs[iosClientID] = true
-	}
-
-	return clientIDs, nil
-}
-
 // validateGoogleIDToken validates a Google ID token against client IDs.
-func validateGoogleIDToken(idToken string, clientIDs map[string]bool) (*idtoken.Payload, error) {
+func validateGoogleIDToken(ctx context.Context, idToken string, clientIDs map[string]bool) (*idtoken.Payload, error) {
 	var payload *idtoken.Payload
 	var err error
 
 	for id := range clientIDs {
-		payload, err = idtoken.Validate(context.Background(), idToken, id)
+		payload, err = idtoken.Validate(ctx, idToken, id)
 		if err == nil {
 			return payload, nil
 		}
@@ -49,7 +29,7 @@ func validateGoogleIDToken(idToken string, clientIDs map[string]bool) (*idtoken.
 // extractUserClaims extracts user claims from a Google ID token payload.
 //nolint:unparam,gocritic // Error return maintained for API consistency; multiple return values needed for all claims
 func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyName, givenName string, err error) {
-	log.Printf("JWT claims available: %v", payload.Claims)
+	slog.Debug("JWT claims available", slog.Any("claims", payload.Claims))
 
 	email, ok := payload.Claims["email"].(string)
 	if !ok || email == "" {
@@ -74,7 +54,7 @@ func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyNa
 }
 
 // handleNewUser creates a new user and returns the user data.
-func handleNewUser(email, name, picture, familyName, givenName string) (*User, error) {
+func (s *Service) handleNewUser(ctx context.Context, email, name, picture, familyName, givenName string) (*User, error) {
 	newUser := User{
 		Email:      email,
 		Name:       name,
@@ -83,35 +63,35 @@ func handleNewUser(email, name, picture, familyName, givenName string) (*User, e
 		GivenName:  givenName,
 	}
 
-	if err := createUser(newUser); err != nil {
+	if err := s.createUser(ctx, newUser); err != nil {
 		return nil, err
 	}
 
-	log.Printf("Created new user: %s", email)
-	return getUserByEmail(email)
+	slog.Info("created new user", slog.String("email", email))
+	return s.getUserByEmail(ctx, email)
 }
 
 // handleExistingUser updates last login and ensures UUID, returns updated user.
-func handleExistingUser(email string) (*User, error) {
-	if err := updateUserLastLogin(email); err != nil {
-		log.Printf("Error updating last login: %v", err)
+func (s *Service) handleExistingUser(ctx context.Context, email string) (*User, error) {
+	if err := s.updateUserLastLogin(ctx, email); err != nil {
+		slog.Warn("error updating last login", slog.Any("error", err))
 	}
 
-	if err := ensureUserHasUUID(email); err != nil {
-		log.Printf("Error ensuring user has UUID: %v", err)
+	if err := s.ensureUserHasUUID(ctx, email); err != nil {
+		slog.Warn("error ensuring user has UUID", slog.Any("error", err))
 	}
 
-	userData, err := getUserByEmail(email)
+	userData, err := s.getUserByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("User logged in: %s", email)
+	slog.Info("user logged in", slog.String("email", email))
 	return userData, nil
 }
 
 // setupCSRFToken sets CSRF token cookie and header.
-func setupCSRFToken(c *gin.Context) string {
+func setupCSRFToken(c *gin.Context, secure bool) string {
 	csrfToken, err := GenerateCSRFToken()
 	if err != nil {
 		return ""
@@ -123,7 +103,7 @@ func setupCSRFToken(c *gin.Context) string {
 		int(24*time.Hour.Seconds()),
 		"/",
 		"",
-		true,  // Secure
+		secure, // Secure
 		false, // Not HTTP-only (JS needs to access it)
 	)
 	c.Header("X-CSRF-Token", csrfToken)
@@ -132,8 +112,8 @@ func setupCSRFToken(c *gin.Context) string {
 }
 
 // createSession creates a session for the user if session service is available.
-func createSession(email, csrfToken string, c *gin.Context) {
-	if sessionService == nil {
+func (s *Service) createSession(email, csrfToken string, c *gin.Context) {
+	if s.sessionService == nil {
 		return
 	}
 
@@ -150,23 +130,40 @@ func createSession(email, csrfToken string, c *gin.Context) {
 		return
 	}
 
-	_, err = sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
+	_, err = s.sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
 	if err != nil {
-		log.Printf("Error creating session: %v", err)
+		slog.Warn("error creating session", slog.Any("error", err))
 	}
 }
 
 // setAuthCookie sets the authentication cookie.
-func setAuthCookie(c *gin.Context) {
+func setAuthCookie(c *gin.Context, secure bool) {
 	c.SetCookie(
 		"auth_token",
 		"authenticated",
 		int(24*time.Hour.Seconds()),
 		"/",
 		"",
-		true, // Secure (HTTPS only)
+		secure, // Secure (HTTPS only)
 		true, // HTTP-only
 	)
+}
+
+func buildClientIDMap(ids []string) map[string]bool {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		out[id] = true
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // buildUserResponse builds the user response object.
@@ -195,18 +192,18 @@ func setCacheControlHeaders(c *gin.Context) {
 }
 
 // ensureUserUUID ensures a user has a UUID and refreshes user data if needed.
-func ensureUserUUID(userData *User, email string) *User {
+func (s *Service) ensureUserUUID(ctx context.Context, userData *User, email string) *User {
 	if userData.UUID != "" {
 		return userData
 	}
 
-	if err := ensureUserHasUUID(email); err != nil {
-		log.Printf("Error ensuring user has UUID: %v", err)
+	if err := s.ensureUserHasUUID(ctx, email); err != nil {
+		slog.Warn("error ensuring user has UUID", slog.Any("error", err))
 	}
 
-	updatedUser, err := getUserByEmail(email)
+	updatedUser, err := s.getUserByEmail(ctx, email)
 	if err != nil {
-		log.Printf("Error getting updated user data: %v", err)
+		slog.Warn("error getting updated user data", slog.Any("error", err))
 		return userData
 	}
 
@@ -223,7 +220,7 @@ func updateSessionLastActive(userSession *user.Session, c *gin.Context) {
 	sessionData.LastActive = time.Now()
 	updatedJSON, err := json.Marshal(sessionData)
 	if err != nil {
-		log.Printf("Failed to marshal session data: %v", err)
+		slog.Warn("failed to marshal session data", slog.Any("error", err))
 		return
 	}
 	userSession.JSON = string(updatedJSON)

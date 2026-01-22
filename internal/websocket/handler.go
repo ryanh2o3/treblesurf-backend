@@ -2,9 +2,10 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/service"
@@ -30,7 +31,10 @@ func NewHandler(websocketService *service.WebSocketService) *Handler {
 func (h *Handler) HandleWebSocketEvent(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
-	log.Printf("WebSocket event: %s, ConnectionID: %s", req.RequestContext.RouteKey, req.RequestContext.ConnectionID)
+	slog.Info("websocket event",
+		slog.String("route", req.RequestContext.RouteKey),
+		slog.String("connection_id", req.RequestContext.ConnectionID),
+	)
 
 	switch req.RequestContext.RouteKey {
 	case "$connect":
@@ -50,23 +54,28 @@ func (h *Handler) handleConnect(
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 	token := req.QueryStringParameters["token"]
+	ctx, cancel := requestContext()
+	defer cancel()
 
-	userID, sessionID, err := h.validateWebSocketToken(token)
+	userID, err := h.validateWebSocketToken(token)
 	if err != nil || userID == "" {
 		if token == "" {
 			return unauthorizedResponse(), nil
 		}
-		log.Printf("Invalid WebSocket token: %v", err)
+		slog.Warn("invalid WebSocket token", slog.Any("error", err))
 		return invalidTokenResponse(), nil
 	}
 
 	connection := h.createConnectionInfo(connectionID, userID, req)
-	if err := h.websocketService.SaveConnection(connection); err != nil {
-		log.Printf("Failed to save connection: %v", err)
+	if err := h.websocketService.SaveConnection(ctx, connection); err != nil {
+		slog.Warn("failed to save connection", slog.Any("error", err))
 		return connectionFailedResponse(), nil
 	}
 
-	log.Printf("Client connected: %s, User: %s, Session: %s", connectionID, userID, sessionID)
+	slog.Info("client connected",
+		slog.String("connection_id", connectionID),
+		slog.String("user_id", userID),
+	)
 	return successResponse("Connected"), nil
 }
 
@@ -75,12 +84,14 @@ func (h *Handler) handleDisconnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
+	ctx, cancel := requestContext()
+	defer cancel()
 
-	if err := h.websocketService.DeleteConnection(connectionID); err != nil {
-		log.Printf("Error deleting connection: %v", err)
+	if err := h.websocketService.DeleteConnection(ctx, connectionID); err != nil {
+		slog.Warn("error deleting connection", slog.Any("error", err))
 	}
 
-	log.Printf("Client disconnected: %s", connectionID)
+	slog.Info("client disconnected", slog.String("connection_id", connectionID))
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
 		Body:       "Disconnected",
@@ -99,8 +110,10 @@ func (h *Handler) handleDefault(
 		}, nil
 	}
 
-	if err := h.websocketService.UpdateConnectionLastActive(req.RequestContext.ConnectionID); err != nil {
-		log.Printf("Warning: Failed to update connection last active: %v", err)
+	ctx, cancel := requestContext()
+	defer cancel()
+	if err := h.websocketService.UpdateConnectionLastActive(ctx, req.RequestContext.ConnectionID); err != nil {
+		slog.Warn("failed to update connection last active", slog.Any("error", err))
 	}
 
 	if message.Action == "" {
@@ -121,7 +134,7 @@ func (h *Handler) handleCustomRoute(
 ) (events.APIGatewayProxyResponse, error) {
 	var message model.WebSocketMessage
 	if err := json.Unmarshal([]byte(req.Body), &message); err != nil {
-		log.Printf("Error parsing message: %v", err)
+		slog.Warn("error parsing message", slog.Any("error", err))
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
 			Body:       "Invalid message format",
@@ -129,7 +142,7 @@ func (h *Handler) handleCustomRoute(
 	}
 
 	connectionID := req.RequestContext.ConnectionID
-	log.Printf("Received action: %s from connection: %s", message.Action, connectionID)
+	slog.Info("received action", slog.String("action", message.Action), slog.String("connection_id", connectionID))
 
 	switch message.Action {
 	case "subscribe":
@@ -137,7 +150,7 @@ func (h *Handler) handleCustomRoute(
 	case "ping":
 		return h.handlePingAction(req)
 	default:
-		log.Printf("Unknown action: %s", message.Action)
+		slog.Warn("unknown action", slog.String("action", message.Action))
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusOK,
 			Body:       "Unknown action",
@@ -151,59 +164,107 @@ func (h *Handler) handleCustomRoute(
 func (h *Handler) handleSubscribeAction(
 	req events.APIGatewayWebsocketProxyRequest, data json.RawMessage,
 ) (events.APIGatewayProxyResponse, error) {
-	var subRequest model.SubscriptionRequest
-	if err := json.Unmarshal(data, &subRequest); err != nil {
-		log.Printf("Error parsing subscription data: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       "Invalid subscription data",
-		}, nil
+	subRequest, resp := parseSubscriptionRequest(data)
+	if resp != nil {
+		return *resp, nil
 	}
 
 	connectionID := req.RequestContext.ConnectionID
+	ctx, cancel := requestContext()
+	defer cancel()
 
-	connection, err := h.websocketService.GetConnection(connectionID)
-	if err != nil {
-		log.Printf("Error getting connection info: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-			Body:       "Failed to process subscription",
-		}, nil
+	connection, resp := h.getConnection(ctx, connectionID)
+	if resp != nil {
+		return *resp, nil
 	}
 
-	userID := connection.UserID
 	spotIdentifier := fmt.Sprintf("%s/%s/%s", subRequest.Country, subRequest.Region, subRequest.Spot)
-
-	if saveErr := h.websocketService.SaveSubscription(spotIdentifier, userID, connectionID); saveErr != nil {
-		log.Printf("Failed to save subscription: %v", saveErr)
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-			Body:       "Failed to subscribe",
-		}, nil
+	if resp := h.saveSubscription(ctx, connectionID, connection.UserID, spotIdentifier); resp != nil {
+		return *resp, nil
 	}
 
-	if updateErr := h.websocketService.UpdateConnectionSpot(connectionID, spotIdentifier); updateErr != nil {
-		log.Printf("Warning: Failed to update connection spot: %v", updateErr)
+	if resp := h.sendSubscriptionResponse(connectionID, connection.UserID, spotIdentifier); resp != nil {
+		return *resp, nil
 	}
 
-	response := h.websocketService.CreateSubscriptionResponse(spotIdentifier)
-	responseJSON, err := json.Marshal(response)
-	if err != nil {
-		log.Printf("Failed to marshal response: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-			Body:       "Failed to process subscription",
-		}, nil
-	}
-	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
-		log.Printf("Warning: Failed to send message to connection: %v", err)
-	}
-
-	log.Printf("User %s subscribed to spot: %s via connection %s", userID, spotIdentifier, connectionID)
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
 		Body:       "Subscribed",
 	}, nil
+}
+
+func parseSubscriptionRequest(data json.RawMessage) (model.SubscriptionRequest, *events.APIGatewayProxyResponse) {
+	var subRequest model.SubscriptionRequest
+	if err := json.Unmarshal(data, &subRequest); err != nil {
+		slog.Warn("error parsing subscription data", slog.Any("error", err))
+		return model.SubscriptionRequest{}, &events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       "Invalid subscription data",
+		}
+	}
+	return subRequest, nil
+}
+
+func (h *Handler) getConnection(
+	ctx context.Context,
+	connectionID string,
+) (*model.ConnectionInfo, *events.APIGatewayProxyResponse) {
+	connection, err := h.websocketService.GetConnection(ctx, connectionID)
+	if err != nil {
+		slog.Warn("error getting connection info", slog.Any("error", err))
+		return nil, &events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Failed to process subscription",
+		}
+	}
+	return connection, nil
+}
+
+func (h *Handler) saveSubscription(
+	ctx context.Context,
+	connectionID string,
+	userID string,
+	spotIdentifier string,
+) *events.APIGatewayProxyResponse {
+	if err := h.websocketService.SaveSubscription(ctx, spotIdentifier, userID, connectionID); err != nil {
+		slog.Warn("failed to save subscription", slog.Any("error", err))
+		return &events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Failed to subscribe",
+		}
+	}
+
+	if err := h.websocketService.UpdateConnectionSpot(ctx, connectionID, spotIdentifier); err != nil {
+		slog.Warn("failed to update connection spot", slog.Any("error", err))
+	}
+
+	return nil
+}
+
+func (h *Handler) sendSubscriptionResponse(
+	connectionID string,
+	userID string,
+	spotIdentifier string,
+) *events.APIGatewayProxyResponse {
+	response := h.websocketService.CreateSubscriptionResponse(spotIdentifier)
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		slog.Warn("failed to marshal response", slog.Any("error", err))
+		return &events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Failed to process subscription",
+		}
+	}
+	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
+		slog.Warn("failed to send message to connection", slog.Any("error", err))
+	}
+
+	slog.Info("user subscribed to spot",
+		slog.String("user_id", userID),
+		slog.String("spot", spotIdentifier),
+		slog.String("connection_id", connectionID),
+	)
+	return nil
 }
 
 // handlePingAction responds to ping messages to keep the connection alive
@@ -214,21 +275,23 @@ func (h *Handler) handlePingAction(
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
-	if err := h.websocketService.UpdateConnectionLastActive(connectionID); err != nil {
-		log.Printf("Warning: Failed to update connection last active: %v", err)
+	ctx, cancel := requestContext()
+	defer cancel()
+	if err := h.websocketService.UpdateConnectionLastActive(ctx, connectionID); err != nil {
+		slog.Warn("failed to update connection last active", slog.Any("error", err))
 	}
 
 	response := h.websocketService.CreatePongResponse()
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
-		log.Printf("Failed to marshal response: %v", err)
+		slog.Warn("failed to marshal response", slog.Any("error", err))
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 			Body:       "Failed to process ping",
 		}, nil
 	}
 	if err := h.websocketService.SendToConnection(connectionID, string(responseJSON)); err != nil {
-		log.Printf("Warning: Failed to send message to connection: %v", err)
+		slog.Warn("failed to send message to connection", slog.Any("error", err))
 	}
 
 	return events.APIGatewayProxyResponse{

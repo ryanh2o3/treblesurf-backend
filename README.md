@@ -35,21 +35,20 @@ The API handles:
 ```
 treblesurf-backend/
 ├── cmd/                    # Application entry points
-│   ├── api/               # Main API server
+│   ├── api/               # API Lambda entry point
+│   ├── server/            # HTTP server entry point
 │   └── websocket/         # WebSocket server
 ├── internal/               # Internal application code
 │   ├── api/               # API setup and routing
 │   ├── auth/              # Authentication and authorization
 │   ├── controller/        # HTTP request handlers
-│   ├── middleware/        # HTTP middleware
+│   ├── logging/           # Structured logging
 │   ├── model/             # Data models and structures
 │   ├── service/           # Business logic services
 │   ├── storage/           # Data storage interfaces
 │   ├── validation/        # Input validation
 │   └── websocket/         # WebSocket handling
 ├── local/                  # Local development setup
-├── models/                 # AWS service models
-├── pkg/                    # Public packages
 └── scripts/                # Deployment and utility scripts
 ```
 

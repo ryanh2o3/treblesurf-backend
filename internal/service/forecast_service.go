@@ -1,156 +1,70 @@
+// Package service provides business logic services for the application.
 package service
 
 import (
+	"context"
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 )
 
+// ForecastService provides business logic for forecast operations.
 type ForecastService struct {
-	db *dynamodb.DynamoDB
+	forecasts repository.ForecastRepository
 }
 
-func NewForecastService(db *dynamodb.DynamoDB) *ForecastService {
-	return &ForecastService{db: db}
+// NewForecastService creates a new ForecastService with the given repository.
+// Returns an error if the repository is nil.
+func NewForecastService(forecasts repository.ForecastRepository) (*ForecastService, error) {
+	if forecasts == nil {
+		return nil, fmt.Errorf("forecast repository is required")
+	}
+	return &ForecastService{forecasts: forecasts}, nil
 }
 
 func (s *ForecastService) GetSpotForecast(
+	ctx context.Context,
 	spotName, regionName, countryName string,
-) ([]map[string]interface{}, error) {
-	return s.queryForecastByDateTime(spotName, regionName, countryName, nil)
+) ([]*model.Forecast, error) {
+	return s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName)
 }
 
 func (s *ForecastService) GetListSpotsForecast(
+	ctx context.Context,
 	spots []string,
 	regionName, countryName string,
-) ([][]map[string]interface{}, error) {
-	var spotIDs []string
+) ([][]*model.Forecast, error) {
+	results := make([][]*model.Forecast, 0, len(spots))
 	for _, spot := range spots {
-		spotIDs = append(spotIDs, fmt.Sprintf("%s#%s#%s", countryName, regionName, spot))
+		forecast, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spot)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, forecast)
 	}
 
-	return s.queryMultipleSpotForecasts(spotIDs, aws.Int64(72))
+	return results, nil
 }
 
-func (s *ForecastService) GetRegionForecast(regionName, countryName string) ([]map[string]interface{}, error) {
-	forecastDate := time.Now().Format("2006-01-02")
-
-	input := &dynamodb.QueryInput{
-		TableName: aws.String("SpotForecastData"),
-		KeyConditionExpression: aws.String("ForecastDate = :date AND begins_with(country_region_spot, :location)"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":date": {
-				S: aws.String(forecastDate),
-			},
-			":location": {
-				S: aws.String(fmt.Sprintf("%s_%s_", countryName, regionName)),
-			},
-		},
-		ScanIndexForward: aws.Bool(false),
-	}
-
-	result, err := s.db.Query(input)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(result.Items) == 0 {
-		return nil, nil
-	}
-
-	var forecasts []map[string]interface{}
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &forecasts)
-	if err != nil {
-		return nil, err
-	}
-
-	return forecasts, nil
+func (s *ForecastService) GetRegionForecast(
+	ctx context.Context,
+	regionName, countryName string,
+) ([]*model.Forecast, error) {
+	return s.forecasts.GetRegionForecast(ctx, countryName, regionName, time.Now())
 }
 
 func (s *ForecastService) GetCurrentWeather(
+	ctx context.Context,
 	spotName, regionName, countryName string,
-) ([]map[string]interface{}, error) {
-	return s.queryForecastByDateTime(spotName, regionName, countryName, aws.Int64(1))
-}
-
-func (s *ForecastService) queryForecastByDateTime(
-	spotName, regionName, countryName string,
-	limit *int64,
-) ([]map[string]interface{}, error) {
-		spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
-	currentEpoch := time.Now().Unix()
-	
-	input := &dynamodb.QueryInput{
-		TableName: aws.String("SpotForecastData"),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":current_time": {
-				S: aws.String(fmt.Sprintf("%d", currentEpoch)),
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
-	}
-	if limit != nil {
-		input.Limit = limit
-	}
-
-	result, err := s.db.Query(input)
+) ([]*model.Forecast, error) {
+	current, err := s.forecasts.GetCurrentConditions(ctx, countryName, regionName, spotName)
 	if err != nil {
 		return nil, err
 	}
-
-	var forecasts []map[string]interface{}
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &forecasts)
-	if err != nil {
-		return nil, err
+	if current == nil {
+		return nil, nil
 	}
-
-	return forecasts, nil
-}
-
-func (s *ForecastService) queryMultipleSpotForecasts(
-	spotIDs []string, limit *int64,
-) ([][]map[string]interface{}, error) {
-	currentEpoch := time.Now().Unix()
-	var allForecasts [][]map[string]interface{}
-
-	for _, spotID := range spotIDs {
-		input := &dynamodb.QueryInput{
-			TableName: aws.String("SpotForecastData"),
-			KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":spot_id": {
-					S: aws.String(spotID),
-				},
-				":current_time": {
-					S: aws.String(fmt.Sprintf("%d", currentEpoch)),
-				},
-			},
-			ScanIndexForward: aws.Bool(true),
-		}
-		if limit != nil {
-			input.Limit = limit
-		}
-
-		result, err := s.db.Query(input)
-		if err != nil {
-			return nil, err
-		}
-
-		var forecasts []map[string]interface{}
-		err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &forecasts)
-		if err != nil {
-			return nil, err
-		}
-
-		allForecasts = append(allForecasts, forecasts)
-	}
-
-	return allForecasts, nil
+	return []*model.Forecast{current}, nil
 }
