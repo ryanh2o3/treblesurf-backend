@@ -51,3 +51,7 @@ build/
 # Temporary files
 tmp/
 temp/
+
+# Internal documentation (keep only README.md)
+*.md
+!README.md
