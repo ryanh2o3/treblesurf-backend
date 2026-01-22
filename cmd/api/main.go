@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"os"
 	"strings"
 	"treblesurf-backend/internal/app"
 	"treblesurf-backend/internal/config"
@@ -43,7 +44,7 @@ func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.API
 func main() {
 	if err := initialize(); err != nil {
 		slog.Error("failed to initialize api handler", slog.Any("error", err))
-		return
+		os.Exit(1)
 	}
 	lambda.Start(Handler)
 }
