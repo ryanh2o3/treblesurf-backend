@@ -144,3 +144,37 @@ func (uc *UserController) GetUserTheme(c *gin.Context) {
 	theme := user.Theme
 	c.JSON(http.StatusOK, gin.H{"theme": theme})
 }
+
+// GetUserPreferences returns basic user preference data for the iOS client.
+func (uc *UserController) GetUserPreferences(c *gin.Context) {
+	email, exists := c.Get("email")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	emailStr, ok := email.(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
+		return
+	}
+
+	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
+		return
+	}
+
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"theme": user.Theme,
+	})
+}

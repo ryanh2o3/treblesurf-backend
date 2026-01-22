@@ -169,6 +169,51 @@ func TestUserController_GetUserTheme_Unauthorized(t *testing.T) {
 	}
 }
 
+func TestUserController_GetUserPreferences(t *testing.T) {
+	repo := &mockrepo.UserRepo{
+		GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+			return &model.User{Email: email, Theme: testUserThemeDark}, nil
+		},
+	}
+
+	controller := setupUserController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/user/preferences", http.NoBody)
+	c.Set("email", testUserEmail)
+
+	controller.GetUserPreferences(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if response["theme"] != testUserThemeDark {
+		t.Errorf("expected theme %q, got %v", testUserThemeDark, response["theme"])
+	}
+}
+
+func TestUserController_GetUserPreferences_Unauthorized(t *testing.T) {
+	repo := &mockrepo.UserRepo{}
+	controller := setupUserController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/user/preferences", http.NoBody)
+
+	controller.GetUserPreferences(c)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, w.Code)
+	}
+}
+
 func TestUserController_DeleteMyAccount(t *testing.T) {
 	repo := &mockrepo.UserRepo{
 		GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {

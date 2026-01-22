@@ -39,7 +39,7 @@ func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
 	}
 	
 	if len(forecast) > 0 {
-		ctx.JSON(http.StatusOK, forecast)
+		ctx.JSON(http.StatusOK, mapForecastsToClient(forecast))
 		return
 	}
 	
@@ -65,7 +65,7 @@ func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, forecasts)
+	ctx.JSON(http.StatusOK, mapForecastGroupsToClient(forecasts))
 }
 
 func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
@@ -88,7 +88,7 @@ func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 		return compareSpot(forecasts[i], forecasts[j])
 	})
 
-	ctx.JSON(http.StatusOK, forecasts)
+	ctx.JSON(http.StatusOK, mapForecastsToClient(forecasts))
 }
 
 func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
@@ -103,7 +103,7 @@ func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
 	}
 	
 	if len(forecast) > 0 {
-		ctx.JSON(http.StatusOK, forecast)
+		ctx.JSON(http.StatusOK, mapForecastsToClient(forecast))
 		return
 	}
 

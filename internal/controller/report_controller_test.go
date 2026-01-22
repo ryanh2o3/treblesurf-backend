@@ -346,9 +346,12 @@ func TestReportController_RetrieveTodaysSurfReports(t *testing.T) {
 		GetBySpotFn: func(_ context.Context, country, region, spot string, _ int) ([]*model.SurfReport, error) {
 			return []*model.SurfReport{
 				{
-					Country: country,
-					Region:  region,
-					Spot:    spot,
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					CountryRegionSpot: country + "_" + region + "_" + spot,
+					DateReported:      "2024-01-15",
+					Time:              "2024-01-15T14:30:00Z",
 				},
 			}, nil
 		},
@@ -372,6 +375,17 @@ func TestReportController_RetrieveTodaysSurfReports(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response) != 1 {
+		t.Fatalf("expected 1 report, got %d", len(response))
+	}
+	if response[0]["country_region_spot"] == nil || response[0]["dateReported"] == nil || response[0]["Time"] == nil {
+		t.Fatalf("expected iOS-compatible report keys, got: %#v", response[0])
 	}
 }
 
@@ -407,9 +421,12 @@ func TestReportController_GetAllSpotSurfReports(t *testing.T) {
 			reports := make([]*model.SurfReport, limit)
 			for i := 0; i < limit; i++ {
 				reports[i] = &model.SurfReport{
-					Country: country,
-					Region:  region,
-					Spot:    spot,
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					CountryRegionSpot: country + "_" + region + "_" + spot,
+					DateReported:      "2024-01-15",
+					Time:              "2024-01-15T14:30:00Z",
 				}
 			}
 			return reports, nil
@@ -434,6 +451,17 @@ func TestReportController_GetAllSpotSurfReports(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response) != 10 {
+		t.Fatalf("expected 10 reports, got %d", len(response))
+	}
+	if response[0]["country_region_spot"] == nil || response[0]["dateReported"] == nil || response[0]["Time"] == nil {
+		t.Fatalf("expected iOS-compatible report keys, got: %#v", response[0])
 	}
 }
 

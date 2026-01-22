@@ -2,6 +2,8 @@
 package controller
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -25,18 +27,6 @@ type buoyLocationResponse struct {
 	Spot      string  `json:"spot"`
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
-}
-
-type buoyDataResponse struct {
-	DataDateTime  string  `json:"dataDateTime"`
-	WaveHeight    float64 `json:"wave_height"`
-	MaxPeriod     float64 `json:"max_period"`
-	WavePeriod    float64 `json:"wave_period"`
-	WaveDirection float64 `json:"wave_direction"`
-	WindSpeed     float64 `json:"wind_speed"`
-	WindDirection float64 `json:"wind_direction"`
-	Temperature   float64 `json:"temperature"`
-	Pressure      float64 `json:"pressure"`
 }
 
 // NewBuoyController creates a new BuoyController with the given service.
@@ -91,9 +81,10 @@ func (bc *BuoyController) GetLiveBuoyData(c *gin.Context) {
 		return
 	}
 
-	results := make([]buoyDataResponse, 0, len(data))
+	regionBuoyMap := bc.getRegionBuoyMap(c.Request.Context())
+	results := make([]clientBuoyResponse, 0, len(data))
 	for _, d := range data {
-		if response := buoyDataToResponse(d); response != nil {
+		if response := buoyDataToClientResponse(d, regionBuoyMap); response != nil {
 			results = append(results, *response)
 		}
 	}
@@ -134,7 +125,8 @@ func (bc *BuoyController) GetBuoyDataRange(c *gin.Context) {
 		return
 	}
 
-	results := buoyDataSliceToResponses(data)
+	regionBuoyMap := bc.getRegionBuoyMap(c.Request.Context())
+	results := buoyDataSliceToClientResponses(data, regionBuoyMap)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -158,7 +150,8 @@ func (bc *BuoyController) GetSingleBuoyData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, buoyDataToResponse(data))
+	regionBuoyMap := bc.getRegionBuoyMap(c.Request.Context())
+	c.JSON(http.StatusOK, buoyDataToClientResponse(data, regionBuoyMap))
 }
 
 // GetLast24HoursBuoyData returns buoy data from the last 24 hours for a specific buoy.
@@ -176,7 +169,8 @@ func (bc *BuoyController) GetLast24HoursBuoyData(c *gin.Context) {
 		return
 	}
 
-	results := buoyDataSliceToResponses(data)
+	regionBuoyMap := bc.getRegionBuoyMap(c.Request.Context())
+	results := buoyDataSliceToClientResponses(data, regionBuoyMap)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -191,7 +185,8 @@ func (bc *BuoyController) GetMultipleBuoyData(c *gin.Context) {
 		return
 	}
 
-	results := buoyDataSliceToResponses(data)
+	regionBuoyMap := bc.getRegionBuoyMap(c.Request.Context())
+	results := buoyDataSliceToClientResponses(data, regionBuoyMap)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -240,30 +235,65 @@ func buoyLocationToResponse(name string, location *model.BuoyLocation) *buoyLoca
 	}
 }
 
-func buoyDataToResponse(data *model.BuoyData) *buoyDataResponse {
+func (bc *BuoyController) getRegionBuoyMap(ctx context.Context) map[string]string {
+	locations, err := bc.buoys.GetLocations(ctx)
+	if err != nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(locations))
+	for name, location := range locations {
+		if location == nil {
+			continue
+		}
+		regionBuoy := location.RegionBuoy
+		if regionBuoy == "" && location.Region != "" && name != "" {
+			regionBuoy = fmt.Sprintf("%s_%s", location.Region, name)
+		}
+		if regionBuoy == "" {
+			regionBuoy = name
+		}
+		out[name] = regionBuoy
+	}
+	return out
+}
+
+func buoyDataToClientResponse(data *model.BuoyData, regionBuoyMap map[string]string) *clientBuoyResponse {
 	if data == nil {
 		return nil
 	}
-	return &buoyDataResponse{
-		WaveHeight:    data.WaveHeight,
-		MaxPeriod:     data.MaxPeriod,
-		WavePeriod:    data.WavePeriod,
-		WaveDirection: data.WaveDirection,
-		WindSpeed:     data.WindSpeed,
-		WindDirection: data.WindDirection,
-		Temperature:   data.Temperature,
-		Pressure:      data.Pressure,
-		DataDateTime:  data.Timestamp.UTC().Format(time.RFC3339),
+
+	regionBuoy := regionBuoyMap[data.BuoyName]
+	if regionBuoy == "" {
+		regionBuoy = data.BuoyName
+	}
+
+	dataDateTime := ""
+	if !data.Timestamp.IsZero() {
+		dataDateTime = data.Timestamp.UTC().Format(time.RFC3339)
+	}
+
+	return &clientBuoyResponse{
+		WaveHeight:          floatPtr(data.WaveHeight),
+		WavePeriod:          floatPtr(data.WavePeriod),
+		MaxPeriod:           floatPtr(data.MaxPeriod),
+		MeanWaveDirection:   floatPtr(data.WaveDirection),
+		WindSpeed:           floatPtr(data.WindSpeed),
+		WindDirection:       floatPtr(data.WindDirection),
+		SeaTemperature:      floatPtr(data.Temperature),
+		AtmosphericPressure: floatPtr(data.Pressure),
+		DataDateTime:        dataDateTime,
+		Name:                data.BuoyName,
+		RegionBuoy:          regionBuoy,
 	}
 }
 
-func buoyDataSliceToResponses(data []*model.BuoyData) []buoyDataResponse {
+func buoyDataSliceToClientResponses(data []*model.BuoyData, regionBuoyMap map[string]string) []clientBuoyResponse {
 	if data == nil {
-		return []buoyDataResponse{}
+		return []clientBuoyResponse{}
 	}
-	results := make([]buoyDataResponse, 0, len(data))
+	results := make([]clientBuoyResponse, 0, len(data))
 	for _, d := range data {
-		if response := buoyDataToResponse(d); response != nil {
+		if response := buoyDataToClientResponse(d, regionBuoyMap); response != nil {
 			results = append(results, *response)
 		}
 	}

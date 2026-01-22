@@ -62,7 +62,7 @@ func TestBuoyLocationToResponse_Valid(t *testing.T) {
 }
 
 func TestBuoyDataToResponse_Nil(t *testing.T) {
-	result := buoyDataToResponse(nil)
+	result := buoyDataToClientResponse(nil, map[string]string{})
 	if result != nil {
 		t.Error("expected nil for nil data")
 	}
@@ -82,17 +82,17 @@ func TestBuoyDataToResponse_Valid(t *testing.T) {
 		Pressure:     1013.25,
 		Timestamp:    now,
 	}
-	result := buoyDataToResponse(data)
+	result := buoyDataToClientResponse(data, map[string]string{})
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
-	if result.WaveHeight != 2.5 {
-		t.Errorf("expected WaveHeight 2.5, got %f", result.WaveHeight)
+	if result.WaveHeight == nil || *result.WaveHeight != 2.5 {
+		t.Errorf("expected WaveHeight 2.5, got %v", result.WaveHeight)
 	}
 }
 
 func TestBuoyDataSliceToResponses_NilData(t *testing.T) {
-	result := buoyDataSliceToResponses(nil)
+	result := buoyDataSliceToClientResponses(nil, map[string]string{})
 	if len(result) != 0 {
 		t.Errorf("expected empty slice, got %d items", len(result))
 	}
@@ -104,7 +104,7 @@ func TestBuoyDataSliceToResponses_WithNilItems(t *testing.T) {
 		nil,
 		{BuoyName: "M5", WaveHeight: 3.0, Timestamp: time.Now()},
 	}
-	result := buoyDataSliceToResponses(data)
+	result := buoyDataSliceToClientResponses(data, map[string]string{})
 	// Should have 2 items (nil should be skipped)
 	if len(result) != 2 {
 		t.Errorf("expected 2 items, got %d", len(result))

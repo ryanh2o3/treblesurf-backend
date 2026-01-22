@@ -30,6 +30,7 @@ func TestForecastController_GetSpotForecast(t *testing.T) {
 					CountryRegionSpot: country + "_" + region + "_" + spot,
 					WaveHeight:        2.5,
 					WindSpeed:         15.0,
+					ForecastTimestamp: "1700000000",
 				},
 			}, nil
 		},
@@ -45,6 +46,17 @@ func TestForecastController_GetSpotForecast(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response) != 1 {
+		t.Fatalf("expected 1 forecast response, got %d", len(response))
+	}
+	if response[0]["data"] == nil || response[0]["forecast_timestamp"] == nil || response[0]["spot_id"] == nil {
+		t.Fatalf("expected iOS-compatible forecast keys, got: %#v", response[0])
 	}
 }
 
@@ -90,7 +102,7 @@ func TestForecastController_GetListSpotsForecast(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var response [][]*model.Forecast
+	var response [][]map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -120,6 +132,14 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response) != 1 || response[0]["data"] == nil {
+		t.Fatalf("expected iOS-compatible current conditions, got: %#v", response)
 	}
 }
 

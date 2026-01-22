@@ -56,7 +56,7 @@ func TestBuoyController_GetLiveBuoyData(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var response []buoyDataResponse
+	var response []clientBuoyResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestBuoyController_GetLast24HoursBuoyData(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var response []buoyDataResponse
+	var response []clientBuoyResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestBuoyController_GetMultipleBuoyData(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var response []buoyDataResponse
+	var response []clientBuoyResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -426,7 +426,7 @@ func TestBuoyController_GetMultipleBuoyData_EmptyQuery(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var response []buoyDataResponse
+	var response []clientBuoyResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}

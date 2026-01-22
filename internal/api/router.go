@@ -209,6 +209,7 @@ func setupReportModificationRoutes(g *gin.RouterGroup, container *Container) {
 // setupUserRoutes configures user-related read routes.
 func setupUserRoutes(g *gin.RouterGroup, container *Container) {
 	g.GET("/sessions", container.AuthService.GetUserSessionsHandler)
+	g.GET("/user/preferences", container.UserController.GetUserPreferences)
 	g.GET("/getTheme", container.UserController.GetUserTheme)
 	g.GET("/getTodaySpotReports", container.ReportController.RetrieveTodaysSurfReports)
 	g.GET("/getAllSpotReports", container.ReportController.GetAllSpotSurfReports)

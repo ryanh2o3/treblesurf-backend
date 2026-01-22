@@ -426,7 +426,7 @@ func (rc *ReportController) RetrieveTodaysSurfReports(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, reports)
+	c.JSON(http.StatusOK, mapSpotReportsToClient(reports))
 }
 
 func (rc *ReportController) GetAllSpotSurfReports(c *gin.Context) {
@@ -475,7 +475,7 @@ func (rc *ReportController) GetAllSpotSurfReports(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, reports)
+	c.JSON(http.StatusOK, mapSpotReportsToClient(reports))
 }
 
 func (rc *ReportController) GetSurfReportsWithSimilarBuoyData(c *gin.Context) {
@@ -512,7 +512,7 @@ func (rc *ReportController) GetSurfReportsWithSimilarBuoyData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, reports)
+	c.JSON(http.StatusOK, mapSpotReportsToClient(reports))
 }
 
 // GetSurfReportsWithMatchingConditions retrieves surf reports for a spot where:
@@ -566,7 +566,7 @@ func (rc *ReportController) GetSurfReportsWithMatchingConditions(c *gin.Context)
 		return
 	}
 
-	c.JSON(http.StatusOK, reports)
+	c.JSON(http.StatusOK, mapSpotReportsToClient(reports))
 }
 
 func (rc *ReportController) GetReportImage(c *gin.Context) {
