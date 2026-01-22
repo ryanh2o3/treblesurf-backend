@@ -10,28 +10,28 @@ import (
 
 type clientForecastData struct {
 	DateForecastedFor     string  `json:"dateForecastedFor"`
-	DirectionQuality      float64 `json:"directionQuality"`
-	Humidity              float64 `json:"humidity"`
-	Precipitation         float64 `json:"precipitation"`
-	Pressure              float64 `json:"pressure"`
-	RelativeWindDirection string  `json:"relativeWindDirection"`
 	SurfMessiness         string  `json:"surfMessiness"`
+	RelativeWindDirection string  `json:"relativeWindDirection"`
+	Temperature           float64 `json:"temperature"`
 	SurfSize              float64 `json:"surfSize"`
 	SwellDirection        float64 `json:"swellDirection"`
 	SwellHeight           float64 `json:"swellHeight"`
 	SwellPeriod           float64 `json:"swellPeriod"`
-	Temperature           float64 `json:"temperature"`
+	DirectionQuality      float64 `json:"directionQuality"`
 	WaterTemperature      float64 `json:"waterTemperature"`
 	WaveEnergy            float64 `json:"waveEnergy"`
 	WindDirection         float64 `json:"windDirection"`
 	WindSpeed             float64 `json:"windSpeed"`
+	Pressure              float64 `json:"pressure"`
+	Precipitation         float64 `json:"precipitation"`
+	Humidity              float64 `json:"humidity"`
 }
 
 type clientForecastResponse struct {
+	ForecastTimestamp string             `json:"forecast_timestamp"`
+	GeneratedAt       string             `json:"generated_at"`
+	SpotID            string             `json:"spot_id"`
 	Data              clientForecastData `json:"data"`
-	ForecastTimestamp string          `json:"forecast_timestamp"`
-	GeneratedAt       string          `json:"generated_at"`
-	SpotID            string          `json:"spot_id"`
 }
 
 type clientBuoyResponse struct {
@@ -99,7 +99,10 @@ func mapForecastToClient(forecast *model.Forecast) clientForecastResponse {
 
 	return clientForecastResponse{
 		Data: clientForecastData{
-			DateForecastedFor:     firstString(stringFromData(forecast.Data, "dateForecastedFor", "date_forecasted_for"), forecast.DateForecastedFor),
+			DateForecastedFor: firstString(
+				stringFromData(forecast.Data, "dateForecastedFor", "date_forecasted_for"),
+				forecast.DateForecastedFor,
+			),
 			DirectionQuality:      floatFromData(forecast.Data, "directionQuality", "direction_quality"),
 			Humidity:              floatFromData(forecast.Data, "humidity"),
 			Precipitation:         floatFromData(forecast.Data, "precipitation"),
@@ -119,31 +122,6 @@ func mapForecastToClient(forecast *model.Forecast) clientForecastResponse {
 		ForecastTimestamp: forecastTimestamp,
 		GeneratedAt:       generatedAt,
 		SpotID:            spotID,
-	}
-}
-
-func mapBuoyDataToClient(data *model.BuoyData, regionBuoy string) clientBuoyResponse {
-	waveHeight := data.WaveHeight
-	wavePeriod := data.WavePeriod
-	maxPeriod := data.MaxPeriod
-	waveDirection := data.WaveDirection
-	windSpeed := data.WindSpeed
-	windDirection := data.WindDirection
-	temperature := data.Temperature
-	pressure := data.Pressure
-
-	return clientBuoyResponse{
-		WaveHeight:          floatPtr(waveHeight),
-		WavePeriod:          floatPtr(wavePeriod),
-		MaxPeriod:           floatPtr(maxPeriod),
-		MeanWaveDirection:   floatPtr(waveDirection),
-		WindSpeed:           floatPtr(windSpeed),
-		WindDirection:       floatPtr(windDirection),
-		SeaTemperature:      floatPtr(temperature),
-		AtmosphericPressure: floatPtr(pressure),
-		DataDateTime:        data.Timestamp.UTC().Format(time.RFC3339),
-		Name:                data.BuoyName,
-		RegionBuoy:          regionBuoy,
 	}
 }
 

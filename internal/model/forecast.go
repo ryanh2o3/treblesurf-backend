@@ -3,24 +3,24 @@ package model
 import "time"
 
 type Forecast struct {
+	Date              time.Time              `json:"date"`
+	Data              map[string]interface{} `json:"data,omitempty"`
+	Region            string                 `json:"region"`
+	ForecastDate      string                 `json:"forecast_date"`
+	Location          string                 `json:"location"`
+	DateForecastedFor string                 `json:"dateForecastedFor"`
+	Spot              string                 `json:"spot"`
+	Country           string                 `json:"country"`
+	Conditions        string                 `json:"conditions"`
 	ForecastTimestamp string                 `json:"forecast_timestamp,omitempty"`
 	SpotID            string                 `json:"spot_id,omitempty"`
 	CountryRegionSpot string                 `json:"country_region_spot"`
-	ForecastDate      string                 `json:"forecast_date"`
-	Date              time.Time              `json:"date"`
-	Conditions        string                 `json:"conditions"`
-	Country           string                 `json:"country"`
-	Region            string                 `json:"region"`
-	Spot              string                 `json:"spot"`
-	DateForecastedFor string                 `json:"dateForecastedFor"`
-	Location          string                 `json:"location"`
-	Hour              int                    `json:"hour"`
-	WindSpeed         float64                `json:"wind_speed"`
-	WindDirection     float64                `json:"wind_direction"`
-	WaveHeight        float64                `json:"wave_height"`
-	WavePeriod        float64                `json:"wave_period"`
-	MaxPeriod         float64                `json:"max_period"`
 	WaveDirection     float64                `json:"wave_direction"`
 	Temperature       float64                `json:"temperature"`
-	Data              map[string]interface{} `json:"data,omitempty"`
+	WindDirection     float64                `json:"wind_direction"`
+	WindSpeed         float64                `json:"wind_speed"`
+	MaxPeriod         float64                `json:"max_period"`
+	WavePeriod        float64                `json:"wave_period"`
+	WaveHeight        float64                `json:"wave_height"`
+	Hour              int                    `json:"hour"`
 }

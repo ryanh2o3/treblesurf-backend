@@ -352,17 +352,27 @@ func extractForecastData(
 	return nil
 }
 
-func (f forecastItem) isPopulated() bool {
+func (f *forecastItem) isPopulated() bool {
+	return f.hasTextFields() || f.hasDateFields() || f.hasNumericFields()
+}
+
+func (f *forecastItem) hasTextFields() bool {
 	return f.CountryRegionSpot != "" ||
 		f.ForecastDate != "" ||
-		!f.Date.IsZero() ||
 		f.Conditions != "" ||
 		f.Country != "" ||
 		f.Region != "" ||
 		f.Spot != "" ||
 		f.DateForecastedFor != "" ||
-		f.Location != "" ||
-		f.Hour != 0 ||
+		f.Location != ""
+}
+
+func (f *forecastItem) hasDateFields() bool {
+	return !f.Date.IsZero()
+}
+
+func (f *forecastItem) hasNumericFields() bool {
+	return f.Hour != 0 ||
 		f.WindSpeed != 0 ||
 		f.WindDirection != 0 ||
 		f.WaveHeight != 0 ||
@@ -461,7 +471,7 @@ func parseTimeValue(value string) time.Time {
 	return time.Time{}
 }
 
-func splitSpotID(spotID string) (string, string, string, bool) {
+func splitSpotID(spotID string) (country, region, spot string, ok bool) {
 	parts := strings.SplitN(spotID, "#", 3)
 	if len(parts) != 3 {
 		return "", "", "", false
