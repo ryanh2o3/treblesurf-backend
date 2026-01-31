@@ -137,12 +137,6 @@ func (s *Service) CSRFMiddleware() gin.HandlerFunc {
 		}
 
 		// If no session token, try to get from cookie as fallback
-		if serverToken == "" {
-			if cookieToken, err := c.Cookie("csrf_token"); err == nil {
-				serverToken = cookieToken
-			}
-		}
-
 		// If still no server token, deny access
 		if serverToken == "" {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{

@@ -20,7 +20,6 @@ func logRequestDetails(c *gin.Context, prefix string) {
 		slog.String("user_agent", c.Request.UserAgent()),
 		slog.String("method", c.Request.Method),
 		slog.String("content_type", c.GetHeader("Content-Type")),
-		slog.String("csrf_token", c.GetHeader("X-CSRF-Token")),
 		slog.String("origin", c.GetHeader("Origin")),
 		slog.String("referer", c.GetHeader("Referer")),
 	)

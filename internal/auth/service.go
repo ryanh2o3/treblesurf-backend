@@ -408,6 +408,7 @@ func (s *Service) ValidateTokenHandler(c *gin.Context) {
 }
 
 func (s *Service) LogoutHandler(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(
 		"auth_token",
 		"",
