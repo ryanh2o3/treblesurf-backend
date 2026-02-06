@@ -68,15 +68,15 @@ type SessionInfo struct {
 
 // Service provides authentication handlers and middleware with injected dependencies.
 type Service struct {
+	jwtSecret       []byte
 	userRepo        repository.UserRepository
 	sessionRepo     repository.SessionRepository
+	devUserEmail    string
 	sessionService  *sessions.Service
 	sessionStore    *store.DynamoDBStore
 	googleClientIDs map[string]bool
-	jwtSecret       []byte
 	cookieSecure    bool
 	isDevelopment   bool
-	devUserEmail    string
 }
 
 // NewService constructs an auth service with its required dependencies.

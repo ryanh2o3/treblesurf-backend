@@ -698,7 +698,11 @@ func (rc *ReportController) DeleteUploadedMedia(c *gin.Context) {
 		return
 	}
 
-	requestLogger(c).Info("successfully deleted media", slog.String("type", mediaType), slog.String("key", mediaKey), slog.String("user", email))
+	requestLogger(c).Info("successfully deleted media",
+		slog.String("type", mediaType),
+		slog.String("key", mediaKey),
+		slog.String("user", email),
+	)
 	c.JSON(http.StatusOK, gin.H{
 		"message":   "Media deleted successfully",
 		"mediaKey":  mediaKey,

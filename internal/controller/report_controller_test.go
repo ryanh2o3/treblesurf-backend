@@ -961,20 +961,25 @@ func TestReportController_GetSurfReportsWithMatchingConditions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	reportRepo := &mockrepo.ReportRepo{
-		ScanSinceFn: func(_ context.Context, _ time.Time, _ int) ([]*model.SurfReport, error) {
+		GetBySpotAndTimeRangeFn: func(_ context.Context, _, _, _ string, _, _ time.Time) ([]*model.SurfReport, error) {
 			return []*model.SurfReport{
 				{
 					Country: "Ireland",
 					Region:  "Donegal",
 					Spot:    "Bundoran",
+					DateReported: "2024-01-15",
+					Time:         "2024-01-15T14:30:00Z",
 				},
 			}, nil
 		},
 	}
 
 	locationRepo := &mockrepo.LocationRepo{
-		GetCoordinatesFn: func(_ context.Context, _, _, _ string) (float64, float64, error) {
-			return 54.5, -8.3, nil
+		GetLocationInfoFn: func(_ context.Context, _, _, _ string) (*model.LocationInfo, error) {
+			return &model.LocationInfo{
+				Latitude:  54.5,
+				Longitude: -8.3,
+			}, nil
 		},
 	}
 

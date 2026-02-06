@@ -33,7 +33,7 @@ func (ac *APIKeyController) CreateAPIKeyHandler(c *gin.Context) {
 		ExpiryDays  int      `json:"expiry_days"`
 	}
 
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err = c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}

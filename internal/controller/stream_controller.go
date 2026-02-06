@@ -133,7 +133,7 @@ func (sc *StreamController) RequestStreamHandler(c *gin.Context) {
 		SpotID string `json:"spot_id" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err = c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format. Spot ID is required."})
 		return
 	}

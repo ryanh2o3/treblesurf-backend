@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -30,27 +31,12 @@ func NewForecastController(
 }
 
 func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
-	spotName := ctx.Query("spot")
-	regionName := ctx.Query("region")
-	countryName := ctx.Query("country")
-
-	forecast, err := c.forecastService.GetSpotForecast(ctx.Request.Context(), spotName, regionName, countryName)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})
-			return
-		}
-		requestLogger(ctx).Warn("failed to get spot forecast", slog.Any("error", err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get forecast"})
-		return
-	}
-	
-	if len(forecast) > 0 {
-		ctx.JSON(http.StatusOK, mapForecastsToClient(forecast))
-		return
-	}
-	
-	ctx.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
+	c.handleForecastRequest(
+		ctx,
+		c.forecastService.GetSpotForecast,
+		"failed to get spot forecast",
+		"Failed to get forecast",
+	)
 }
 
 func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
@@ -109,21 +95,35 @@ func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 }
 
 func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
+	c.handleForecastRequest(
+		ctx,
+		c.forecastService.GetCurrentWeather,
+		"failed to get current weather",
+		"Failed to get current conditions",
+	)
+}
+
+func (c *ForecastController) handleForecastRequest(
+	ctx *gin.Context,
+	fetchFunc func(context.Context, string, string, string) ([]*model.Forecast, error),
+	logMsg string,
+	errorMsg string,
+) {
 	spotName := ctx.Query("spot")
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 
-	forecast, err := c.forecastService.GetCurrentWeather(ctx.Request.Context(), spotName, regionName, countryName)
+	forecast, err := fetchFunc(ctx.Request.Context(), spotName, regionName, countryName)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})
 			return
 		}
-		requestLogger(ctx).Warn("failed to get current weather", slog.Any("error", err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get current conditions"})
+		requestLogger(ctx).Warn(logMsg, slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
 		return
 	}
-	
+
 	if len(forecast) > 0 {
 		ctx.JSON(http.StatusOK, mapForecastsToClient(forecast))
 		return

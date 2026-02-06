@@ -151,7 +151,7 @@ func (s *ReportService) broadcastReportMessage(
 	}
 
 	go func() {
-	broadcastCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		broadcastCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		s.broadcastToUsers(broadcastCtx, subscribers, message)
 	}()
