@@ -3,12 +3,15 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -38,7 +41,8 @@ func NewBuoyController(buoys *service.BuoyService) *BuoyController {
 func (bc *BuoyController) BuoyLocationInfo(c *gin.Context) {
 	locations, err := bc.buoys.GetLocations(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(c).Warn("failed to load buoy locations", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load buoy locations"})
 		return
 	}
 
@@ -64,6 +68,11 @@ func (bc *BuoyController) IndividualBuoyLocationInfo(c *gin.Context) {
 			location, err = bc.buoys.GetLocationByName(c.Request.Context(), regionName+"_"+buoyName)
 		}
 		if err != nil {
+			if errors.Is(err, model.ErrBuoyDataNotFound) || errors.Is(err, repository.ErrNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "no buoy location found"})
+				return
+			}
+			requestLogger(c).Warn("failed to load buoy location", slog.Any("error", err))
 			c.JSON(http.StatusNotFound, gin.H{"error": "no buoy location found"})
 			return
 		}
@@ -77,7 +86,8 @@ func (bc *BuoyController) GetLiveBuoyData(c *gin.Context) {
 	buoyNames := bc.buoys.DefaultBuoys()
 	data, err := bc.buoys.GetMultipleBuoysData(c.Request.Context(), buoyNames)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(c).Warn("failed to load live buoy data", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load buoy data"})
 		return
 	}
 
@@ -121,7 +131,12 @@ func (bc *BuoyController) GetBuoyDataRange(c *gin.Context) {
 
 	data, err := bc.buoys.GetDataRange(c.Request.Context(), buoyName, startTime, endTime)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "No buoy data found"})
+			return
+		}
+		requestLogger(c).Warn("failed to load buoy data range", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load buoy data"})
 		return
 	}
 
@@ -145,8 +160,18 @@ func (bc *BuoyController) GetSingleBuoyData(c *gin.Context) {
 		}
 	}
 
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no buoy data found"})
+			return
+		}
+		requestLogger(c).Warn("failed to load live buoy data", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load buoy data"})
+		return
+	}
+
 	if data == nil {
-		c.JSON(http.StatusOK, nil)
+		c.JSON(http.StatusNotFound, gin.H{"error": "no buoy data found"})
 		return
 	}
 
@@ -160,7 +185,12 @@ func (bc *BuoyController) GetLast24HoursBuoyData(c *gin.Context) {
 
 	data, err := bc.buoys.GetLast24HoursData(c.Request.Context(), buoyName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no data found for the last 24 hours"})
+			return
+		}
+		requestLogger(c).Warn("failed to load last 24 hours buoy data", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load buoy data"})
 		return
 	}
 
@@ -181,7 +211,8 @@ func (bc *BuoyController) GetMultipleBuoyData(c *gin.Context) {
 
 	data, err := bc.buoys.GetMultipleBuoysData(c.Request.Context(), buoyNames)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(c).Warn("failed to load multiple buoy data", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load buoy data"})
 		return
 	}
 
@@ -196,6 +227,7 @@ func (bc *BuoyController) GetRegionBuoys(c *gin.Context) {
 
 	buoys, err := bc.buoys.GetRegionBuoys(c.Request.Context(), regionName)
 	if err != nil {
+		requestLogger(c).Warn("failed to load region buoys", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to query"})
 		return
 	}

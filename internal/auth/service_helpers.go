@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/adam-hanna/sessions/user"
@@ -29,8 +30,6 @@ func validateGoogleIDToken(ctx context.Context, idToken string, clientIDs map[st
 // extractUserClaims extracts user claims from a Google ID token payload.
 //nolint:unparam,gocritic // Error return maintained for API consistency; multiple return values needed for all claims
 func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyName, givenName string, err error) {
-	slog.Debug("JWT claims available", slog.Any("claims", payload.Claims))
-
 	email, ok := payload.Claims["email"].(string)
 	if !ok || email == "" {
 		return "", "", "", "", "", nil // Will be handled by caller
@@ -97,6 +96,7 @@ func setupCSRFToken(c *gin.Context, secure bool) string {
 		return ""
 	}
 
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(
 		"csrf_token",
 		csrfToken,
@@ -138,6 +138,7 @@ func (s *Service) createSession(email, csrfToken string, c *gin.Context) {
 
 // setAuthCookie sets the authentication cookie.
 func setAuthCookie(c *gin.Context, secure bool) {
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(
 		"auth_token",
 		"authenticated",

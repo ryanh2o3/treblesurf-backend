@@ -310,7 +310,7 @@ func TestBuoyService_GetMultipleBuoysData(t *testing.T) {
 					return &model.BuoyData{BuoyName: testBuoyName, WaveHeight: 2.5}, nil
 				}
 				// M5 returns error - should be skipped
-				return nil, model.ErrBuoyDataNotFound
+				return nil, repository.ErrNotFound
 			},
 		}
 

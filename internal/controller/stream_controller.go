@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -52,7 +53,8 @@ func (sc *StreamController) GetStreamingCredentials(c *gin.Context) {
 	})
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(c).Warn("failed to assume streaming role", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate streaming credentials"})
 		return
 	}
 
@@ -88,7 +90,8 @@ func (sc *StreamController) GetStreamPlaybackURL(c *gin.Context) {
 	})
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(c).Warn("failed to get streaming data endpoint", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load stream"})
 		return
 	}
 
@@ -108,7 +111,8 @@ func (sc *StreamController) GetStreamPlaybackURL(c *gin.Context) {
 	})
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(c).Warn("failed to get HLS stream URL", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load stream"})
 		return
 	}
 
@@ -119,8 +123,8 @@ func (sc *StreamController) GetStreamPlaybackURL(c *gin.Context) {
 
 // RequestStreamHandler handles stream requests
 func (sc *StreamController) RequestStreamHandler(c *gin.Context) {
-	email, exists := c.Get("email")
-	if !exists {
+	emailStr, err := getEmailFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
@@ -129,19 +133,14 @@ func (sc *StreamController) RequestStreamHandler(c *gin.Context) {
 		SpotID string `json:"spot_id" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err = c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format. Spot ID is required."})
-		return
-	}
-
-	emailStr, ok := email.(string)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
 		return
 	}
 
 	streamRequest, err := sc.streams.RequestStream(c.Request.Context(), request.SpotID, emailStr)
 	if err != nil {
+		requestLogger(c).Warn("failed to save stream request", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save stream request"})
 		return
 	}
@@ -163,6 +162,7 @@ func (sc *StreamController) CheckStreamRequestHandler(c *gin.Context) {
 	// Check if a stream request exists and is still valid.
 	streamRequested, err := sc.streams.IsStreamRequested(c.Request.Context(), spotID)
 	if err != nil {
+		requestLogger(c).Warn("failed to check stream request status", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check stream request status"})
 		return
 	}

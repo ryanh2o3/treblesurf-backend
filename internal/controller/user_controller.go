@@ -1,11 +1,8 @@
 package controller
 
 import (
-	"errors"
-	"log/slog"
 	"net/http"
 
-	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -24,32 +21,13 @@ func NewUserController(users *service.UserService) *UserController {
 // are implemented in internal/auth/service.go and routed from there.
 
 func (uc *UserController) SetUserTheme(c *gin.Context) {
-	email, exists := c.Get("email")
-	if !exists {
+	emailStr, err := getEmailFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	emailStr, ok := email.(string)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
-		return
-	}
-
-	// First check if the user exists
-	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
-		return
-	}
-
-	if user == nil {
-		slog.Info("email address", slog.String("email", emailStr))
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+	if _, ok := loadUserOr404(c, uc.users, emailStr); !ok {
 		return
 	}
 	theme := c.Query("theme")
@@ -68,31 +46,13 @@ func (uc *UserController) SetUserTheme(c *gin.Context) {
 }
 
 func (uc *UserController) DeleteMyAccount(c *gin.Context) {
-	email, exists := c.Get("email")
-	if !exists {
+	emailStr, err := getEmailFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	emailStr, ok := email.(string)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
-		return
-	}
-
-	// First check if the user exists
-	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
-		return
-	}
-
-	if user == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+	if _, ok := loadUserOr404(c, uc.users, emailStr); !ok {
 		return
 	}
 
@@ -113,68 +73,32 @@ func (uc *UserController) DeleteMyAccount(c *gin.Context) {
 }
 
 func (uc *UserController) GetUserTheme(c *gin.Context) {
-	email, exists := c.Get("email")
-	if !exists {
+	emailStr, err := getEmailFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	emailStr, ok := email.(string)
+	user, ok := loadUserOr404(c, uc.users, emailStr)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
 		return
 	}
 
-	// First check if the user exists
-	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
-		return
-	}
-
-	if user == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-
-	theme := user.Theme
-	c.JSON(http.StatusOK, gin.H{"theme": theme})
+	c.JSON(http.StatusOK, gin.H{"theme": user.Theme})
 }
 
 // GetUserPreferences returns basic user preference data for the iOS client.
 func (uc *UserController) GetUserPreferences(c *gin.Context) {
-	email, exists := c.Get("email")
-	if !exists {
+	emailStr, err := getEmailFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	emailStr, ok := email.(string)
+	user, ok := loadUserOr404(c, uc.users, emailStr)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
 		return
 	}
 
-	user, err := uc.users.GetByEmail(c.Request.Context(), emailStr)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user information"})
-		return
-	}
-
-	if user == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"theme": user.Theme,
-	})
+	c.JSON(http.StatusOK, gin.H{"theme": user.Theme})
 }

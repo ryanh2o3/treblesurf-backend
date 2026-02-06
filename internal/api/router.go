@@ -5,12 +5,14 @@ package httphandler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/config"
 
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,11 +20,15 @@ import (
 func SetupRouter(cfg *config.Config, container *Container) *gin.Engine {
 	r := gin.Default()
 
+	// Attach request-scoped logging and timeouts first
+	r.Use(RequestLoggerMiddleware())
+	r.Use(RequestTimeoutMiddleware(cfg.Server.RequestTimeout))
+
 	// Apply CORS middleware
 	r.Use(buildCORSMiddleware(cfg))
 
 	// Apply rate limiting in production
-	if !cfg.IsDevelopment() {
+	if !cfg.IsDevelopment() && strings.EqualFold(cfg.Security.RateLimitMode, "in-memory") {
 		r.Use(RateLimitMiddlewareWithLimiter(container.rateLimiter))
 	}
 
@@ -78,6 +84,9 @@ func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 		routeGroup = r
 	}
 
+	// Compress API responses when clients support gzip.
+	routeGroup.Use(gzip.Gzip(gzip.DefaultCompression))
+
 	setupPublicRoutes(routeGroup, container.AuthService)
 	setupAuthRoutes(routeGroup, cfg, container.AuthService)
 	setupLocationAndForecastRoutes(routeGroup, container)
@@ -101,7 +110,7 @@ func setupAuthRoutes(r gin.IRouter, cfg *config.Config, authService *auth.Servic
 	// CSRF token refresh endpoint (requires authentication)
 	csrfRoutes := r.Group("/auth")
 	if isLocal {
-		csrfRoutes.Use(DevAuthMiddleware(authService))
+		csrfRoutes.Use(DevAuthMiddleware(cfg, authService))
 	} else {
 		csrfRoutes.Use(authService.Middleware())
 	}
@@ -176,7 +185,7 @@ func setupProtectedRoutes(r gin.IRouter, cfg *config.Config, container *Containe
 	authorized := r.Group("/")
 	if isLocal {
 		slog.Info("using dev middleware")
-		authorized.Use(DevAuthMiddleware(container.AuthService))
+		authorized.Use(DevAuthMiddleware(cfg, container.AuthService))
 	} else {
 		slog.Info("using production auth middleware")
 		authorized.Use(container.AuthService.Middleware())
@@ -230,7 +239,7 @@ func setupAPIKeyRoutes(r gin.IRouter, cfg *config.Config, container *Container) 
 
 	apiKeyRoutes := r.Group("/")
 	if isLocal {
-		apiKeyRoutes.Use(DevAuthMiddleware(container.AuthService))
+		apiKeyRoutes.Use(DevAuthMiddleware(cfg, container.AuthService))
 	} else {
 		apiKeyRoutes.Use(APIKeyAuthMiddleware(container.APIKeyService, "stream"))
 	}
@@ -246,7 +255,7 @@ func setupAdminRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 
 	adminRoutes := r.Group("/admin")
 	if isLocal {
-		adminRoutes.Use(DevAdminAuthMiddleware(container.AuthService))
+		adminRoutes.Use(DevAdminAuthMiddleware(cfg, container.AuthService))
 	} else {
 		slog.Info("using production admin middleware")
 		adminRoutes.Use(container.AuthService.Middleware(), AdminMiddlewareWithConfig(cfg))

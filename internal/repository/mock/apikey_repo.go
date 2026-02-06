@@ -27,14 +27,14 @@ func (m *APIKeyRepo) GetByKey(ctx context.Context, key string) (*model.APIKey, e
 	if m.GetByKeyFn != nil {
 		return m.GetByKeyFn(ctx, key)
 	}
-	return nil, model.ErrAPIKeyNotFound
+	return nil, repository.ErrNotFound
 }
 
 func (m *APIKeyRepo) List(ctx context.Context) ([]*model.APIKey, error) {
 	if m.ListFn != nil {
 		return m.ListFn(ctx)
 	}
-	return nil, nil
+	return []*model.APIKey{}, nil
 }
 
 func (m *APIKeyRepo) Revoke(ctx context.Context, keyID string) error {

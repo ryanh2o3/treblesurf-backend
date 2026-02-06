@@ -20,26 +20,26 @@ func (m *LocationRepo) GetRegions(ctx context.Context, country string) ([]string
 	if m.GetRegionsFn != nil {
 		return m.GetRegionsFn(ctx, country)
 	}
-	return nil, nil
+	return []string{}, nil
 }
 
 func (m *LocationRepo) GetSpots(ctx context.Context, country, region string) ([]*model.LocationInfo, error) {
 	if m.GetSpotsFn != nil {
 		return m.GetSpotsFn(ctx, country, region)
 	}
-	return nil, nil
+	return []*model.LocationInfo{}, nil
 }
 
 func (m *LocationRepo) GetLocationInfo(ctx context.Context, country, region, spot string) (*model.LocationInfo, error) {
 	if m.GetLocationInfoFn != nil {
 		return m.GetLocationInfoFn(ctx, country, region, spot)
 	}
-	return nil, model.ErrLocationNotFound
+	return nil, repository.ErrNotFound
 }
 
 func (m *LocationRepo) GetCoordinates(ctx context.Context, country, region, spot string) (lat, lon float64, err error) {
 	if m.GetCoordinatesFn != nil {
 		return m.GetCoordinatesFn(ctx, country, region, spot)
 	}
-	return 0, 0, model.ErrLocationNotFound
+	return 0, 0, repository.ErrNotFound
 }

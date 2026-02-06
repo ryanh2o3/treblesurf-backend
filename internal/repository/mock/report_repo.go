@@ -28,7 +28,7 @@ func (m *ReportRepo) GetBySpot(ctx context.Context, country, region, spot string
 	if m.GetBySpotFn != nil {
 		return m.GetBySpotFn(ctx, country, region, spot, limit)
 	}
-	return nil, nil
+	return []*model.SurfReport{}, nil
 }
 
 func (m *ReportRepo) GetBySpotAndTimeRange(
@@ -39,12 +39,12 @@ func (m *ReportRepo) GetBySpotAndTimeRange(
 	if m.GetBySpotAndTimeRangeFn != nil {
 		return m.GetBySpotAndTimeRangeFn(ctx, country, region, spot, start, end)
 	}
-	return nil, nil
+	return []*model.SurfReport{}, nil
 }
 
 func (m *ReportRepo) ScanSince(ctx context.Context, since time.Time, limit int) ([]*model.SurfReport, error) {
 	if m.ScanSinceFn != nil {
 		return m.ScanSinceFn(ctx, since, limit)
 	}
-	return nil, nil
+	return []*model.SurfReport{}, nil
 }

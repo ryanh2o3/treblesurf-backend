@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	mockrepo "treblesurf-backend/internal/repository/mock"
 	"treblesurf-backend/internal/service"
 
@@ -237,7 +238,7 @@ func TestLocationController_GetLocationInfo(t *testing.T) {
 func TestLocationController_GetLocationInfo_NotFound(t *testing.T) {
 	repo := &mockrepo.LocationRepo{
 		GetLocationInfoFn: func(_ context.Context, _, _, _ string) (*model.LocationInfo, error) {
-			return nil, model.ErrLocationNotFound
+			return nil, repository.ErrNotFound
 		},
 	}
 
@@ -251,9 +252,8 @@ func TestLocationController_GetLocationInfo_NotFound(t *testing.T) {
 
 	controller.GetLocationInfo(c)
 
-	if w.Code != http.StatusInternalServerError {
-		// Controller returns 500 on error, not 404
-		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, w.Code)
 	}
 }
 

@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
@@ -145,7 +147,7 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 		ctx := context.Background()
 		repo := &mockrepo.ForecastRepo{
 			GetCurrentConditionsFn: func(_ context.Context, _, _, _ string) (*model.Forecast, error) {
-				return nil, nil
+				return nil, repository.ErrNotFound
 			},
 		}
 
@@ -154,12 +156,9 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
 
-		got, err := service.GetCurrentWeather(ctx, "Unknown", forecastTestRegion, forecastTestCountry)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(got) != 0 {
-			t.Fatalf("expected nil or empty, got %d items", len(got))
+		_, err = service.GetCurrentWeather(ctx, "Unknown", forecastTestRegion, forecastTestCountry)
+		if !errors.Is(err, repository.ErrNotFound) {
+			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
 	})
 }

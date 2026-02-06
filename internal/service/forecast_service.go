@@ -64,7 +64,7 @@ func (s *ForecastService) GetCurrentWeather(
 		return nil, err
 	}
 	if current == nil {
-		return nil, nil
+		return nil, repository.ErrNotFound
 	}
 	return []*model.Forecast{current}, nil
 }

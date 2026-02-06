@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"mime/multipart"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/service"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -45,19 +47,19 @@ func (sc *SnapshotController) UploadSnapshotHandler(c *gin.Context) {
 	}
 	defer func() {
 		if closeErr := src.Close(); closeErr != nil {
-			slog.Warn("failed to close uploaded file", slog.Any("error", closeErr))
+			requestLogger(c).Warn("failed to close uploaded file", slog.Any("error", closeErr))
 		}
 	}()
 
 	s3Key := generateSnapshotS3Key(spotID, file.Filename)
 	if err := sc.uploadSnapshotToS3(src, s3Key, file.Header.Get("Content-Type"), spotID, timestamp); err != nil {
-		slog.Warn("S3 upload error", slog.Any("error", err))
+		requestLogger(c).Warn("S3 upload error", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
 		return
 	}
 
 	if _, err := sc.snapshots.StoreSnapshot(c.Request.Context(), spotID, s3Key, timestamp); err != nil {
-		slog.Warn("failed to store snapshot metadata", slog.Any("error", err))
+		requestLogger(c).Warn("failed to store snapshot metadata", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store snapshot metadata"})
 		return
 	}
@@ -129,7 +131,11 @@ func (sc *SnapshotController) GetLatestSnapshotHandler(c *gin.Context) {
 
 	snapshot, err := sc.snapshots.GetLatestSnapshot(c.Request.Context(), spotID)
 	if err != nil {
-		slog.Warn("failed to retrieve latest snapshot", slog.Any("error", err))
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "No snapshots available for this spot"})
+			return
+		}
+		requestLogger(c).Warn("failed to retrieve latest snapshot", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve snapshot data"})
 		return
 	}

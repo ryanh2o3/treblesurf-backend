@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -62,6 +63,9 @@ func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, 
 	defer cancel()
 	sessionItem, err := s.sessions.Get(ctx, sessionID)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	if sessionItem == nil || time.Now().After(sessionItem.ExpiresAt) {

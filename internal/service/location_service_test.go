@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
@@ -146,7 +147,7 @@ func TestLocationService_GetCoordinates_Error(t *testing.T) {
 	ctx := context.Background()
 	repo := &mockrepo.LocationRepo{
 		GetCoordinatesFn: func(_ context.Context, _, _, _ string) (float64, float64, error) {
-			return 0, 0, model.ErrLocationNotFound
+			return 0, 0, repository.ErrNotFound
 		},
 	}
 

@@ -25,5 +25,5 @@ func (m *SnapshotRepo) GetLatestBySpot(ctx context.Context, spotID string) (*mod
 	if m.GetLatestBySpotFn != nil {
 		return m.GetLatestBySpotFn(ctx, spotID)
 	}
-	return nil, nil
+	return nil, repository.ErrNotFound
 }

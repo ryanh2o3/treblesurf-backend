@@ -33,7 +33,7 @@ func (m *SwellPredictionRepo) GetSpotPredictions(
 	if m.GetSpotPredictionsFn != nil {
 		return m.GetSpotPredictionsFn(ctx, spotID, start, limit)
 	}
-	return nil, nil
+	return []model.SwellPrediction{}, nil
 }
 
 func (m *SwellPredictionRepo) GetListSpotsPredictions(
@@ -45,7 +45,7 @@ func (m *SwellPredictionRepo) GetListSpotsPredictions(
 	if m.GetListSpotsPredictionsFn != nil {
 		return m.GetListSpotsPredictionsFn(ctx, spotIDs, start, limit)
 	}
-	return nil, nil
+	return [][]model.SwellPrediction{}, nil
 }
 
 func (m *SwellPredictionRepo) GetRegionPredictions(
@@ -57,7 +57,7 @@ func (m *SwellPredictionRepo) GetRegionPredictions(
 	if m.GetRegionPredictionsFn != nil {
 		return m.GetRegionPredictionsFn(ctx, country, region, start, perSpotLimit)
 	}
-	return nil, nil
+	return []model.SwellPrediction{}, nil
 }
 
 func (m *SwellPredictionRepo) GetSpotPredictionRange(
@@ -68,7 +68,7 @@ func (m *SwellPredictionRepo) GetSpotPredictionRange(
 	if m.GetSpotPredictionRangeFn != nil {
 		return m.GetSpotPredictionRangeFn(ctx, spotID, start, end)
 	}
-	return nil, nil
+	return []model.SwellPrediction{}, nil
 }
 
 func (m *SwellPredictionRepo) GetRecentPredictions(
@@ -79,7 +79,7 @@ func (m *SwellPredictionRepo) GetRecentPredictions(
 	if m.GetRecentPredictionsFn != nil {
 		return m.GetRecentPredictionsFn(ctx, cutoff, perSpotLimit)
 	}
-	return nil, nil
+	return []model.SwellPrediction{}, nil
 }
 
 func (m *SwellPredictionRepo) GetClosestPrediction(
@@ -90,5 +90,5 @@ func (m *SwellPredictionRepo) GetClosestPrediction(
 	if m.GetClosestPredictionFn != nil {
 		return m.GetClosestPredictionFn(ctx, spotID, now)
 	}
-	return nil, nil
+	return nil, repository.ErrNotFound
 }

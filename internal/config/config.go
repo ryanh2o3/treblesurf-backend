@@ -4,17 +4,19 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds all application configuration.
 type Config struct {
 	AWS       AWSConfig
 	WebSocket WebSocketConfig
-	Server    ServerConfig
 	Env       Environment
-	Auth      AuthConfig
 	Security  SecurityConfig
+	Server    ServerConfig
+	Auth      AuthConfig
 }
 
 // Environment represents the application environment.
@@ -48,11 +50,15 @@ type WebSocketConfig struct {
 
 // ServerConfig holds HTTP server configuration.
 type ServerConfig struct {
-	Port string
+	Port           string
+	RequestTimeout time.Duration
 }
 
 // SecurityConfig holds security-related configuration.
 type SecurityConfig struct {
+	RateLimitMode  string
+	DevUserEmail   string
+	DevAdminEmail  string
 	AdminEmails    []string
 	AllowedOrigins []string
 	RateLimitRPS   int
@@ -67,6 +73,10 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	loadSecurityConfig(cfg, env)
+	loadServerConfig(cfg)
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
@@ -93,6 +103,28 @@ func (c *Config) IsDevelopment() bool {
 	return c.Env == EnvDevelopment
 }
 
+func (c *Config) Validate() error {
+	var missing []string
+
+	if strings.TrimSpace(c.AWS.Region) == "" {
+		missing = append(missing, "AWS_REGION")
+	}
+	if strings.TrimSpace(c.AWS.BucketName) == "" {
+		missing = append(missing, "S3_BUCKET_NAME")
+	}
+	if strings.TrimSpace(c.WebSocket.Endpoint) == "" {
+		missing = append(missing, "WEBSOCKET_API_ENDPOINT")
+	}
+	if len(c.Security.AdminEmails) == 0 {
+		missing = append(missing, "ADMIN_EMAILS")
+	}
+
+	if c.Env == EnvProduction && len(missing) > 0 {
+		return fmt.Errorf("missing required configuration: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
 func getEnvOrDefault(key, defaultValue string) string {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
@@ -115,7 +147,24 @@ func getEnvBool(key string) (value, ok bool) {
 	}
 }
 
+func getEnvInt(key string) (int, bool) {
+	rawValue := strings.TrimSpace(os.Getenv(key))
+	if rawValue == "" {
+		return 0, false
+	}
+	value, err := strconv.Atoi(rawValue)
+	if err != nil {
+		return 0, false
+	}
+	return value, true
+}
+
 func newBaseConfig(env Environment) *Config {
+	rateLimitMode := "in-memory"
+	if env == EnvProduction {
+		rateLimitMode = "api-gateway"
+	}
+
 	return &Config{
 		Env: env,
 		AWS: AWSConfig{
@@ -127,10 +176,12 @@ func newBaseConfig(env Environment) *Config {
 			Stage:    getEnvOrDefault("WEBSOCKET_API_STAGE", "production"),
 		},
 		Server: ServerConfig{
-			Port: getEnvOrDefault("PORT", "8080"),
+			Port:           getEnvOrDefault("PORT", "8080"),
+			RequestTimeout: 30 * time.Second,
 		},
 		Security: SecurityConfig{
-			RateLimitRPS: 100, // Default rate limit
+			RateLimitRPS:  100, // Default rate limit
+			RateLimitMode: rateLimitMode,
 		},
 	}
 }
@@ -185,6 +236,36 @@ func loadSecurityConfig(cfg *Config, env Environment) {
 			"https://www.treblesurf.com",
 			"https://app.treblesurf.com",
 		}
+	}
+
+	if rateLimitRPS, ok := getEnvInt("RATE_LIMIT_RPS"); ok && rateLimitRPS > 0 {
+		cfg.Security.RateLimitRPS = rateLimitRPS
+	}
+
+	if mode := strings.TrimSpace(os.Getenv("RATE_LIMIT_MODE")); mode != "" {
+		cfg.Security.RateLimitMode = mode
+	}
+
+	if cfg.Security.DevUserEmail == "" {
+		cfg.Security.DevUserEmail = strings.TrimSpace(os.Getenv("DEV_USER_EMAIL"))
+	}
+	if cfg.Security.DevAdminEmail == "" {
+		cfg.Security.DevAdminEmail = strings.TrimSpace(os.Getenv("DEV_ADMIN_EMAIL"))
+	}
+	if cfg.Security.DevUserEmail == "" && env == EnvDevelopment {
+		cfg.Security.DevUserEmail = "testuser@example.com"
+	}
+	if cfg.Security.DevAdminEmail == "" && env == EnvDevelopment {
+		cfg.Security.DevAdminEmail = "admin@example.com"
+	}
+}
+
+func loadServerConfig(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	if timeoutSeconds, ok := getEnvInt("REQUEST_TIMEOUT_SECONDS"); ok && timeoutSeconds > 0 {
+		cfg.Server.RequestTimeout = time.Duration(timeoutSeconds) * time.Second
 	}
 }
 

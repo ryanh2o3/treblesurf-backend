@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"treblesurf-backend/internal/model"
-	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -16,11 +15,10 @@ import (
 
 // logRequestDetails logs request metadata for debugging.
 func logRequestDetails(c *gin.Context, prefix string) {
-	slog.Info(prefix,
+	requestLogger(c).Info(prefix,
 		slog.String("user_agent", c.Request.UserAgent()),
 		slog.String("method", c.Request.Method),
 		slog.String("content_type", c.GetHeader("Content-Type")),
-		slog.String("csrf_token", c.GetHeader("X-CSRF-Token")),
 		slog.String("origin", c.GetHeader("Origin")),
 		slog.String("referer", c.GetHeader("Referer")),
 	)
@@ -165,9 +163,9 @@ func validateMessiness(reportSvc *service.ReportService, c *gin.Context, messine
 
 // getAuthenticatedUserEmail retrieves and validates the authenticated user's email from context.
 func getAuthenticatedUserEmail(c *gin.Context) (string, bool) {
-	email, exists := c.Get("email")
-	if !exists {
-		slog.Warn("no email found in context - authentication issue")
+	email, err := getEmailFromContext(c)
+	if err != nil {
+		requestLogger(c).Warn("authentication email missing", slog.Any("error", err))
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "Authentication required",
 			"message": "You must be logged in to submit a surf report",
@@ -175,23 +173,14 @@ func getAuthenticatedUserEmail(c *gin.Context) (string, bool) {
 		})
 		return "", false
 	}
-	emailStr, ok := email.(string)
-	if !ok {
-		slog.Warn("invalid email type in context")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "Authentication required",
-			"message": "Invalid authentication data",
-			"help":    "Please log in again.",
-		})
-		return "", false
-	}
-	return emailStr, true
+	return email, true
 }
 
 // handleReportBindingError handles JSON binding errors for report requests.
 func handleReportBindingError(c *gin.Context, err error) {
-	slog.Warn("failed to bind JSON", slog.Any("error", err))
-	slog.Debug("request body", slog.Any("body", c.Request.Body))
+	logger := requestLogger(c)
+	logger.Warn("failed to bind JSON", slog.Any("error", err))
+	logger.Debug("request body", slog.Any("body", c.Request.Body))
 	c.JSON(http.StatusBadRequest, gin.H{
 		"error":   "Invalid request format",
 		"message": "The request data is not in the correct format",
@@ -250,7 +239,7 @@ func validateMediaProvided(c *gin.Context, imageKey, videoKey string) bool {
 
 // handleIOSReportError handles errors from iOS report submission.
 func handleIOSReportError(c *gin.Context, err error) {
-	slog.Warn("failed to submit iOS validated report", slog.Any("error", err))
+	requestLogger(c).Warn("failed to submit iOS validated report", slog.Any("error", err))
 
 	// Handle specific error types
 	switch {
@@ -355,7 +344,7 @@ func parseOptionalIntParam(c *gin.Context, paramName string, defaultValue int) i
 
 // handleVideoViewURLError handles errors from video view URL generation.
 func handleVideoViewURLError(c *gin.Context, err error) {
-	slog.Warn("failed to generate video view URL", slog.Any("error", err))
+	requestLogger(c).Warn("failed to generate video view URL", slog.Any("error", err))
 	errStr := err.Error()
 
 	switch {
@@ -417,26 +406,14 @@ func validateMediaDeletionRequest(c *gin.Context, mediaKey, mediaType string) bo
 
 // verifyMediaAccess verifies that the user has permission to access the media.
 func verifyMediaAccess(userSvc *service.UserService, c *gin.Context, email, mediaKey, mediaType string) (*model.User, bool) {
-	user, err := userSvc.GetByEmail(c.Request.Context(), email)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "User not found",
-				"message": "Unable to retrieve your user profile",
-			})
-			return nil, false
-		}
-		slog.Warn("failed to fetch user information", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "User information error",
-			"message": "Unable to retrieve your user profile",
-			"help":    "Please try again in a moment. If the problem persists, contact support.",
-		})
+	user, ok := loadUserOr404(c, userSvc, email)
+	if !ok {
 		return nil, false
 	}
 
-	if !canUserAccessMedia(mediaKey, user.UUID, mediaType) {
-		slog.Warn("user attempted to delete media they don't own", slog.String("user", email), slog.String("media_key", mediaKey))
+	logger := requestLogger(c)
+	if !canUserAccessMedia(logger, mediaKey, user.UUID, mediaType) {
+		logger.Warn("user attempted to delete media they don't own", slog.String("user", email), slog.String("media_key", mediaKey))
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "Access denied",
 			"message": "You don't have permission to delete this media",
@@ -450,7 +427,7 @@ func verifyMediaAccess(userSvc *service.UserService, c *gin.Context, email, medi
 
 // handleMediaDeletionError handles errors from media deletion.
 func handleMediaDeletionError(c *gin.Context, err error) {
-	slog.Warn("failed to delete media", slog.Any("error", err))
+	requestLogger(c).Warn("failed to delete media", slog.Any("error", err))
 	errStr := err.Error()
 
 	if strings.Contains(errStr, "not found") || strings.Contains(errStr, "NoSuchKey") {
@@ -481,22 +458,9 @@ func handleReportSubmissionCommon(
 		return "", nil, false
 	}
 
-	slog.Info("user email from context", slog.String("email", email))
-	user, err := userSvc.GetByEmail(c.Request.Context(), email)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "User not found",
-				"message": "Unable to retrieve your user profile",
-			})
-			return "", nil, false
-		}
-		slog.Warn("failed to fetch user information", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "User information error",
-			"message": "Unable to retrieve your user profile",
-			"help":    "Please try again in a moment. If the problem persists, contact support.",
-		})
+	requestLogger(c).Info("user email from context", slog.String("email", email))
+	user, ok := loadUserOr404(c, userSvc, email)
+	if !ok {
 		return "", nil, false
 	}
 
@@ -513,7 +477,7 @@ func handleReportSubmissionCommon(
 
 // handleReportSubmissionSuccess handles the success response for report submissions.
 func handleReportSubmissionSuccess(c *gin.Context, email, reportType string) {
-	slog.Info("report submitted successfully", slog.String("type", reportType), slog.String("user", email))
+	requestLogger(c).Info("report submitted successfully", slog.String("type", reportType), slog.String("user", email))
 	c.JSON(http.StatusOK, gin.H{"message": "Report submitted successfully"})
 }
 
@@ -532,9 +496,9 @@ func validateUploadURLParams(c *gin.Context) (country, region, spot, email strin
 		return "", "", "", "", false
 	}
 
-	emailVal, exists := c.Get("email")
-	if !exists {
-		slog.Warn("no email found in context - authentication issue")
+	email, err := getEmailFromContext(c)
+	if err != nil {
+		requestLogger(c).Warn("authentication email missing", slog.Any("error", err))
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "Authentication required",
 			"message": "You must be logged in to generate an upload URL",
@@ -543,23 +507,12 @@ func validateUploadURLParams(c *gin.Context) (country, region, spot, email strin
 		return "", "", "", "", false
 	}
 
-	emailStr, ok := emailVal.(string)
-	if !ok {
-		slog.Warn("invalid email type in context")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "Authentication required",
-			"message": "Invalid authentication data",
-			"help":    "Please log in again.",
-		})
-		return "", "", "", "", false
-	}
-	email = emailStr
 	return country, region, spot, email, true
 }
 
 // handleUploadURLError handles errors from upload URL generation.
 func handleUploadURLError(c *gin.Context, mediaType string, err error) {
-	slog.Warn("failed to generate upload URL", slog.String("media_type", mediaType), slog.Any("error", err))
+	requestLogger(c).Warn("failed to generate upload URL", slog.String("media_type", mediaType), slog.Any("error", err))
 
 	if strings.Contains(err.Error(), "failed to generate presigned URL") {
 		c.JSON(http.StatusInternalServerError, gin.H{

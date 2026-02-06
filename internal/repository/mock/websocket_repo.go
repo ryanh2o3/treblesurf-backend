@@ -29,7 +29,7 @@ func (m *WebSocketRepo) GetConnection(ctx context.Context, connectionID string) 
 	if m.GetConnectionFn != nil {
 		return m.GetConnectionFn(ctx, connectionID)
 	}
-	return nil, model.ErrWebSocketConnectionNotFound
+	return nil, repository.ErrNotFound
 }
 
 func (m *WebSocketRepo) DeleteConnection(ctx context.Context, connectionID string) error {
@@ -50,7 +50,7 @@ func (m *WebSocketRepo) GetConnectionsByUserIDs(ctx context.Context, userIDs []s
 	if m.GetConnectionsByUserIDsFn != nil {
 		return m.GetConnectionsByUserIDsFn(ctx, userIDs)
 	}
-	return nil, nil
+	return []*model.ConnectionInfo{}, nil
 }
 
 func (m *WebSocketRepo) UpdateLastActive(ctx context.Context, connectionID string) error {
