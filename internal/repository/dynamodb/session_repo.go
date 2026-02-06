@@ -62,7 +62,7 @@ func (r *SessionRepo) Get(ctx context.Context, sessionID string) (*model.Session
 		return nil, fmt.Errorf("getting session: %w", err)
 	}
 	if result.Item == nil {
-		return nil, model.ErrSessionNotFound
+		return nil, repository.ErrNotFound
 	}
 
 	var sessionRecord sessionItem

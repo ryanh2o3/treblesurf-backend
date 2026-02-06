@@ -76,6 +76,7 @@ type Service struct {
 	jwtSecret       []byte
 	cookieSecure    bool
 	isDevelopment   bool
+	devUserEmail    string
 }
 
 // NewService constructs an auth service with its required dependencies.
@@ -104,6 +105,7 @@ func NewService(
 		googleClientIDs: buildClientIDMap(cfg.Auth.GoogleClientIDs),
 		cookieSecure:    cfg.Auth.CookieSecure,
 		isDevelopment:   cfg.IsDevelopment(),
+		devUserEmail:    cfg.Security.DevUserEmail,
 	}
 
 	if err := service.initSessionService(); err != nil {
@@ -149,9 +151,6 @@ func (s *Service) initSessionService() error {
 func (s *Service) getUserByEmail(ctx context.Context, email string) (*User, error) {
 	userData, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, nil
-		}
 		return nil, err
 	}
 
@@ -319,9 +318,13 @@ func (s *Service) processGoogleAuthUser(
 ) (authUser *User, authType string) {
 	existingUser, err := s.getUserByEmail(c.Request.Context(), email)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			existingUser = nil
+		} else {
 		slog.Error("error checking user", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return nil, ""
+		}
 	}
 
 	authType = constants.DefaultUserTheme
@@ -358,13 +361,18 @@ func (s *Service) ValidateTokenHandler(c *gin.Context) {
 	setCacheControlHeaders(c)
 
 	if s.isDevelopment {
+		devEmail := s.devUserEmail
+		if devEmail == "" {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Development user email not configured"})
+			return
+		}
 		slog.Info("development mode: returning mock user for validation")
 		c.JSON(http.StatusOK, gin.H{
 			"valid":     true,
 			"auth_type": "development",
 			"user": gin.H{
 				"uuid":        "dev-uuid-12345",
-				"email":       "testuser@example.com",
+				"email":       devEmail,
 				"name":        "Test User",
 				"picture":     "https://via.placeholder.com/150",
 				"family_name": "User",
@@ -389,6 +397,10 @@ func (s *Service) ValidateTokenHandler(c *gin.Context) {
 	email := userSession.UserID
 	userData, err := s.getUserByEmail(c.Request.Context(), email)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
 		return
 	}

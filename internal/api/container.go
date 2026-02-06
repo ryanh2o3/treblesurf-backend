@@ -3,6 +3,7 @@ package httphandler
 
 import (
 	"fmt"
+	"strings"
 
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/config"
@@ -74,7 +75,10 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 
 	controllers := initializeControllers(services, storage, containerCfg)
 
-	rateLimiter := newRateLimiter(cfg.Security.RateLimitRPS)
+	var rateLimiter *rateLimiter
+	if strings.EqualFold(cfg.Security.RateLimitMode, "in-memory") {
+		rateLimiter = newRateLimiter(cfg.Security.RateLimitRPS)
+	}
 	return buildContainer(storage, services, controllers, rateLimiter), nil
 }
 

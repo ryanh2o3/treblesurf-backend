@@ -27,7 +27,7 @@ func (m *SessionRepo) Get(ctx context.Context, sessionID string) (*model.Session
 	if m.GetFn != nil {
 		return m.GetFn(ctx, sessionID)
 	}
-	return nil, model.ErrSessionNotFound
+	return nil, repository.ErrNotFound
 }
 
 func (m *SessionRepo) Delete(ctx context.Context, sessionID string) error {
@@ -41,5 +41,5 @@ func (m *SessionRepo) GetByUserID(ctx context.Context, userID string) ([]*model.
 	if m.GetByUserIDFn != nil {
 		return m.GetByUserIDFn(ctx, userID)
 	}
-	return nil, nil
+	return []*model.Session{}, nil
 }

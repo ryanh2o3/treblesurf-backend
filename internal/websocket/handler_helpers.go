@@ -30,8 +30,11 @@ func (h *Handler) validateWebSocketToken(token string) (string, error) {
 	return email, nil
 }
 
-func requestContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), 10*time.Second)
+func requestContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, 10*time.Second)
 }
 
 // createConnectionInfo creates a ConnectionInfo from the request.

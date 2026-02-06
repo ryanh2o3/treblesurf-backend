@@ -22,21 +22,21 @@ func (m *BuoyRepo) GetLiveData(ctx context.Context, buoyName string) (*model.Buo
 	if m.GetLiveDataFn != nil {
 		return m.GetLiveDataFn(ctx, buoyName)
 	}
-	return nil, nil
+	return nil, repository.ErrNotFound
 }
 
 func (m *BuoyRepo) GetDataAtTime(ctx context.Context, buoyName string, t time.Time) (*model.BuoyData, error) {
 	if m.GetDataAtTimeFn != nil {
 		return m.GetDataAtTimeFn(ctx, buoyName, t)
 	}
-	return nil, nil
+	return nil, repository.ErrNotFound
 }
 
 func (m *BuoyRepo) GetDataRange(ctx context.Context, buoyName string, start, end time.Time) ([]*model.BuoyData, error) {
 	if m.GetDataRangeFn != nil {
 		return m.GetDataRangeFn(ctx, buoyName, start, end)
 	}
-	return nil, nil
+	return []*model.BuoyData{}, nil
 }
 
 func (m *BuoyRepo) GetBatchDataRanges(ctx context.Context, requests []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {

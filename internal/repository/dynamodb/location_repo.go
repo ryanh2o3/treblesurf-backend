@@ -106,7 +106,7 @@ func (r *LocationRepo) GetLocationInfo(ctx context.Context, country, region, spo
 		return nil, fmt.Errorf("querying location: %w", err)
 	}
 	if len(result.Items) == 0 {
-		return nil, model.ErrLocationNotFound
+		return nil, repository.ErrNotFound
 	}
 
 	location, err := parseLocationInfo(result.Items[0])

@@ -25,5 +25,5 @@ func (m *StreamRequestRepo) GetBySpotID(ctx context.Context, spotID string) (*mo
 	if m.GetBySpotIDFn != nil {
 		return m.GetBySpotIDFn(ctx, spotID)
 	}
-	return nil, nil
+	return nil, repository.ErrNotFound
 }

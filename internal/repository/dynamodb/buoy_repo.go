@@ -49,7 +49,7 @@ func (r *BuoyRepo) GetLiveData(ctx context.Context, buoyName string) (*model.Buo
 		return nil, fmt.Errorf("querying live buoy data: %w", err)
 	}
 	if len(result.Items) == 0 {
-		return nil, model.ErrBuoyDataNotFound
+		return nil, repository.ErrNotFound
 	}
 
 	dataRecord, err := parseBuoyData(result.Items[0])
@@ -57,7 +57,7 @@ func (r *BuoyRepo) GetLiveData(ctx context.Context, buoyName string) (*model.Buo
 		return nil, err
 	}
 	if dataRecord == nil {
-		return nil, model.ErrBuoyDataNotFound
+		return nil, repository.ErrNotFound
 	}
 
 	return dataRecord, nil
@@ -72,7 +72,7 @@ func (r *BuoyRepo) GetDataAtTime(ctx context.Context, buoyName string, t time.Ti
 		return nil, err
 	}
 	if len(data) == 0 {
-		return nil, model.ErrBuoyDataNotFound
+		return nil, repository.ErrNotFound
 	}
 
 	return data[0], nil

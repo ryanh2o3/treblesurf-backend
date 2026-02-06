@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -56,6 +57,9 @@ func (s *StreamService) IsStreamRequested(ctx context.Context, spotID string) (b
 
 	request, err := s.requests.GetBySpotID(ctx, spotID)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return false, nil
+		}
 		return false, err
 	}
 	if request == nil {

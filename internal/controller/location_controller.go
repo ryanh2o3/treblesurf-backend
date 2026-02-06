@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"errors"
+	"log/slog"
 	"net/http"
 
+	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -26,7 +29,8 @@ func (lc *LocationController) GetRegions(c *gin.Context) {
 
 	regions, err := lc.locations.GetRegions(c.Request.Context(), countryName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(c).Warn("failed to load regions", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load regions"})
 		return
 	}
 
@@ -44,7 +48,8 @@ func (lc *LocationController) GetSpots(c *gin.Context) {
 
 	spots, err := lc.locations.GetSpots(c.Request.Context(), countryName, regionName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(c).Warn("failed to load spots", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load spots"})
 		return
 	}
 
@@ -63,7 +68,12 @@ func (lc *LocationController) GetLocationInfo(c *gin.Context) {
 
 	location, err := lc.locations.GetLocationInfo(c.Request.Context(), countryName, regionName, spotName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Location not found"})
+			return
+		}
+		requestLogger(c).Warn("failed to load location info", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load location info"})
 		return
 	}
 
@@ -82,7 +92,12 @@ func (lc *LocationController) GetCoordinates(c *gin.Context) {
 
 	coordinates, err := lc.locations.GetCoordinates(c.Request.Context(), countryName, regionName, spotName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, repository.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Location not found"})
+			return
+		}
+		requestLogger(c).Warn("failed to load coordinates", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load coordinates"})
 		return
 	}
 

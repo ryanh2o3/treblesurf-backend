@@ -24,5 +24,5 @@ func (m *SpotSubscriptionRepo) GetSubscribersBySpot(ctx context.Context, spotIde
 	if m.GetSubscribersBySpotFn != nil {
 		return m.GetSubscribersBySpotFn(ctx, spotIdentifier)
 	}
-	return nil, nil
+	return []string{}, nil
 }

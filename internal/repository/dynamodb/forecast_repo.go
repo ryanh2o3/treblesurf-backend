@@ -95,7 +95,7 @@ func (r *ForecastRepo) GetCurrentConditions(
 		return nil, fmt.Errorf("querying current conditions: %w", err)
 	}
 	if len(result.Items) == 0 {
-		return nil, model.ErrForecastNotFound
+		return nil, repository.ErrNotFound
 	}
 
 	forecast, err := parseForecastItem(result.Items[0], country, region, spot)
@@ -134,7 +134,7 @@ func (r *ForecastRepo) GetForecastAtTime(
 		return nil, fmt.Errorf("querying forecast at time: %w", err)
 	}
 	if len(result.Items) == 0 {
-		return nil, model.ErrForecastNotFound
+		return nil, repository.ErrNotFound
 	}
 
 	forecast, err := parseForecastItem(result.Items[0], country, region, spot)
@@ -170,7 +170,7 @@ func (r *ForecastRepo) GetRegionForecast(
 		return nil, fmt.Errorf("querying region forecast: %w", err)
 	}
 	if len(result.Items) == 0 {
-		return nil, nil
+		return nil, repository.ErrNotFound
 	}
 
 	forecasts := make([]*model.Forecast, 0, len(result.Items))

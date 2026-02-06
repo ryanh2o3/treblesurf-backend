@@ -1,12 +1,14 @@
 package controller
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -34,7 +36,12 @@ func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
 
 	forecast, err := c.forecastService.GetSpotForecast(ctx.Request.Context(), spotName, regionName, countryName)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, repository.ErrNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})
+			return
+		}
+		requestLogger(ctx).Warn("failed to get spot forecast", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get forecast"})
 		return
 	}
 	
@@ -52,11 +59,16 @@ func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 	
-	slog.Info("forecast spots requested", slog.Any("spots", spots))
+	requestLogger(ctx).Info("forecast spots requested", slog.Any("spots", spots))
 
 	forecasts, err := c.forecastService.GetListSpotsForecast(ctx.Request.Context(), spots, regionName, countryName)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, repository.ErrNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecasts not found"})
+			return
+		}
+		requestLogger(ctx).Warn("failed to get spot forecasts", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get forecasts"})
 		return
 	}
 
@@ -74,7 +86,12 @@ func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 
 	forecasts, err := c.forecastService.GetRegionForecast(ctx.Request.Context(), regionName, countryName)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, repository.ErrNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})
+			return
+		}
+		requestLogger(ctx).Warn("failed to get region forecast", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get forecast"})
 		return
 	}
 
@@ -98,7 +115,12 @@ func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
 
 	forecast, err := c.forecastService.GetCurrentWeather(ctx.Request.Context(), spotName, regionName, countryName)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, repository.ErrNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})
+			return
+		}
+		requestLogger(ctx).Warn("failed to get current weather", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get current conditions"})
 		return
 	}
 	

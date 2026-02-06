@@ -37,8 +37,8 @@ func (c *SwellPredictionController) GetSpotSwellPrediction(ctx *gin.Context) {
 
 	predictions, err := c.swellPredictionService.GetSpotSwellPrediction(ctx.Request.Context(), spotName, regionName, countryName)
 	if err != nil {
-		slog.Warn("error getting spot swell prediction", slog.Any("error", err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(ctx).Warn("error getting spot swell prediction", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve swell prediction"})
 		return
 	}
 	
@@ -67,12 +67,12 @@ func (c *SwellPredictionController) GetListSpotsSwellPrediction(ctx *gin.Context
 	}
 	
 	spots := strings.Split(spotsStr, ",")
-	slog.Info("getting swell predictions for spots", slog.Any("spots", spots))
+	requestLogger(ctx).Info("getting swell predictions for spots", slog.Any("spots", spots))
 
 	predictions, err := c.swellPredictionService.GetListSpotsSwellPrediction(ctx.Request.Context(), spots, regionName, countryName)
 	if err != nil {
-		slog.Warn("error getting list spots swell prediction", slog.Any("error", err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(ctx).Warn("error getting list spots swell prediction", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve swell predictions"})
 		return
 	}
 
@@ -96,8 +96,8 @@ func (c *SwellPredictionController) GetRegionSwellPrediction(ctx *gin.Context) {
 
 	predictions, err := c.swellPredictionService.GetRegionSwellPrediction(ctx.Request.Context(), regionName, countryName)
 	if err != nil {
-		slog.Warn("error getting region swell prediction", slog.Any("error", err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(ctx).Warn("error getting region swell prediction", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve swell predictions"})
 		return
 	}
 
@@ -148,8 +148,8 @@ func (c *SwellPredictionController) GetSpotSwellPredictionRange(ctx *gin.Context
 		ctx.Request.Context(), spotName, regionName, countryName, startTime, endTime,
 	)
 	if err != nil {
-		slog.Warn("error getting spot swell prediction range", slog.Any("error", err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(ctx).Warn("error getting spot swell prediction range", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve swell predictions"})
 		return
 	}
 
@@ -177,8 +177,8 @@ func (c *SwellPredictionController) GetRecentSwellPredictions(ctx *gin.Context) 
 
 	predictions, err := c.swellPredictionService.GetRecentSwellPredictions(ctx.Request.Context(), hours)
 	if err != nil {
-		slog.Warn("error getting recent swell predictions", slog.Any("error", err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(ctx).Warn("error getting recent swell predictions", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve swell predictions"})
 		return
 	}
 
@@ -200,8 +200,8 @@ func (c *SwellPredictionController) GetSwellPredictionStatus(ctx *gin.Context) {
 	// Get recent predictions to determine status
 	predictions, err := c.swellPredictionService.GetRecentSwellPredictions(ctx.Request.Context(), 24)
 	if err != nil {
-		slog.Warn("error getting swell prediction status", slog.Any("error", err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		requestLogger(ctx).Warn("error getting swell prediction status", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve swell prediction status"})
 		return
 	}
 
@@ -245,8 +245,8 @@ func (c *SwellPredictionController) GetClosestAIPredictionForSpot(ctx *gin.Conte
 
 	prediction, err := c.swellPredictionService.GetClosestAIPredictionForSpot(ctx.Request.Context(), spotName, regionName, countryName)
 	if err != nil {
-		slog.Warn("error getting closest AI prediction", slog.Any("error", err))
-		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		requestLogger(ctx).Warn("error getting closest AI prediction", slog.Any("error", err))
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "No swell prediction found for this spot"})
 		return
 	}
 

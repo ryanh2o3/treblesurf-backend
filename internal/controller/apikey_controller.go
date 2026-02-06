@@ -2,6 +2,7 @@
 package controller
 
 import (
+	"log/slog"
 	"net/http"
 
 	"treblesurf-backend/internal/service"
@@ -20,8 +21,8 @@ func NewAPIKeyController(apiKeys *service.APIKeyService) *APIKeyController {
 
 // CreateAPIKeyHandler handles requests to create a new API key
 func (ac *APIKeyController) CreateAPIKeyHandler(c *gin.Context) {
-	email, exists := c.Get("email")
-	if !exists {
+	emailStr, err := getEmailFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
@@ -37,12 +38,6 @@ func (ac *APIKeyController) CreateAPIKeyHandler(c *gin.Context) {
 		return
 	}
 
-	// Generate the API key
-	emailStr, ok := email.(string)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
-		return
-	}
 	apiKey, err := ac.apiKeys.GenerateAPIKey(
 		request.Description,
 		emailStr,
@@ -50,6 +45,7 @@ func (ac *APIKeyController) CreateAPIKeyHandler(c *gin.Context) {
 		request.Scopes,
 	)
 	if err != nil {
+		requestLogger(c).Warn("failed to generate API key", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate API key"})
 		return
 	}
@@ -57,6 +53,7 @@ func (ac *APIKeyController) CreateAPIKeyHandler(c *gin.Context) {
 	// Store the API key
 	err = ac.apiKeys.StoreAPIKey(c.Request.Context(), apiKey)
 	if err != nil {
+		requestLogger(c).Warn("failed to store API key", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store API key"})
 		return
 	}
@@ -78,20 +75,15 @@ func (ac *APIKeyController) CreateAPIKeyHandler(c *gin.Context) {
 
 // ListAPIKeysHandler returns all API keys for the current user
 func (ac *APIKeyController) ListAPIKeysHandler(c *gin.Context) {
-	email, exists := c.Get("email")
-	if !exists {
+	emailStr, err := getEmailFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
-		return
-	}
-
-	emailStr, ok := email.(string)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
 		return
 	}
 
 	apiKeys, err := ac.apiKeys.ListAPIKeys(c.Request.Context(), emailStr)
 	if err != nil {
+		requestLogger(c).Warn("failed to list API keys", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API keys"})
 		return
 	}
@@ -117,8 +109,8 @@ func (ac *APIKeyController) ListAPIKeysHandler(c *gin.Context) {
 
 // RevokeAPIKeyHandler deletes an API key
 func (ac *APIKeyController) RevokeAPIKeyHandler(c *gin.Context) {
-	email, exists := c.Get("email")
-	if !exists {
+	emailStr, err := getEmailFromContext(c)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
@@ -129,14 +121,9 @@ func (ac *APIKeyController) RevokeAPIKeyHandler(c *gin.Context) {
 		return
 	}
 
-	// Verify the key belongs to the current user before deleting
-	emailStr, ok := email.(string)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email in context"})
-		return
-	}
 	apiKeys, err := ac.apiKeys.ListAPIKeys(c.Request.Context(), emailStr)
 	if err != nil {
+		requestLogger(c).Warn("failed to verify API key ownership", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify key ownership"})
 		return
 	}
@@ -158,6 +145,7 @@ func (ac *APIKeyController) RevokeAPIKeyHandler(c *gin.Context) {
 	// Delete the API key
 	err = ac.apiKeys.RevokeAPIKey(c.Request.Context(), keyID)
 	if err != nil {
+		requestLogger(c).Warn("failed to revoke API key", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke API key"})
 		return
 	}

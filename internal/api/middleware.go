@@ -2,7 +2,9 @@
 package httphandler
 
 import (
+	"compress/gzip"
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -12,11 +14,86 @@ import (
 	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/constants"
+	"treblesurf-backend/internal/logging"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
+
+// GzipMiddleware compresses API responses when the client supports gzip.
+func GzipMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
+			c.Next()
+			return
+		}
+
+		writer := &gzipResponseWriter{
+			ResponseWriter: c.Writer,
+		}
+		writer.gzipWriter = gzip.NewWriter(writer.ResponseWriter)
+		c.Writer = writer
+
+		c.Next()
+
+		if writer.compressed {
+			_ = writer.gzipWriter.Close()
+		}
+	}
+}
+
+type gzipResponseWriter struct {
+	gin.ResponseWriter
+	gzipWriter *gzip.Writer
+	compressed bool
+}
+
+func (w *gzipResponseWriter) WriteHeader(code int) {
+	header := w.Header()
+	contentType := header.Get("Content-Type")
+	contentEncoding := header.Get("Content-Encoding")
+
+	if code == http.StatusNoContent || code == http.StatusNotModified ||
+		strings.HasPrefix(contentType, "text/event-stream") ||
+		contentEncoding != "" {
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
+
+	w.compressed = true
+	header.Del("Content-Length")
+	header.Set("Content-Encoding", "gzip")
+	header.Set("Vary", addVaryHeaderValue(header.Get("Vary"), "Accept-Encoding"))
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *gzipResponseWriter) Write(data []byte) (int, error) {
+	if !w.Written() {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	if w.compressed {
+		return w.gzipWriter.Write(data)
+	}
+
+	return w.ResponseWriter.Write(data)
+}
+
+func addVaryHeaderValue(existing, value string) string {
+	if existing == "" {
+		return value
+	}
+
+	for _, part := range strings.Split(existing, ",") {
+		if strings.EqualFold(strings.TrimSpace(part), value) {
+			return existing
+		}
+	}
+
+	return existing + ", " + value
+}
 
 // iOSHeadersMiddleware adds headers that help with iOS app integration
 func iOSHeadersMiddleware() gin.HandlerFunc {
@@ -33,6 +110,46 @@ func iOSHeadersMiddleware() gin.HandlerFunc {
 		}
 
 		c.Next()
+	}
+}
+
+// RequestLoggerMiddleware attaches a request-scoped logger to context.
+func RequestLoggerMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := strings.TrimSpace(c.GetHeader("X-Request-Id"))
+		if requestID == "" {
+			requestID = uuid.NewString()
+		}
+
+		logger := logging.WithRequestID(slog.Default(), requestID)
+		ctx := logging.WithLogger(c.Request.Context(), logger)
+		c.Request = c.Request.WithContext(ctx)
+		c.Set("request_id", requestID)
+		c.Header("X-Request-Id", requestID)
+
+		c.Next()
+	}
+}
+
+// RequestTimeoutMiddleware enforces per-request timeouts.
+func RequestTimeoutMiddleware(timeout time.Duration) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if timeout <= 0 {
+			c.Next()
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+		defer cancel()
+		c.Request = c.Request.WithContext(ctx)
+
+		c.Next()
+
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) && !c.Writer.Written() {
+			c.AbortWithStatusJSON(http.StatusGatewayTimeout, gin.H{
+				"error": "Request timed out",
+			})
+		}
 	}
 }
 
@@ -99,10 +216,22 @@ func APIKeyAuthMiddleware(apiKeyService *service.APIKeyService, requiredScope st
 }
 
 // DevAuthMiddleware automatically authenticates requests in local development
-func DevAuthMiddleware(authService *auth.Service) gin.HandlerFunc {
+func DevAuthMiddleware(cfg *config.Config, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cfg != nil && !cfg.IsDevelopment() {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "development auth is disabled"})
+			return
+		}
+
 		// Set a mock authenticated user
-		email := "testuser@example.com"
+		email := ""
+		if cfg != nil {
+			email = cfg.Security.DevUserEmail
+		}
+		if email == "" {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "development user email not configured"})
+			return
+		}
 		c.Set("email", email)
 		c.Set("authenticated", true)
 		c.Set("user", map[string]interface{}{
@@ -129,10 +258,22 @@ func DevAuthMiddleware(authService *auth.Service) gin.HandlerFunc {
 }
 
 // DevAdminAuthMiddleware automatically authenticates requests as an admin in local development
-func DevAdminAuthMiddleware(authService *auth.Service) gin.HandlerFunc {
+func DevAdminAuthMiddleware(cfg *config.Config, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cfg != nil && !cfg.IsDevelopment() {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "development auth is disabled"})
+			return
+		}
+
 		// Set a mock authenticated admin user
-		email := "admin@example.com"
+		email := ""
+		if cfg != nil {
+			email = cfg.Security.DevAdminEmail
+		}
+		if email == "" {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "development admin email not configured"})
+			return
+		}
 		c.Set("email", email)
 		c.Set("authenticated", true)
 		c.Set("user", map[string]interface{}{

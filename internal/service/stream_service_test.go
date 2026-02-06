@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	mockrepo "treblesurf-backend/internal/repository/mock"
 )
 
@@ -129,7 +130,7 @@ func TestStreamService_IsStreamRequested(t *testing.T) {
 		ctx := context.Background()
 		repo := &mockrepo.StreamRequestRepo{
 			GetBySpotIDFn: func(_ context.Context, _ string) (*model.StreamRequest, error) {
-				return nil, nil
+				return nil, repository.ErrNotFound
 			},
 		}
 

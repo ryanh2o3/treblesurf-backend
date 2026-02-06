@@ -58,7 +58,7 @@ func (r *SnapshotRepo) GetLatestBySpot(ctx context.Context, spotID string) (*mod
 	}
 
 	if len(result.Items) == 0 {
-		return nil, nil
+		return nil, repository.ErrNotFound
 	}
 
 	var snapshotRecord spotSnapshotItem

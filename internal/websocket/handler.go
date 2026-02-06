@@ -54,7 +54,7 @@ func (h *Handler) handleConnect(
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 	token := req.QueryStringParameters["token"]
-	ctx, cancel := requestContext()
+	ctx, cancel := requestContext(context.Background())
 	defer cancel()
 
 	userID, err := h.validateWebSocketToken(token)
@@ -84,7 +84,7 @@ func (h *Handler) handleDisconnect(
 	req events.APIGatewayWebsocketProxyRequest,
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
-	ctx, cancel := requestContext()
+	ctx, cancel := requestContext(context.Background())
 	defer cancel()
 
 	if err := h.websocketService.DeleteConnection(ctx, connectionID); err != nil {
@@ -110,7 +110,7 @@ func (h *Handler) handleDefault(
 		}, nil
 	}
 
-	ctx, cancel := requestContext()
+	ctx, cancel := requestContext(context.Background())
 	defer cancel()
 	if err := h.websocketService.UpdateConnectionLastActive(ctx, req.RequestContext.ConnectionID); err != nil {
 		slog.Warn("failed to update connection last active", slog.Any("error", err))
@@ -170,7 +170,7 @@ func (h *Handler) handleSubscribeAction(
 	}
 
 	connectionID := req.RequestContext.ConnectionID
-	ctx, cancel := requestContext()
+	ctx, cancel := requestContext(context.Background())
 	defer cancel()
 
 	connection, resp := h.getConnection(ctx, connectionID)
@@ -275,7 +275,7 @@ func (h *Handler) handlePingAction(
 ) (events.APIGatewayProxyResponse, error) {
 	connectionID := req.RequestContext.ConnectionID
 
-	ctx, cancel := requestContext()
+	ctx, cancel := requestContext(context.Background())
 	defer cancel()
 	if err := h.websocketService.UpdateConnectionLastActive(ctx, connectionID); err != nil {
 		slog.Warn("failed to update connection last active", slog.Any("error", err))
