@@ -13,10 +13,10 @@ import (
 type Config struct {
 	AWS       AWSConfig
 	WebSocket WebSocketConfig
+	Env       Environment
+	Security  SecurityConfig
 	Server    ServerConfig
 	Auth      AuthConfig
-	Security  SecurityConfig
-	Env       Environment
 }
 
 // Environment represents the application environment.
@@ -56,11 +56,11 @@ type ServerConfig struct {
 
 // SecurityConfig holds security-related configuration.
 type SecurityConfig struct {
-	AdminEmails    []string
-	AllowedOrigins []string
 	RateLimitMode  string
 	DevUserEmail   string
 	DevAdminEmail  string
+	AdminEmails    []string
+	AllowedOrigins []string
 	RateLimitRPS   int
 }
 

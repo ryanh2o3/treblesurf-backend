@@ -68,13 +68,13 @@ type SessionInfo struct {
 
 // Service provides authentication handlers and middleware with injected dependencies.
 type Service struct {
-	jwtSecret       []byte
 	userRepo        repository.UserRepository
 	sessionRepo     repository.SessionRepository
-	devUserEmail    string
 	sessionService  *sessions.Service
 	sessionStore    *store.DynamoDBStore
 	googleClientIDs map[string]bool
+	devUserEmail    string
+	jwtSecret       []byte
 	cookieSecure    bool
 	isDevelopment   bool
 }
@@ -321,9 +321,9 @@ func (s *Service) processGoogleAuthUser(
 		if errors.Is(err, repository.ErrNotFound) {
 			existingUser = nil
 		} else {
-		slog.Error("error checking user", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return nil, ""
+			slog.Error("error checking user", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+			return nil, ""
 		}
 	}
 

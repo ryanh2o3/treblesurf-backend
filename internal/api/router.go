@@ -12,6 +12,7 @@ import (
 	"treblesurf-backend/internal/config"
 
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -84,7 +85,7 @@ func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 	}
 
 	// Compress API responses when clients support gzip.
-	routeGroup.Use(GzipMiddleware())
+	routeGroup.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	setupPublicRoutes(routeGroup, container.AuthService)
 	setupAuthRoutes(routeGroup, cfg, container.AuthService)

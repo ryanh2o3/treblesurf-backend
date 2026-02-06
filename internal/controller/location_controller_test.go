@@ -252,9 +252,8 @@ func TestLocationController_GetLocationInfo_NotFound(t *testing.T) {
 
 	controller.GetLocationInfo(c)
 
-	if w.Code != http.StatusInternalServerError {
-		// Controller returns 500 on error, not 404
-		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, w.Code)
 	}
 }
 

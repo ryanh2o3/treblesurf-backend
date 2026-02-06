@@ -2,7 +2,6 @@
 package httphandler
 
 import (
-	"compress/gzip"
 	"context"
 	"errors"
 	"log/slog"
@@ -21,79 +20,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
-
-// GzipMiddleware compresses API responses when the client supports gzip.
-func GzipMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if !strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
-			c.Next()
-			return
-		}
-
-		writer := &gzipResponseWriter{
-			ResponseWriter: c.Writer,
-		}
-		writer.gzipWriter = gzip.NewWriter(writer.ResponseWriter)
-		c.Writer = writer
-
-		c.Next()
-
-		if writer.compressed {
-			_ = writer.gzipWriter.Close()
-		}
-	}
-}
-
-type gzipResponseWriter struct {
-	gin.ResponseWriter
-	gzipWriter *gzip.Writer
-	compressed bool
-}
-
-func (w *gzipResponseWriter) WriteHeader(code int) {
-	header := w.Header()
-	contentType := header.Get("Content-Type")
-	contentEncoding := header.Get("Content-Encoding")
-
-	if code == http.StatusNoContent || code == http.StatusNotModified ||
-		strings.HasPrefix(contentType, "text/event-stream") ||
-		contentEncoding != "" {
-		w.ResponseWriter.WriteHeader(code)
-		return
-	}
-
-	w.compressed = true
-	header.Del("Content-Length")
-	header.Set("Content-Encoding", "gzip")
-	header.Set("Vary", addVaryHeaderValue(header.Get("Vary"), "Accept-Encoding"))
-	w.ResponseWriter.WriteHeader(code)
-}
-
-func (w *gzipResponseWriter) Write(data []byte) (int, error) {
-	if !w.Written() {
-		w.WriteHeader(http.StatusOK)
-	}
-
-	if w.compressed {
-		return w.gzipWriter.Write(data)
-	}
-
-	return w.ResponseWriter.Write(data)
-}
-
-func addVaryHeaderValue(existing, value string) string {
-	if existing == "" {
-		return value
-	}
-
-	for _, part := range strings.Split(existing, ",") {
-		if strings.EqualFold(strings.TrimSpace(part), value) {
-			return existing
-		}
-	}
-
-	return existing + ", " + value
-}
 
 // iOSHeadersMiddleware adds headers that help with iOS app integration
 func iOSHeadersMiddleware() gin.HandlerFunc {
