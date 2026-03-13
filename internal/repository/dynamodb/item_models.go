@@ -404,3 +404,96 @@ func (c *connectionItem) toModel() *model.ConnectionInfo {
 		TTL:          c.TTL,
 	}
 }
+
+type contentReportItem struct {
+	ReviewedAt      time.Time `dynamodbav:"reviewed_at,omitempty"`
+	CreatedAt       time.Time `dynamodbav:"created_at"`
+	UpdatedAt       time.Time `dynamodbav:"updated_at"`
+	ID              string    `dynamodbav:"id"`
+	SurfReportID    string    `dynamodbav:"surf_report_id"`
+	ReporterUserID  string    `dynamodbav:"reporter_user_id"`
+	Reason          string    `dynamodbav:"reason"`
+	Description     string    `dynamodbav:"description,omitempty"`
+	Status          string    `dynamodbav:"status"`
+	ReviewedBy      string    `dynamodbav:"reviewed_by,omitempty"`
+	Resolution      string    `dynamodbav:"resolution,omitempty"`
+	ResolutionNotes string    `dynamodbav:"resolution_notes,omitempty"`
+}
+
+func contentReportItemFromModel(r *model.ContentReport) contentReportItem {
+	if r == nil {
+		return contentReportItem{}
+	}
+	return contentReportItem{
+		ID:              r.ID,
+		SurfReportID:    r.SurfReportID,
+		ReporterUserID:  r.ReporterUserID,
+		Reason:          r.Reason,
+		Description:     r.Description,
+		Status:          r.Status,
+		ReviewedBy:      r.ReviewedBy,
+		ReviewedAt:      r.ReviewedAt,
+		Resolution:      r.Resolution,
+		ResolutionNotes: r.ResolutionNotes,
+		CreatedAt:       r.CreatedAt,
+		UpdatedAt:       r.UpdatedAt,
+	}
+}
+
+func (r *contentReportItem) toModel() *model.ContentReport {
+	return &model.ContentReport{
+		ID:              r.ID,
+		SurfReportID:    r.SurfReportID,
+		ReporterUserID:  r.ReporterUserID,
+		Reason:          r.Reason,
+		Description:     r.Description,
+		Status:          r.Status,
+		ReviewedBy:      r.ReviewedBy,
+		ReviewedAt:      r.ReviewedAt,
+		Resolution:      r.Resolution,
+		ResolutionNotes: r.ResolutionNotes,
+		CreatedAt:       r.CreatedAt,
+		UpdatedAt:       r.UpdatedAt,
+	}
+}
+
+type moderationActionItem struct {
+	CreatedAt   time.Time `dynamodbav:"created_at"`
+	ID          string    `dynamodbav:"id"`
+	ReportID    string    `dynamodbav:"report_id"`
+	ActionType  string    `dynamodbav:"action_type"`
+	TargetType  string    `dynamodbav:"target_type"`
+	TargetID    string    `dynamodbav:"target_id"`
+	PerformedBy string    `dynamodbav:"performed_by"`
+	Notes       string    `dynamodbav:"notes,omitempty"`
+}
+
+func moderationActionItemFromModel(a *model.ModerationAction) moderationActionItem {
+	if a == nil {
+		return moderationActionItem{}
+	}
+	return moderationActionItem{
+		ID:          a.ID,
+		ReportID:    a.ReportID,
+		ActionType:  a.ActionType,
+		TargetType:  a.TargetType,
+		TargetID:    a.TargetID,
+		PerformedBy: a.PerformedBy,
+		Notes:       a.Notes,
+		CreatedAt:   a.CreatedAt,
+	}
+}
+
+func (a *moderationActionItem) toModel() *model.ModerationAction {
+	return &model.ModerationAction{
+		ID:          a.ID,
+		ReportID:    a.ReportID,
+		ActionType:  a.ActionType,
+		TargetType:  a.TargetType,
+		TargetID:    a.TargetID,
+		PerformedBy: a.PerformedBy,
+		Notes:       a.Notes,
+		CreatedAt:   a.CreatedAt,
+	}
+}
+

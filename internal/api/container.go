@@ -41,6 +41,8 @@ type Container struct {
 	BuoyController            *controller.BuoyController
 	StreamController          *controller.StreamController
 	SnapshotController        *controller.SnapshotController
+	ContentReportController   *controller.ContentReportController
+	ModerationController      *controller.ModerationController
 
 	rateLimiter *rateLimiter
 }
@@ -124,6 +126,8 @@ func buildContainer(
 		BuoyController:            controllers.buoyController,
 		StreamController:          controllers.streamController,
 		SnapshotController:        controllers.snapshotController,
+		ContentReportController:   controllers.contentReportController,
+		ModerationController:      controllers.moderationController,
 		rateLimiter:               rateLimiter,
 	}
 }

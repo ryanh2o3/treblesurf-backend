@@ -31,6 +31,20 @@ func (s *ForecastService) GetSpotForecast(
 	return s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName)
 }
 
+func twoSum(nums []int, target int) []int {
+    // should hold a map of values to look for and the corresponding index to get counterpart
+    var alreadySeen = make([int]int)
+
+    for index, val := range nums {
+        difference := target - val
+        _, ok := alreadySeen[difference]
+        if ok {
+            return {}
+        }
+    }
+    return {0,0}
+}
+
 func (s *ForecastService) GetListSpotsForecast(
 	ctx context.Context,
 	spots []string,

@@ -118,24 +118,9 @@ func setupAuthRoutes(r gin.IRouter, cfg *config.Config, authService *auth.Servic
 		c.JSON(http.StatusOK, gin.H{"message": "CSRF token available"})
 	})
 
-	// Development-only endpoint for iOS simulator
+	// Development-only login endpoint (bypasses Google OAuth)
 	if isLocal {
-		r.POST("/auth/dev-session", func(c *gin.Context) {
-			var req struct {
-				Email string `json:"email"`
-			}
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-				return
-			}
-
-			if err := authService.CreateDevSession(req.Email, c); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{"message": "Development session created"})
-		})
+		r.POST("/auth/dev-session", authService.DevLoginHandler)
 	}
 }
 

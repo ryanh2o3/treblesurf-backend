@@ -27,6 +27,8 @@ type containerServices struct {
 	streamService          *service.StreamService
 	snapshotService        *service.SnapshotService
 	buoyService            *service.BuoyService
+	contentReportService   *service.ContentReportService
+	moderationService      *service.ModerationService
 }
 
 // containerControllers holds all initialized controllers.
@@ -40,23 +42,27 @@ type containerControllers struct {
 	buoyController            *controller.BuoyController
 	streamController          *controller.StreamController
 	snapshotController        *controller.SnapshotController
+	contentReportController   *controller.ContentReportController
+	moderationController      *controller.ModerationController
 }
 
 type containerRepositories struct {
-	userRepo            repository.UserRepository
-	sessionRepo         repository.SessionRepository
-	apiKeyRepo          repository.APIKeyRepository
-	locationRepo        repository.LocationRepository
-	forecastRepo        repository.ForecastRepository
-	forecastDataRepo    repository.ForecastDataRepository
-	websocketRepo       repository.WebSocketRepository
-	subscriptionRepo    repository.SpotSubscriptionRepository
-	swellPredictionRepo repository.SwellPredictionRepository
-	reportRepo          repository.ReportRepository
-	buoyRepo            repository.BuoyRepository
-	mediaRepo           repository.MediaRepository
-	streamRequestRepo   repository.StreamRequestRepository
-	snapshotRepo        repository.SnapshotRepository
+	userRepo             repository.UserRepository
+	sessionRepo          repository.SessionRepository
+	apiKeyRepo           repository.APIKeyRepository
+	locationRepo         repository.LocationRepository
+	forecastRepo         repository.ForecastRepository
+	forecastDataRepo     repository.ForecastDataRepository
+	websocketRepo        repository.WebSocketRepository
+	subscriptionRepo     repository.SpotSubscriptionRepository
+	swellPredictionRepo  repository.SwellPredictionRepository
+	reportRepo           repository.ReportRepository
+	buoyRepo             repository.BuoyRepository
+	mediaRepo            repository.MediaRepository
+	streamRequestRepo    repository.StreamRequestRepository
+	snapshotRepo         repository.SnapshotRepository
+	contentReportRepo    repository.ContentReportRepository
+	moderationActionRepo repository.ModerationActionRepository
 }
 
 // initializeServices creates all application services with their dependencies.
@@ -68,20 +74,22 @@ func initializeServices(storage *containerStorage, cfg *containerConfig, appCfg 
 func initRepositories(storage *containerStorage, cfg *containerConfig) *containerRepositories {
 	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, "SpotForecastData")
 	return &containerRepositories{
-		userRepo:            repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"),
-		sessionRepo:         repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions"),
-		apiKeyRepo:          repodynamo.NewAPIKeyRepo(storage.dynamoDBClient, "ApiKeys"),
-		locationRepo:        repodynamo.NewLocationRepo(storage.dynamoDBClient, "LocationData"),
-		forecastRepo:        forecastRepo,
-		forecastDataRepo:    forecastRepo,
-		websocketRepo:       repodynamo.NewWebSocketRepo(storage.dynamoDBClient, "WebSocketConnections"),
-		subscriptionRepo:    repodynamo.NewSpotSubscriptionRepo(storage.dynamoDBClient, "SpotSubscriptions"),
-		swellPredictionRepo: repodynamo.NewSwellPredictionRepo(storage.dynamoDBClient, "SwellPredictions"),
-		reportRepo:          repodynamo.NewReportRepo(storage.dynamoDBClient, "SurfReports"),
-		buoyRepo:            repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations"),
-		mediaRepo:           repos3.NewMediaRepo(storage.s3Client, cfg.bucketName),
-		streamRequestRepo:   repodynamo.NewStreamRequestRepo(storage.dynamoDBClient, "StreamRequests"),
-		snapshotRepo:        repodynamo.NewSnapshotRepo(storage.dynamoDBClient, "SpotSnapshots"),
+		userRepo:             repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"),
+		sessionRepo:          repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions"),
+		apiKeyRepo:           repodynamo.NewAPIKeyRepo(storage.dynamoDBClient, "ApiKeys"),
+		locationRepo:         repodynamo.NewLocationRepo(storage.dynamoDBClient, "LocationData"),
+		forecastRepo:         forecastRepo,
+		forecastDataRepo:     forecastRepo,
+		websocketRepo:        repodynamo.NewWebSocketRepo(storage.dynamoDBClient, "WebSocketConnections"),
+		subscriptionRepo:     repodynamo.NewSpotSubscriptionRepo(storage.dynamoDBClient, "SpotSubscriptions"),
+		swellPredictionRepo:  repodynamo.NewSwellPredictionRepo(storage.dynamoDBClient, "SwellPredictions"),
+		reportRepo:           repodynamo.NewReportRepo(storage.dynamoDBClient, "SurfReports"),
+		buoyRepo:             repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations"),
+		mediaRepo:            repos3.NewMediaRepo(storage.s3Client, cfg.bucketName),
+		streamRequestRepo:    repodynamo.NewStreamRequestRepo(storage.dynamoDBClient, "StreamRequests"),
+		snapshotRepo:         repodynamo.NewSnapshotRepo(storage.dynamoDBClient, "SpotSnapshots"),
+		contentReportRepo:    repodynamo.NewContentReportRepo(storage.dynamoDBClient, "ContentReports"),
+		moderationActionRepo: repodynamo.NewModerationActionRepo(storage.dynamoDBClient, "ModerationActions"),
 	}
 }
 
@@ -118,6 +126,18 @@ func buildServices(
 		storage.rekognitionClient,
 		services.userService,
 		services.websocketService,
+	)
+
+	// Content moderation services
+	services.contentReportService = service.NewContentReportService(
+		repos.contentReportRepo,
+		repos.reportRepo,
+		repos.userRepo,
+	)
+	services.moderationService = service.NewModerationService(
+		repos.contentReportRepo,
+		repos.moderationActionRepo,
+		repos.userRepo,
 	)
 
 	return services, nil
@@ -197,5 +217,8 @@ func initializeControllers(
 		buoyController:            controller.NewBuoyController(services.buoyService),
 		streamController:          controller.NewStreamController(services.streamService),
 		snapshotController:        controller.NewSnapshotController(services.snapshotService, storage.s3Client, cfg.bucketName),
+		contentReportController:   controller.NewContentReportController(services.contentReportService, services.userService),
+		moderationController:      controller.NewModerationController(services.moderationService),
 	}
 }
+

@@ -58,7 +58,7 @@ clean:
 
 # Run targets
 run-api:
-	@go run cmd/api/main.go
+	@go run local/cmd/server.go
 
 run-websocket:
 	@go run cmd/websocket/main.go

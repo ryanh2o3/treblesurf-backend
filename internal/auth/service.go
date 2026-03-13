@@ -629,6 +629,77 @@ func (s *Service) CreateDevSession(email string, c *gin.Context) error {
 	return nil
 }
 
+// DevLoginHandler handles development-only login that bypasses Google OAuth.
+// Only registered when running locally via cmd/server.
+func (s *Service) DevLoginHandler(c *gin.Context) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: email is required"})
+		return
+	}
+
+	email := req.Email
+	name := "Dev User"
+
+	// Find or create user
+	existingUser, err := s.getUserByEmail(c.Request.Context(), email)
+	if err != nil {
+		if !errors.Is(err, repository.ErrNotFound) {
+			slog.Error("dev login: error checking user", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+			return
+		}
+		existingUser = nil
+	}
+
+	var finalUser *User
+	theme := constants.DefaultUserTheme
+
+	if existingUser == nil {
+		newUser := User{
+			Email: email,
+			Name:  name,
+		}
+		if err := s.createUser(c.Request.Context(), newUser); err != nil {
+			slog.Error("dev login: error creating user", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+			return
+		}
+		finalUser, _ = s.getUserByEmail(c.Request.Context(), email)
+	} else {
+		_ = s.updateUserLastLogin(c.Request.Context(), email)
+		finalUser = existingUser
+		if finalUser.Theme != "" {
+			theme = finalUser.Theme
+		}
+	}
+
+	// Set up session with proper cookies (same as Google auth)
+	s.setupAuthSession(email, c)
+
+	var userUUID string
+	if finalUser != nil {
+		userUUID = finalUser.UUID
+		if finalUser.Name != "" {
+			name = finalUser.Name
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"user": gin.H{
+			"uuid":       userUUID,
+			"email":      email,
+			"name":       name,
+			"picture":    "",
+			"family_name": "",
+			"given_name":  "",
+			"theme":      theme,
+		},
+	})
+}
+
 func (s *Service) SessionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userSession, err := s.sessionService.GetUserSession(c.Request)

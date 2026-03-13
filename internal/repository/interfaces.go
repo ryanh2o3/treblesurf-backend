@@ -187,3 +187,49 @@ type SnapshotRepository interface {
 	Save(ctx context.Context, snapshot *model.SpotSnapshot) error
 	GetLatestBySpot(ctx context.Context, spotID string) (*model.SpotSnapshot, error)
 }
+
+// ContentReportRepository handles content report persistence.
+// Content reports are user-submitted reports about surf reports that may violate guidelines.
+type ContentReportRepository interface {
+	// Create stores a new content report.
+	Create(ctx context.Context, report *model.ContentReport) error
+
+	// GetByID retrieves a content report by its ID.
+	// Returns ErrNotFound if the report doesn't exist.
+	GetByID(ctx context.Context, id string) (*model.ContentReport, error)
+
+	// GetBySurfReportID retrieves all reports for a specific surf report.
+	GetBySurfReportID(ctx context.Context, surfReportID string) ([]*model.ContentReport, error)
+
+	// GetByReporterID retrieves all reports submitted by a specific user.
+	GetByReporterID(ctx context.Context, userID string) ([]*model.ContentReport, error)
+
+	// GetPendingReports retrieves pending reports for the moderation queue.
+	// Results are ordered by created_at ascending (oldest first).
+	GetPendingReports(ctx context.Context, limit, offset int) ([]*model.ContentReport, error)
+
+	// UpdateStatus updates the status of a report.
+	UpdateStatus(ctx context.Context, id, status, reviewedBy string) error
+
+	// Resolve marks a report as resolved with the given resolution.
+	Resolve(ctx context.Context, id, resolution, notes, reviewedBy string) error
+
+	// CountByReporterSince counts reports submitted by a user since a given time.
+	// Used for rate limiting.
+	CountByReporterSince(ctx context.Context, userID string, since time.Time) (int, error)
+}
+
+// ModerationActionRepository handles moderation action persistence.
+// Moderation actions are records of actions taken by moderators on reports.
+type ModerationActionRepository interface {
+	// Create stores a new moderation action.
+	Create(ctx context.Context, action *model.ModerationAction) error
+
+	// GetByReportID retrieves all actions for a specific report.
+	GetByReportID(ctx context.Context, reportID string) ([]*model.ModerationAction, error)
+
+	// List retrieves moderation actions with pagination.
+	// Results are ordered by created_at descending (newest first).
+	List(ctx context.Context, limit, offset int) ([]*model.ModerationAction, error)
+}
+
