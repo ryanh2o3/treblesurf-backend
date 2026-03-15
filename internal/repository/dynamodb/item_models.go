@@ -316,30 +316,46 @@ func (s *spotSnapshotItem) toModel() *model.SpotSnapshot {
 }
 
 type buoyDataItem struct {
-	Timestamp     time.Time `dynamodbav:"timestamp"`
-	BuoyName      string    `dynamodbav:"buoy_name"`
-	WaveHeight    float64   `dynamodbav:"wave_height"`
-	WavePeriod    float64   `dynamodbav:"wave_period"`
-	MaxPeriod     float64   `dynamodbav:"max_period"`
-	WaveDirection float64   `dynamodbav:"wave_direction"`
-	WindSpeed     float64   `dynamodbav:"wind_speed"`
-	WindDirection float64   `dynamodbav:"wind_direction"`
-	Temperature   float64   `dynamodbav:"temperature"`
-	Pressure      float64   `dynamodbav:"pressure"`
+	Timestamp        time.Time `dynamodbav:"timestamp"`
+	BuoyName         string    `dynamodbav:"buoy_name"`
+	WaveHeight       float64   `dynamodbav:"wave_height"`
+	WavePeriod       float64   `dynamodbav:"wave_period"`
+	MaxPeriod        float64   `dynamodbav:"max_period"`
+	WaveDirection    float64   `dynamodbav:"wave_direction"`
+	WindSpeed        float64   `dynamodbav:"wind_speed"`
+	WindDirection    float64   `dynamodbav:"wind_direction"`
+	Temperature      float64   `dynamodbav:"temperature"`
+	Pressure         float64   `dynamodbav:"pressure"`
+	SprTp            float64   `dynamodbav:"SprTp"`
+	ThTp             float64   `dynamodbav:"ThTp"`
+	MaxHeight        float64   `dynamodbav:"MaxHeight"`
+	Gust             float64   `dynamodbav:"Gust"`
+	AirTemperature   float64   `dynamodbav:"AirTemperature"`
+	DewPoint         float64   `dynamodbav:"DewPoint"`
+	RelativeHumidity float64   `dynamodbav:"RelativeHumidity"`
+	Salinity         float64   `dynamodbav:"salinity"`
 }
 
 func (b *buoyDataItem) toModel() *model.BuoyData {
 	return &model.BuoyData{
-		Timestamp:     b.Timestamp,
-		BuoyName:      b.BuoyName,
-		WaveHeight:    b.WaveHeight,
-		WavePeriod:    b.WavePeriod,
-		MaxPeriod:     b.MaxPeriod,
-		WaveDirection: b.WaveDirection,
-		WindSpeed:     b.WindSpeed,
-		WindDirection: b.WindDirection,
-		Temperature:   b.Temperature,
-		Pressure:      b.Pressure,
+		Timestamp:        b.Timestamp,
+		BuoyName:         b.BuoyName,
+		WaveHeight:       b.WaveHeight,
+		WavePeriod:       b.WavePeriod,
+		MaxPeriod:        b.MaxPeriod,
+		WaveDirection:    b.WaveDirection,
+		WindSpeed:        b.WindSpeed,
+		WindDirection:    b.WindDirection,
+		Temperature:      b.Temperature,
+		Pressure:         b.Pressure,
+		SprTp:            b.SprTp,
+		ThTp:             b.ThTp,
+		MaxHeight:        b.MaxHeight,
+		Gust:             b.Gust,
+		AirTemperature:   b.AirTemperature,
+		DewPoint:         b.DewPoint,
+		RelativeHumidity: b.RelativeHumidity,
+		Salinity:         b.Salinity,
 	}
 }
 
