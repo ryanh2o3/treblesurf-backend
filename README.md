@@ -1,6 +1,6 @@
 # Treble Surf Backend
 
-Backend API for surf forecasting, real-time conditions, and surf spot management. Built with Go and deployed on AWS.
+Backend API for surf forecasting, real-time conditions, and surf spot management. Built with Go and deployed on AWS. Recent refactors allow for future easy expansion to support other database typed by new repository implementations, they should work with services directly
 
 ## Overview
 
