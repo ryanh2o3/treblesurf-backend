@@ -87,7 +87,7 @@ func (s *LocalS3Storage) PutObject(input *s3.PutObjectInput) (*s3.PutObjectOutpu
 
 		for k, v := range input.Metadata {
 			if v != nil {
-				metadataContent.WriteString(fmt.Sprintf("%s=%s\n", k, *v))
+				_, _ = fmt.Fprintf(&metadataContent, "%s=%s\n", k, *v)
 			}
 		}
 

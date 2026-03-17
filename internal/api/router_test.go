@@ -1,6 +1,7 @@
 package httphandler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,7 +23,7 @@ func TestSetupRouter_HealthCheck(t *testing.T) {
 	router := SetupRouter(cfg, container)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", http.NoBody)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -52,7 +53,7 @@ func TestSetupRouter_LocalRoutes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest(tt.method, tt.path, http.NoBody)
+			req := httptest.NewRequestWithContext(context.Background(), tt.method, tt.path, http.NoBody)
 			router.ServeHTTP(w, req)
 
 			if w.Code != tt.want && w.Code != http.StatusNotFound {
@@ -73,7 +74,7 @@ func TestBuildCORSMiddleware_Development(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", http.NoBody)
 	req.Header.Set("Origin", "http://localhost:5173")
 	router.ServeHTTP(w, req)
 
@@ -104,7 +105,7 @@ func TestBuildCORSMiddleware_Production(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", http.NoBody)
 	req.Header.Set("Origin", "https://treblesurf.com")
 	router.ServeHTTP(w, req)
 
@@ -127,7 +128,7 @@ func TestBuildCORSMiddleware_Production_DefaultOrigins(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", http.NoBody)
 	req.Header.Set("Origin", "https://treblesurf.com")
 	router.ServeHTTP(w, req)
 
@@ -144,7 +145,7 @@ func TestIOSHeadersMiddleware_Router(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", http.NoBody)
 	router.ServeHTTP(w, req)
 
 	if w.Header().Get("X-App-Version") != testAppVersion {
@@ -163,7 +164,7 @@ func TestIOSHeadersMiddleware_AuthRoutes_Router(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/auth/validate", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/auth/validate", http.NoBody)
 	router.ServeHTTP(w, req)
 
 	cacheControl := w.Header().Get("Cache-Control")
@@ -195,7 +196,7 @@ func TestAdminMiddlewareWithConfig(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin/test", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/test", http.NoBody)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -223,7 +224,7 @@ func TestAdminMiddlewareWithConfig_NonAdmin(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin/test", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/test", http.NoBody)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusForbidden {
@@ -247,7 +248,7 @@ func TestAdminMiddlewareWithConfig_NoEmail(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin/test", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/test", http.NoBody)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {

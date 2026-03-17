@@ -150,11 +150,12 @@ func (s *ReportService) broadcastReportMessage(
 		return
 	}
 
-	go func() {
-		broadcastCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	go func(parentCtx context.Context) {
+		// Detach cancellation from the request while still preserving values (trace IDs, etc.).
+		broadcastCtx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 5*time.Second)
 		defer cancel()
 		s.broadcastToUsers(broadcastCtx, subscribers, message)
-	}()
+	}(ctx)
 }
 
 func (s *ReportService) createBaseReport(

@@ -32,8 +32,14 @@ func createTestWebSocketService(
 func TestReportService_SubmitSurfReport(t *testing.T) {
 	// Save original env value
 	originalEnv := os.Getenv("GO_ENV")
-	defer os.Setenv("GO_ENV", originalEnv)
-	os.Setenv("GO_ENV", constants.EnvDevelopment)
+	defer func() {
+		if err := os.Setenv("GO_ENV", originalEnv); err != nil {
+			t.Fatalf("failed to restore GO_ENV: %v", err)
+		}
+	}()
+	if err := os.Setenv("GO_ENV", constants.EnvDevelopment); err != nil {
+		t.Fatalf("failed to set GO_ENV: %v", err)
+	}
 
 	tests := []struct {
 		report    *model.ReportWithImage
@@ -243,8 +249,14 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 	// Save original env value
 	originalEnv := os.Getenv("GO_ENV")
-	defer os.Setenv("GO_ENV", originalEnv)
-	os.Setenv("GO_ENV", constants.EnvDevelopment)
+	defer func() {
+		if err := os.Setenv("GO_ENV", originalEnv); err != nil {
+			t.Fatalf("failed to restore GO_ENV: %v", err)
+		}
+	}()
+	if err := os.Setenv("GO_ENV", constants.EnvDevelopment); err != nil {
+		t.Fatalf("failed to set GO_ENV: %v", err)
+	}
 
 	tests := []struct {
 		report    *model.ReportWithS3Image
@@ -343,7 +355,9 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 			userName:  "Test User",
 			setupMock: func() (*UserService, repository.ReportRepository, repository.MediaRepository, RekognitionAPI, *WebSocketService) {
 				// Set to production mode for this test
-				os.Setenv("GO_ENV", "production")
+				if err := os.Setenv("GO_ENV", "production"); err != nil {
+					t.Fatalf("failed to set GO_ENV: %v", err)
+				}
 				userRepo := &mockrepo.UserRepo{
 					GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
 						return &model.User{Email: email, UUID: "test-uuid-123"}, nil
@@ -375,7 +389,11 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset env after test
-			defer os.Setenv("GO_ENV", originalEnv)
+			defer func() {
+				if err := os.Setenv("GO_ENV", originalEnv); err != nil {
+					t.Fatalf("failed to restore GO_ENV: %v", err)
+				}
+			}()
 			ctx := context.Background()
 			userService, reportRepo, mediaRepo, rekognitionClient, wsService := tt.setupMock()
 			service := &ReportService{
