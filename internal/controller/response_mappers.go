@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/service"
 )
 
 type clientForecastData struct {
@@ -31,7 +32,16 @@ type clientForecastResponse struct {
 	ForecastTimestamp string             `json:"forecast_timestamp"`
 	GeneratedAt       string             `json:"generated_at"`
 	SpotID            string             `json:"spot_id"`
+	Source            string             `json:"source,omitempty"`
 	Data              clientForecastData `json:"data"`
+}
+
+// clientForecastGroupResponse is the multi-source shape (Option A: time + sources map).
+type clientForecastGroupResponse struct {
+	Sources           map[string]clientForecastData `json:"sources"`
+	Time              string                        `json:"time"`
+	ForecastTimestamp string                        `json:"forecast_timestamp"`
+	PrimarySource     string                        `json:"primary_source"`
 }
 
 type clientBuoyResponse struct {
@@ -98,6 +108,7 @@ func mapForecastToClient(forecast *model.Forecast) clientForecastResponse {
 	}
 
 	return clientForecastResponse{
+		Source: forecast.Source,
 		Data: clientForecastData{
 			DateForecastedFor: firstString(
 				stringFromData(forecast.Data, "dateForecastedFor", "date_forecasted_for"),
@@ -123,6 +134,37 @@ func mapForecastToClient(forecast *model.Forecast) clientForecastResponse {
 		GeneratedAt:       generatedAt,
 		SpotID:            spotID,
 	}
+}
+
+// mapForecastGroupToClient maps a service ForecastGroup to the multi-source API shape.
+func mapForecastGroupToClient(g service.ForecastGroup) clientForecastGroupResponse {
+	sources := make(map[string]clientForecastData)
+	for name, f := range g.Sources {
+		if f != nil {
+			sources[name] = mapForecastToClient(f).Data
+		}
+	}
+	timeStr := g.ForecastTimestamp
+	if !g.Time.IsZero() {
+		timeStr = g.Time.UTC().Format(time.RFC3339)
+	}
+	return clientForecastGroupResponse{
+		Time:              timeStr,
+		ForecastTimestamp: g.ForecastTimestamp,
+		PrimarySource:     g.PrimarySource,
+		Sources:           sources,
+	}
+}
+
+func mapForecastGroupsToClientResponse(groups []service.ForecastGroup) []clientForecastGroupResponse {
+	if len(groups) == 0 {
+		return []clientForecastGroupResponse{}
+	}
+	out := make([]clientForecastGroupResponse, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, mapForecastGroupToClient(g))
+	}
+	return out
 }
 
 func mapSpotReportsToClient(reports []map[string]interface{}) []map[string]interface{} {

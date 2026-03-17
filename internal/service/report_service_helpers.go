@@ -370,17 +370,45 @@ func setDefaultIfMissing(m map[string]interface{}, key string, defaultValue inte
 	}
 }
 
+// primarySourceForSpotID returns the preferred forecast source for a spot (spotID is country#region#spot).
+func primarySourceForSpotID(spotID string) string {
+	parts := strings.SplitN(spotID, "#", 3)
+	if len(parts) != 3 {
+		return sourceStormglass
+	}
+	if strings.EqualFold(parts[0], "ireland") {
+		return sourceIMISwan
+	}
+	return sourceStormglass
+}
+
+// selectPrimaryForecast returns the first point matching the primary source, or the first point if none match.
+func selectPrimaryForecast(spotID string, points []*model.ForecastDataPoint) *model.ForecastDataPoint {
+	if len(points) == 0 {
+		return nil
+	}
+	primary := primarySourceForSpotID(spotID)
+	for _, p := range points {
+		if p != nil && p.Source == primary {
+			return p
+		}
+	}
+	for _, p := range points {
+		if p != nil {
+			return p
+		}
+	}
+	return nil
+}
+
 // queryCurrentForecast queries for the most recent forecast data.
 func (s *ReportService) queryCurrentForecast(ctx context.Context, spotID string) (*model.ForecastDataPoint, error) {
 	currentTime := time.Now().Add(-1 * time.Hour)
-	forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, currentTime, 1)
+	forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, currentTime, 10)
 	if err != nil {
 		return nil, err
 	}
-	if len(forecasts) == 0 {
-		return nil, nil
-	}
-	return forecasts[0], nil
+	return selectPrimaryForecast(spotID, forecasts), nil
 }
 
 // queryHistoricalForecast queries for forecast data looking backwards up to 24 hours.
@@ -391,9 +419,9 @@ func (s *ReportService) queryHistoricalForecast(ctx context.Context, spotID stri
 
 	for i := 1; i <= 24; i++ {
 		pastTime := currentTime.Add(-time.Duration(i) * time.Hour)
-		forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, pastTime, 1)
+		forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, pastTime, 10)
 		if err == nil && len(forecasts) > 0 {
-			return forecasts[0], nil
+			return selectPrimaryForecast(spotID, forecasts), nil
 		}
 	}
 

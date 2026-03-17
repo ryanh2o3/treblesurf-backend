@@ -643,37 +643,11 @@ func (s *Service) DevLoginHandler(c *gin.Context) {
 	email := req.Email
 	name := "Dev User"
 
-	// Find or create user
-	existingUser, err := s.getUserByEmail(c.Request.Context(), email)
+	finalUser, theme, err := s.devFindOrCreateUser(c.Request.Context(), email, name)
 	if err != nil {
-		if !errors.Is(err, repository.ErrNotFound) {
-			slog.Error("dev login: error checking user", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-			return
-		}
-		existingUser = nil
-	}
-
-	var finalUser *User
-	theme := constants.DefaultUserTheme
-
-	if existingUser == nil {
-		newUser := User{
-			Email: email,
-			Name:  name,
-		}
-		if err := s.createUser(c.Request.Context(), newUser); err != nil {
-			slog.Error("dev login: error creating user", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-			return
-		}
-		finalUser, _ = s.getUserByEmail(c.Request.Context(), email)
-	} else {
-		_ = s.updateUserLastLogin(c.Request.Context(), email)
-		finalUser = existingUser
-		if finalUser.Theme != "" {
-			theme = finalUser.Theme
-		}
+		slog.Error("dev login: failed to find or create user", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
 	}
 
 	// Set up session with proper cookies (same as Google auth)
@@ -698,6 +672,40 @@ func (s *Service) DevLoginHandler(c *gin.Context) {
 			"theme":      theme,
 		},
 	})
+}
+
+func (s *Service) devFindOrCreateUser(ctx context.Context, email, fallbackName string) (*User, string, error) {
+	existingUser, err := s.getUserByEmail(ctx, email)
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		return nil, "", err
+	}
+
+	theme := constants.DefaultUserTheme
+	if existingUser == nil {
+		newUser := User{
+			Email: email,
+			Name:  fallbackName,
+		}
+		if err := s.createUser(ctx, newUser); err != nil {
+			return nil, "", err
+		}
+		createdUser, err := s.getUserByEmail(ctx, email)
+		if err != nil {
+			return nil, "", err
+		}
+		if createdUser != nil && createdUser.Theme != "" {
+			theme = createdUser.Theme
+		}
+		return createdUser, theme, nil
+	}
+
+	if err := s.updateUserLastLogin(ctx, email); err != nil {
+		slog.Warn("dev login: failed to update last login", slog.Any("error", err))
+	}
+	if existingUser.Theme != "" {
+		theme = existingUser.Theme
+	}
+	return existingUser, theme, nil
 }
 
 func (s *Service) SessionMiddleware() gin.HandlerFunc {

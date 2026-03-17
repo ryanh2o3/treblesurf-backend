@@ -72,7 +72,7 @@ func initializeServices(storage *containerStorage, cfg *containerConfig, appCfg 
 }
 
 func initRepositories(storage *containerStorage, cfg *containerConfig) *containerRepositories {
-	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, "SpotForecastData")
+	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, "FORECAST_DATA")
 	return &containerRepositories{
 		userRepo:             repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"),
 		sessionRepo:          repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions"),

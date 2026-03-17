@@ -20,6 +20,8 @@ type ForecastController struct {
 	tideService     *service.TideService
 }
 
+const sourcesAllParamValue = "all"
+
 func NewForecastController(
 	forecastService *service.ForecastService,
 	tideService *service.TideService,
@@ -31,12 +33,42 @@ func NewForecastController(
 }
 
 func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
+	if ctx.Query("sources") == sourcesAllParamValue {
+		c.getSpotForecastGrouped(ctx)
+		return
+	}
+	sourceParam := ctx.Query("source") // optional: client can request a specific source (e.g. ?source=weatherkit)
 	c.handleForecastRequest(
 		ctx,
-		c.forecastService.GetSpotForecast,
+		sourceParam,
+		func(ctx context.Context, spot, region, country, source string) ([]*model.Forecast, error) {
+			return c.forecastService.GetSpotForecast(ctx, spot, region, country, source)
+		},
 		"failed to get spot forecast",
 		"Failed to get forecast",
 	)
+}
+
+func (c *ForecastController) getSpotForecastGrouped(ctx *gin.Context) {
+	spotName := ctx.Query("spot")
+	regionName := ctx.Query("region")
+	countryName := ctx.Query("country")
+
+	groups, err := c.forecastService.GetSpotForecastGrouped(ctx.Request.Context(), spotName, regionName, countryName)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})
+			return
+		}
+		requestLogger(ctx).Warn("failed to get spot forecast grouped", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get forecast"})
+		return
+	}
+	if len(groups) == 0 {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "No forecast found"})
+		return
+	}
+	ctx.JSON(http.StatusOK, mapForecastGroupsToClientResponse(groups))
 }
 
 func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
@@ -44,10 +76,11 @@ func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
 	spots := strings.Split(spotsStr, ",")
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
-	
+	sourceParam := ctx.Query("source")
+
 	requestLogger(ctx).Info("forecast spots requested", slog.Any("spots", spots))
 
-	forecasts, err := c.forecastService.GetListSpotsForecast(ctx.Request.Context(), spots, regionName, countryName)
+	forecasts, err := c.forecastService.GetListSpotsForecast(ctx.Request.Context(), spots, regionName, countryName, sourceParam)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecasts not found"})
@@ -95,17 +128,49 @@ func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 }
 
 func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
+	if ctx.Query("sources") == sourcesAllParamValue {
+		c.getCurrentWeatherGrouped(ctx)
+		return
+	}
+	sourceParam := ctx.Query("source")
 	c.handleForecastRequest(
 		ctx,
-		c.forecastService.GetCurrentWeather,
+		sourceParam,
+		func(ctx context.Context, spot, region, country, source string) ([]*model.Forecast, error) {
+			return c.forecastService.GetCurrentWeather(ctx, spot, region, country, source)
+		},
 		"failed to get current weather",
 		"Failed to get current conditions",
 	)
 }
 
+func (c *ForecastController) getCurrentWeatherGrouped(ctx *gin.Context) {
+	spotName := ctx.Query("spot")
+	regionName := ctx.Query("region")
+	countryName := ctx.Query("country")
+
+	groups, err := c.forecastService.GetSpotForecastGrouped(ctx.Request.Context(), spotName, regionName, countryName)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})
+			return
+		}
+		requestLogger(ctx).Warn("failed to get current weather grouped", slog.Any("error", err))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get current conditions"})
+		return
+	}
+	if len(groups) == 0 {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
+		return
+	}
+	// Current conditions: return only the first time slice (nearest future) with all sources.
+	ctx.JSON(http.StatusOK, mapForecastGroupsToClientResponse(groups[:1]))
+}
+
 func (c *ForecastController) handleForecastRequest(
 	ctx *gin.Context,
-	fetchFunc func(context.Context, string, string, string) ([]*model.Forecast, error),
+	preferredSource string,
+	fetchFunc func(context.Context, string, string, string, string) ([]*model.Forecast, error),
 	logMsg string,
 	errorMsg string,
 ) {
@@ -113,7 +178,7 @@ func (c *ForecastController) handleForecastRequest(
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 
-	forecast, err := fetchFunc(ctx.Request.Context(), spotName, regionName, countryName)
+	forecast, err := fetchFunc(ctx.Request.Context(), spotName, regionName, countryName, preferredSource)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})

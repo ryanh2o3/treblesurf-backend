@@ -376,3 +376,56 @@ func TestReportService_storeReport(t *testing.T) {
 		})
 	}
 }
+
+func TestPrimarySourceForSpotID(t *testing.T) {
+	tests := []struct {
+		spotID string
+		want   string
+	}{
+		{"ireland#connacht#easkey", "imi_swan"},
+		{"Ireland#Donegal#Bundoran", "imi_swan"},
+		{"usa#ca#spot", "stormglass"},
+		{"short", "stormglass"},
+		{"", "stormglass"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.spotID, func(t *testing.T) {
+			got := primarySourceForSpotID(tt.spotID)
+			if got != tt.want {
+				t.Fatalf("primarySourceForSpotID(%q) = %q, want %q", tt.spotID, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSelectPrimaryForecast(t *testing.T) {
+	spotID := "ireland#donegal#bundoran"
+	points := []*model.ForecastDataPoint{
+		{Source: "stormglass", Data: map[string]interface{}{"wave_height": 2.0}},
+		{Source: "imi_swan", Data: map[string]interface{}{"wave_height": 2.5}},
+		{Source: "weatherkit", Data: map[string]interface{}{"wave_height": 1.8}},
+	}
+	got := selectPrimaryForecast(spotID, points)
+	if got == nil {
+		t.Fatal("expected non-nil forecast")
+	}
+	if got.Source != "imi_swan" {
+		t.Fatalf("expected primary source imi_swan for Ireland, got %s", got.Source)
+	}
+	// When primary is not present, returns first
+	pointsUSA := []*model.ForecastDataPoint{
+		{Source: "stormglass", Data: map[string]interface{}{}},
+		{Source: "weatherkit", Data: map[string]interface{}{}},
+	}
+	gotUSA := selectPrimaryForecast("usa#ca#spot", pointsUSA)
+	if gotUSA == nil || gotUSA.Source != "stormglass" {
+		t.Fatalf("expected first point when primary not in list, got %v", gotUSA)
+	}
+	// Empty list
+	if selectPrimaryForecast(spotID, nil) != nil {
+		t.Fatal("expected nil for nil slice")
+	}
+	if selectPrimaryForecast(spotID, []*model.ForecastDataPoint{}) != nil {
+		t.Fatal("expected nil for empty slice")
+	}
+}

@@ -80,6 +80,83 @@ func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 	}
 }
 
+func TestForecastController_GetSpotForecast_SourcesAll_ReturnsGrouped(t *testing.T) {
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+			return []*model.Forecast{
+				{ForecastTimestamp: "1700000000#stormglass", Source: "stormglass", SpotID: country + "#" + region + "#" + spot},
+				{ForecastTimestamp: "1700000000#imi_swan", Source: "imi_swan", SpotID: country + "#" + region + "#" + spot},
+			}, nil
+		},
+	}
+
+	controller := setupForecastController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Bundoran&sources=all", http.NoBody)
+
+	controller.GetSpotForecast(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(response))
+	}
+	group := response[0]
+	if group["sources"] == nil {
+		t.Fatalf("expected sources map in grouped response")
+	}
+	sources, ok := group["sources"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sources to be map, got %T", group["sources"])
+	}
+	if len(sources) != 2 {
+		t.Fatalf("expected 2 sources, got %d", len(sources))
+	}
+	if group["primary_source"] != "imi_swan" {
+		t.Fatalf("expected primary_source imi_swan, got %v", group["primary_source"])
+	}
+}
+
+func TestForecastController_GetSpotForecast_SourceParam_ReturnsRequestedSource(t *testing.T) {
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+			return []*model.Forecast{
+				{ForecastTimestamp: "1700000000#stormglass", Source: "stormglass", SpotID: country + "#" + region + "#" + spot},
+				{ForecastTimestamp: "1700000000#weatherkit", Source: "weatherkit", SpotID: country + "#" + region + "#" + spot},
+			}, nil
+		},
+	}
+	controller := setupForecastController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Bundoran&source=weatherkit", http.NoBody)
+
+	controller.GetSpotForecast(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+	var response []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if len(response) != 1 {
+		t.Fatalf("expected 1 forecast, got %d", len(response))
+	}
+	if response[0]["source"] != "weatherkit" {
+		t.Fatalf("expected source=weatherkit from query param, got %v", response[0]["source"])
+	}
+}
+
 func TestForecastController_GetListSpotsForecast(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
 		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
@@ -114,10 +191,12 @@ func TestForecastController_GetListSpotsForecast(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetCurrentConditionsFn: func(_ context.Context, country, region, spot string) (*model.Forecast, error) {
-			return &model.Forecast{
-				CountryRegionSpot: country + "_" + region + "_" + spot,
-				Temperature:       18.5,
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+			return []*model.Forecast{
+				{
+					CountryRegionSpot: country + "_" + region + "_" + spot,
+					Temperature:       18.5,
+				},
 			}, nil
 		},
 	}
@@ -145,8 +224,8 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetCurrentConditionsFn: func(_ context.Context, _, _, _ string) (*model.Forecast, error) {
-			return nil, nil
+		GetSpotForecastFn: func(_ context.Context, _, _, _ string) ([]*model.Forecast, error) {
+			return []*model.Forecast{}, nil
 		},
 	}
 
