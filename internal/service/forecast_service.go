@@ -45,7 +45,7 @@ func NewForecastService(forecasts repository.ForecastRepository) (*ForecastServi
 }
 
 // primarySourceForRegion returns the metadata primary_source label for grouped API responses.
-// Ireland default primary is always imi_swan+weatherkit (stored or composed); elsewhere Stormglass.
+// Ireland default primary is always imi_swan+weatherkit (persisted row); elsewhere Stormglass.
 func primarySourceForRegion(country, _ string) string {
 	if strings.EqualFold(country, "ireland") {
 		return sourceComposedIreland
@@ -53,54 +53,12 @@ func primarySourceForRegion(country, _ string) string {
 	return sourceStormglass
 }
 
-// Weather-related data keys (from WeatherKit). When composing Ireland primary we take wave data from
-// IMI SWAN (all of swan.Data) and overlay these weather fields from WeatherKit.
-var weatherDataKeys = []string{
-	"temperature", "windSpeed", "wind_speed", "windDirection", "wind_direction",
-	"pressure", "humidity", "precipitation", "relativeWindDirection", "relative_wind_direction",
-	"generated_at", "generatedAt",
-}
-
-// composeIrelandForecast merges wave data from IMI SWAN and weather data from Apple WeatherKit into one forecast.
-// If either source is nil, returns the non-nil one; if both nil, returns nil.
-func composeIrelandForecast(swan, weatherkit *model.Forecast) *model.Forecast {
-	if swan == nil && weatherkit == nil {
-		return nil
-	}
-	if swan == nil {
-		return weatherkit
-	}
-	if weatherkit == nil {
-		return swan
-	}
-	// Merge Data: wave keys from SWAN, weather keys from WeatherKit. Prefer SWAN for shared keys in wave set.
-	data := make(map[string]interface{})
-	for k, v := range swan.Data {
-		data[k] = v
-	}
-	for _, k := range weatherDataKeys {
-		if v, ok := weatherkit.Data[k]; ok {
-			data[k] = v
-		}
-	}
-	// Copy base from SWAN, overlay weather-only fields from WeatherKit
-	out := *swan
-	out.Data = data
-	out.Source = sourceComposedIreland
-	if weatherkit.GeneratedAt != "" {
-		out.GeneratedAt = weatherkit.GeneratedAt
-	}
-	return &out
-}
-
 // primaryForecastFromGroup returns the forecast to use as "primary" for this group.
 // If preferredSource is set, that source is used when present (e.g. source=stormglass).
 //
-// For Ireland with no preferred source, primary is only imi_swan+weatherkit:
-//   - persisted row from the forecaster, or
-//   - composed at read time when both imi_swan and weatherkit exist for that hour.
-// Partial hours (only SWAN, only WK, only Stormglass, legacy) yield no primary row.
-// Stormglass is never default for Ireland; use source=stormglass.
+// For Ireland with no preferred source, primary is only the persisted imi_swan+weatherkit row.
+// Partial hours (Stormglass-only, legacy split rows, etc.) yield no primary row.
+// Stormglass is never default for Ireland; use source=stormglass (if rows exist).
 //
 // Other countries use PrimarySource for the region, then any remaining source.
 func primaryForecastFromGroup(g *ForecastGroup, country, preferredSource string) *model.Forecast {
@@ -126,15 +84,7 @@ func primaryForecastFromGroup(g *ForecastGroup, country, preferredSource string)
 
 // irelandDefaultPrimary selects the default (non–source-param) primary for Ireland.
 func irelandDefaultPrimary(g *ForecastGroup) *model.Forecast {
-	if f := g.Sources[sourceComposedIreland]; f != nil {
-		return f
-	}
-	swan := g.Sources[sourceIMISwan]
-	wk := g.Sources[sourceWeatherKit]
-	if swan != nil && wk != nil {
-		return composeIrelandForecast(swan, wk)
-	}
-	return nil
+	return g.Sources[sourceComposedIreland]
 }
 
 // baseTimestamp returns the sort-key prefix (unix ts) from forecast_timestamp, which may be "ts" or "ts#source".
@@ -195,6 +145,35 @@ func parseInt64(s string) (int64, error) {
 	return strconv.ParseInt(s, 10, 64)
 }
 
+// filterIrelandReadRows drops rows the API no longer uses for Ireland once the forecaster writes only
+// imi_swan+weatherkit (no standalone imi_swan/weatherkit; no stormglass for in-bounds Irish shelf).
+// Dynamo still returns legacy rows until TTL; this avoids grouping/parsing them on the default path.
+// When preferredSource is set, the client asked for that source — do not filter.
+// For sources=all, standalone imi_swan and weatherkit are omitted; stormglass + imi_swan+weatherkit remain.
+func filterIrelandReadRows(rows []*model.Forecast, country, preferredSource string, sourcesAll bool) []*model.Forecast {
+	if !strings.EqualFold(country, "ireland") || preferredSource != "" {
+		return rows
+	}
+	if len(rows) == 0 {
+		return rows
+	}
+	out := make([]*model.Forecast, 0, len(rows))
+	for _, r := range rows {
+		if r == nil {
+			continue
+		}
+		switch r.Source {
+		case sourceIMISwan, sourceWeatherKit:
+			continue
+		}
+		if !sourcesAll && r.Source != sourceComposedIreland {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 func (s *ForecastService) GetSpotForecast(
 	ctx context.Context,
 	spotName, regionName, countryName string,
@@ -204,6 +183,7 @@ func (s *ForecastService) GetSpotForecast(
 	if err != nil {
 		return nil, err
 	}
+	raw = filterIrelandReadRows(raw, countryName, preferredSource, false)
 
 	groupStart := time.Now()
 	groups := s.groupForecastsByTime(raw, countryName, regionName)
@@ -242,6 +222,7 @@ func (s *ForecastService) GetSpotForecastGrouped(
 	if err != nil {
 		return nil, err
 	}
+	raw = filterIrelandReadRows(raw, countryName, "", true)
 	groupStart := time.Now()
 	groups := s.groupForecastsByTime(raw, countryName, regionName)
 	logging.FromContext(ctx).Info("forecast timing: service get_spot_forecast_grouped",
@@ -285,11 +266,11 @@ func (s *ForecastService) GetCurrentWeather(
 	spotName, regionName, countryName string,
 	preferredSource string,
 ) ([]*model.Forecast, error) {
-	// Get all sources for the current window so we can apply preferred/compose logic
 	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName)
 	if err != nil {
 		return nil, err
 	}
+	raw = filterIrelandReadRows(raw, countryName, preferredSource, false)
 	groups := s.groupForecastsByTime(raw, countryName, regionName)
 	if len(groups) == 0 {
 		return nil, repository.ErrNotFound

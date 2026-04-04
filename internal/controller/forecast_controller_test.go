@@ -91,7 +91,7 @@ func TestForecastController_GetSpotForecast_SourcesAll_ReturnsGrouped(t *testing
 		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{ForecastTimestamp: "1700000000#stormglass", Source: "stormglass", SpotID: country + "#" + region + "#" + spot},
-				{ForecastTimestamp: "1700000000#imi_swan", Source: "imi_swan", SpotID: country + "#" + region + "#" + spot},
+				{ForecastTimestamp: "1700000000#imi_swan+weatherkit", Source: "imi_swan+weatherkit", SpotID: country + "#" + region + "#" + spot},
 			}, nil
 		},
 	}
@@ -124,7 +124,7 @@ func TestForecastController_GetSpotForecast_SourcesAll_ReturnsGrouped(t *testing
 		t.Fatalf("expected sources to be map, got %T", group["sources"])
 	}
 	if len(sources) != 2 {
-		t.Fatalf("expected 2 sources, got %d", len(sources))
+		t.Fatalf("expected 2 sources (stormglass + imi_swan+weatherkit), got %d", len(sources))
 	}
 	if group["primary_source"] != "imi_swan+weatherkit" {
 		t.Fatalf("expected primary_source imi_swan+weatherkit, got %v", group["primary_source"])
@@ -209,21 +209,14 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 			return []*model.Forecast{
 				{
 					CountryRegionSpot: country + "_" + region + "_" + spot,
-					ForecastTimestamp: "1700000000#imi_swan",
-					Source:            "imi_swan",
+					ForecastTimestamp: "1700000000#imi_swan+weatherkit",
+					Source:            "imi_swan+weatherkit",
 					Country:           country,
 					Region:            region,
 					Spot:              spot,
-					Data:              map[string]interface{}{"swellHeight": 2.0},
-				},
-				{
-					CountryRegionSpot: country + "_" + region + "_" + spot,
-					ForecastTimestamp: "1700000000#weatherkit",
-					Source:            "weatherkit",
-					Country:           country,
-					Region:            region,
-					Spot:              spot,
-					Data:              map[string]interface{}{"temperature": 18.5},
+					Data: map[string]interface{}{
+						"swellHeight": 2.0, "temperature": 18.5,
+					},
 				},
 			}, nil
 		},
