@@ -72,7 +72,6 @@ type ForecastRepository interface {
 	GetSpotForecast(ctx context.Context, country, region, spot string) ([]*model.Forecast, error)
 	GetCurrentConditions(ctx context.Context, country, region, spot string) (*model.Forecast, error)
 	GetForecastAtTime(ctx context.Context, country, region, spot string, t time.Time) (*model.Forecast, error)
-	GetRegionForecast(ctx context.Context, country, region string, forecastDate time.Time) ([]*model.Forecast, error)
 }
 
 // ForecastDataRepository handles raw forecast data queries needed for report logic.

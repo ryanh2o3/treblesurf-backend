@@ -72,7 +72,7 @@ func initializeServices(storage *containerStorage, cfg *containerConfig, appCfg 
 }
 
 func initRepositories(storage *containerStorage, cfg *containerConfig) *containerRepositories {
-	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, "FORECAST_DATA")
+	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, cfg.forecastTable)
 	return &containerRepositories{
 		userRepo:             repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"),
 		sessionRepo:          repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions"),
@@ -162,7 +162,7 @@ func initAuthAndUserServices(
 }
 
 func initDomainServices(repos *containerRepositories, services *containerServices, appCfg *config.Config) error {
-	forecastService, err := service.NewForecastService(repos.forecastRepo)
+	forecastService, err := service.NewForecastService(repos.forecastRepo, repos.locationRepo)
 	if err != nil {
 		return fmt.Errorf("creating forecast service: %w", err)
 	}

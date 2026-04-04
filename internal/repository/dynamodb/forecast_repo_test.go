@@ -53,12 +53,6 @@ func TestParseForecastTimestamp(t *testing.T) {
 	})
 }
 
-func TestForecastRangeEnd(t *testing.T) {
-	if got := forecastRangeEnd(1705312800); got != "1705312800~" {
-		t.Fatalf("expected 1705312800~, got %s", got)
-	}
-}
-
 func TestBaseTimestampFromForecast(t *testing.T) {
 	// Ensure lexicographic order: "1705312800" < "1705312800#stormglass" < "1705312801"
 	t0 := "1705312800"

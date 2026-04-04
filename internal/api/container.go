@@ -51,6 +51,7 @@ type Container struct {
 type containerConfig struct {
 	region            string
 	bucketName        string
+	forecastTable     string
 	jwtSecret         string
 	websocketEndpoint string
 	websocketStage    string
@@ -89,6 +90,7 @@ func loadContainerConfig(cfg *config.Config) *containerConfig {
 	return &containerConfig{
 		region:            cfg.AWS.Region,
 		bucketName:        cfg.AWS.BucketName,
+		forecastTable:     cfg.AWS.ForecastTable,
 		isLocal:           cfg.IsDevelopment(),
 		jwtSecret:         cfg.Auth.JWTSecret,
 		websocketEndpoint: cfg.WebSocket.Endpoint,

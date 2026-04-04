@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
@@ -38,7 +37,7 @@ func TestForecastService_GetSpotForecast_PropagatesContext(t *testing.T) {
 		},
 	}
 
-	service, err := NewForecastService(repo)
+	service, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -65,7 +64,7 @@ func TestForecastService_GetListSpotsForecast_PropagatesContext(t *testing.T) {
 		},
 	}
 
-	service, err := NewForecastService(repo)
+	service, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -86,16 +85,27 @@ func TestForecastService_GetRegionForecast(t *testing.T) {
 		{CountryRegionSpot: forecastTestSpotID},
 		{CountryRegionSpot: forecastTestSpotIDRoss},
 	}
-	repo := &mockrepo.ForecastRepo{
-		GetRegionForecastFn: func(_ context.Context, country, region string, _ time.Time) ([]*model.Forecast, error) {
+	locRepo := &mockrepo.LocationRepo{
+		GetSpotsFn: func(_ context.Context, country, region string) ([]*model.LocationInfo, error) {
 			if country != forecastTestCountry || region != forecastTestRegion {
 				t.Fatalf("unexpected args: %s %s", country, region)
 			}
-			return expected, nil
+			return []*model.LocationInfo{
+				{CountryRegionSpot: "Ireland/Donegal/Bundoran"},
+				{CountryRegionSpot: "Ireland/Donegal/Rossnowlagh"},
+			}, nil
+		},
+	}
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+			return []*model.Forecast{{
+				CountryRegionSpot: country + "_" + region + "_" + spot,
+				Source:            sourceComposedIreland,
+			}}, nil
 		},
 	}
 
-	service, err := NewForecastService(repo)
+	service, err := NewForecastService(repo, locRepo)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -133,7 +143,7 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 			},
 		}
 
-		service, err := NewForecastService(repo)
+		service, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 		if err != nil {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
@@ -161,7 +171,7 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 			},
 		}
 
-		service, err := NewForecastService(repo)
+		service, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 		if err != nil {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
@@ -174,9 +184,16 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 }
 
 func TestNewForecastService_NilRepository_ReturnsError(t *testing.T) {
-	_, err := NewForecastService(nil)
+	_, err := NewForecastService(nil, &mockrepo.LocationRepo{})
 	if err == nil {
 		t.Fatalf("expected error for nil repository")
+	}
+}
+
+func TestNewForecastService_NilLocation_ReturnsError(t *testing.T) {
+	_, err := NewForecastService(&mockrepo.ForecastRepo{}, nil)
+	if err == nil {
+		t.Fatalf("expected error for nil location repository")
 	}
 }
 
@@ -191,7 +208,7 @@ func TestForecastService_GetSpotForecast_PicksPrimarySource(t *testing.T) {
 			}, nil
 		},
 	}
-	svc, err := NewForecastService(repo)
+	svc, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -214,7 +231,7 @@ func TestForecastService_GetSpotForecastGrouped_ReturnsAllSources(t *testing.T) 
 			}, nil
 		},
 	}
-	svc, err := NewForecastService(repo)
+	svc, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -274,7 +291,7 @@ func TestForecastService_GetSpotForecast_IrelandPrefersPremergedRow(t *testing.T
 			}, nil
 		},
 	}
-	svc, err := NewForecastService(repo)
+	svc, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -320,7 +337,7 @@ func TestForecastService_GetSpotForecast_IrelandLegacySplitRowsNoPrimary(t *test
 			}, nil
 		},
 	}
-	svc, err := NewForecastService(repo)
+	svc, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -342,7 +359,7 @@ func TestForecastService_GetSpotForecast_IrelandPrimaryExcludesStormglass(t *tes
 			}, nil
 		},
 	}
-	svc, err := NewForecastService(repo)
+	svc, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -365,7 +382,7 @@ func TestForecastService_GetSpotForecast_IrelandStormglassStillViaSourceParam(t 
 			}, nil
 		},
 	}
-	svc, err := NewForecastService(repo)
+	svc, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -400,7 +417,7 @@ func TestForecastService_GetSpotForecast_IrelandSkipsStormglassOnlyHours(t *test
 			}, nil
 		},
 	}
-	svc, err := NewForecastService(repo)
+	svc, err := NewForecastService(repo, &mockrepo.LocationRepo{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -33,15 +33,19 @@ type ForecastGroup struct {
 // ForecastService provides business logic for forecast operations.
 type ForecastService struct {
 	forecasts repository.ForecastRepository
+	locations repository.LocationRepository
 }
 
-// NewForecastService creates a new ForecastService with the given repository.
-// Returns an error if the repository is nil.
-func NewForecastService(forecasts repository.ForecastRepository) (*ForecastService, error) {
+// NewForecastService creates a new ForecastService with the given repositories.
+// Returns an error if the forecast repository is nil.
+func NewForecastService(forecasts repository.ForecastRepository, locations repository.LocationRepository) (*ForecastService, error) {
 	if forecasts == nil {
 		return nil, fmt.Errorf("forecast repository is required")
 	}
-	return &ForecastService{forecasts: forecasts}, nil
+	if locations == nil {
+		return nil, fmt.Errorf("location repository is required")
+	}
+	return &ForecastService{forecasts: forecasts, locations: locations}, nil
 }
 
 // primarySourceForRegion returns the metadata primary_source label for grouped API responses.
@@ -258,7 +262,33 @@ func (s *ForecastService) GetRegionForecast(
 	ctx context.Context,
 	regionName, countryName string,
 ) ([]*model.Forecast, error) {
-	return s.forecasts.GetRegionForecast(ctx, countryName, regionName, time.Now())
+	spots, err := s.locations.GetSpots(ctx, countryName, regionName)
+	if err != nil {
+		return nil, fmt.Errorf("listing spots for region: %w", err)
+	}
+	if len(spots) == 0 {
+		return nil, repository.ErrNotFound
+	}
+	var out []*model.Forecast
+	for _, loc := range spots {
+		if loc == nil {
+			continue
+		}
+		parts := strings.Split(loc.CountryRegionSpot, "/")
+		if len(parts) < 3 {
+			continue
+		}
+		spotName := parts[2]
+		rows, err := s.GetSpotForecast(ctx, spotName, regionName, countryName, "")
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rows...)
+	}
+	if len(out) == 0 {
+		return nil, repository.ErrNotFound
+	}
+	return out, nil
 }
 
 func (s *ForecastService) GetCurrentWeather(

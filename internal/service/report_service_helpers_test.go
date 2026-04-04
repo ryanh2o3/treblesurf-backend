@@ -382,8 +382,8 @@ func TestPrimarySourceForSpotID(t *testing.T) {
 		spotID string
 		want   string
 	}{
-		{"ireland#connacht#easkey", "imi_swan"},
-		{"Ireland#Donegal#Bundoran", "imi_swan"},
+		{"ireland#connacht#easkey", sourceComposedIreland},
+		{"Ireland#Donegal#Bundoran", sourceComposedIreland},
 		{"usa#ca#spot", "stormglass"},
 		{"short", "stormglass"},
 		{"", "stormglass"},
@@ -402,15 +402,15 @@ func TestSelectPrimaryForecast(t *testing.T) {
 	spotID := "ireland#donegal#bundoran"
 	points := []*model.ForecastDataPoint{
 		{Source: "stormglass", Data: map[string]interface{}{"wave_height": 2.0}},
-		{Source: "imi_swan", Data: map[string]interface{}{"wave_height": 2.5}},
+		{Source: sourceComposedIreland, Data: map[string]interface{}{"wave_height": 2.5}},
 		{Source: "weatherkit", Data: map[string]interface{}{"wave_height": 1.8}},
 	}
 	got := selectPrimaryForecast(spotID, points)
 	if got == nil {
 		t.Fatal("expected non-nil forecast")
 	}
-	if got.Source != "imi_swan" {
-		t.Fatalf("expected primary source imi_swan for Ireland, got %s", got.Source)
+	if got.Source != sourceComposedIreland {
+		t.Fatalf("expected primary source %s for Ireland, got %s", sourceComposedIreland, got.Source)
 	}
 	// When primary is not present, returns first
 	pointsUSA := []*model.ForecastDataPoint{

@@ -34,6 +34,7 @@ type AWSConfig struct {
 	Region            string
 	BucketName        string
 	SpotImagesBaseURL string // SPOT_IMAGES_BASE_URL: CDN or public origin for spot-images/* (no trailing slash)
+	ForecastTable     string // FORECAST_TABLE: DynamoDB surf_forecasts (PK spot_id includes source, SK timestamp_ts)
 }
 
 // AuthConfig holds authentication-related configuration.
@@ -191,6 +192,7 @@ func newBaseConfig(env Environment) *Config {
 			Region:            getEnvOrDefault("AWS_REGION", "eu-west-1"),
 			BucketName:        getEnvOrDefault("S3_BUCKET_NAME", "treblesurf-images"),
 			SpotImagesBaseURL: strings.TrimSpace(os.Getenv("SPOT_IMAGES_BASE_URL")),
+			ForecastTable:     getEnvOrDefault("FORECAST_TABLE", "surf_forecasts"),
 		},
 		WebSocket: WebSocketConfig{
 			Endpoint: os.Getenv("WEBSOCKET_API_ENDPOINT"),

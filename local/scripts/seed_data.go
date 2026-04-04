@@ -19,6 +19,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
+const (
+	surfForecastsTableName = "surf_forecasts"
+	seedForecastSource     = "imi_swan+weatherkit"
+)
+
 func main() {
 	// Load config
 	cfg, err := config.Load(true)
@@ -580,19 +585,20 @@ func seedForecastSample(spotID string, sample map[string]interface{}, baseTime t
 	forecastTime := baseTime.Add(time.Duration(hourOffset) * time.Hour)
 	currentTime := time.Now()
 	generatedAtTimestampStr := fmt.Sprintf("%d", currentTime.Unix())
-	nearestHour := time.Now().Truncate(time.Hour)
-	forecastTimestampStr := fmt.Sprintf("%d", nearestHour.Unix())
 	dateForecastedFor := forecastTime.Format("2006-01-02 15:04:05")
+	timestampTs := forecastTime.Unix()
 
 	dataMap, err := buildForecastDataMap(sample, dateForecastedFor)
 	if err != nil {
 		return fmt.Errorf("failed to build forecast data map: %w", err)
 	}
+	partitionKey := fmt.Sprintf("%s#%s", spotID, seedForecastSource)
 	forecast := map[string]interface{}{
-		"spot_id":            spotID,
-		"forecast_timestamp": forecastTimestampStr,
-		"data":               dataMap,
-		"generated_at":       generatedAtTimestampStr,
+		"spot_id":      partitionKey,
+		"timestamp_ts": timestampTs,
+		"data":         dataMap,
+		"generated_at": generatedAtTimestampStr,
+		"source":       seedForecastSource,
 	}
 
 	item, err := dynamodbattribute.MarshalMap(forecast)
@@ -601,7 +607,7 @@ func seedForecastSample(spotID string, sample map[string]interface{}, baseTime t
 	}
 
 	_, err = storage.DB.PutItem(&dynamodb.PutItemInput{
-		TableName: aws.String("SpotForecastData"),
+		TableName: aws.String(surfForecastsTableName),
 		Item:      item,
 	})
 
@@ -717,18 +723,20 @@ func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]inte
 		progress := float64(step*3) / float64(hourDiff)
 		stepHours := sampleOffset + step*3
 		stepTime := baseTime.Add(time.Duration(stepHours) * time.Hour)
-		stepTimestampStr := fmt.Sprintf("%d", stepTime.Unix())
+		stepTimestampTs := stepTime.Unix()
 		stepDateForecastedFor := stepTime.Format("2006-01-02 15:04:05")
 
 		interpDataMap, err := buildInterpolatedDataMap(sample, nextSample, progress, stepDateForecastedFor)
 		if err != nil {
 			return fmt.Errorf("failed to build interpolated data map: %w", err)
 		}
+		partitionKey := fmt.Sprintf("%s#%s", spotID, seedForecastSource)
 		interpolatedForecast := map[string]interface{}{
-			"spot_id":            spotID,
-			"forecast_timestamp": stepTimestampStr,
-			"data":               interpDataMap,
-			"generated_at":       generatedAtTimestampStr,
+			"spot_id":      partitionKey,
+			"timestamp_ts": stepTimestampTs,
+			"data":         interpDataMap,
+			"generated_at": generatedAtTimestampStr,
+			"source":       seedForecastSource,
 		}
 
 		item, err := dynamodbattribute.MarshalMap(interpolatedForecast)
@@ -737,7 +745,7 @@ func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]inte
 		}
 
 		_, err = storage.DB.PutItem(&dynamodb.PutItemInput{
-			TableName: aws.String("SpotForecastData"),
+			TableName: aws.String(surfForecastsTableName),
 			Item:      item,
 		})
 

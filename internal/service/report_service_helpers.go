@@ -378,7 +378,7 @@ func primarySourceForSpotID(spotID string) string {
 		return sourceStormglass
 	}
 	if strings.EqualFold(parts[0], "ireland") {
-		return sourceIMISwan
+		return sourceComposedIreland
 	}
 	return sourceStormglass
 }
