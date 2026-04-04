@@ -112,17 +112,34 @@ func TestForecastService_GetRegionForecast(t *testing.T) {
 func TestForecastService_GetCurrentWeather(t *testing.T) {
 	t.Run("returns current weather forecast", func(t *testing.T) {
 		ctx := context.Background()
-		expected := &model.Forecast{
-			CountryRegionSpot: forecastTestSpotID,
-			Temperature:      18.5,
-			WindSpeed:        15.0,
-		}
 		repo := &mockrepo.ForecastRepo{
 			GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
 				if country != forecastTestCountry || region != forecastTestRegion || spot != forecastTestSpot {
 					t.Fatalf("unexpected args: %s %s %s", country, region, spot)
 				}
-				return []*model.Forecast{expected}, nil
+				return []*model.Forecast{
+					{
+						ForecastTimestamp: "1700000000#imi_swan",
+						Source:            sourceIMISwan,
+						Country:           country,
+						Region:            region,
+						Spot:              spot,
+						CountryRegionSpot: forecastTestSpotID,
+						Data:              map[string]interface{}{"swellHeight": 2.0},
+					},
+					{
+						ForecastTimestamp: "1700000000#weatherkit",
+						Source:            sourceWeatherKit,
+						Country:           country,
+						Region:            region,
+						Spot:              spot,
+						CountryRegionSpot: forecastTestSpotID,
+						Data: map[string]interface{}{
+							"temperature": 18.5,
+							"windSpeed":   15.0,
+						},
+					},
+				}, nil
 			},
 		}
 
@@ -138,8 +155,11 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 		if len(got) != 1 {
 			t.Fatalf("expected 1 forecast, got %d", len(got))
 		}
-		if got[0].CountryRegionSpot != expected.CountryRegionSpot {
-			t.Fatalf("expected %s, got %s", expected.CountryRegionSpot, got[0].CountryRegionSpot)
+		if got[0].CountryRegionSpot != forecastTestSpotID {
+			t.Fatalf("expected %s, got %s", forecastTestSpotID, got[0].CountryRegionSpot)
+		}
+		if got[0].Source != sourceComposedIreland {
+			t.Fatalf("expected composed Ireland primary, got %s", got[0].Source)
 		}
 	})
 
@@ -172,7 +192,7 @@ func TestNewForecastService_NilRepository_ReturnsError(t *testing.T) {
 
 func TestForecastService_GetSpotForecast_PicksPrimarySource(t *testing.T) {
 	ctx := context.Background()
-	// Same timestamp, two sources; Ireland -> primary imi_swan
+	// Ireland: no imi_swan+weatherkit and no WeatherKit → no default primary (Stormglass ignored).
 	repo := &mockrepo.ForecastRepo{
 		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
@@ -189,12 +209,8 @@ func TestForecastService_GetSpotForecast_PicksPrimarySource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("expected 1 forecast (one per time), got %d", len(got))
-	}
-	// Ireland with only imi_swan and stormglass: no weatherkit so we get imi_swan (not composed).
-	if got[0].Source != sourceIMISwan {
-		t.Fatalf("expected primary source imi_swan for Ireland, got %s", got[0].Source)
+	if len(got) != 0 {
+		t.Fatalf("expected no Ireland primary without SWAN+WK merge, got %d", len(got))
 	}
 }
 
@@ -225,8 +241,68 @@ func TestForecastService_GetSpotForecastGrouped_ReturnsAllSources(t *testing.T) 
 	if groups[0].Sources[sourceStormglass] == nil || groups[0].Sources[sourceIMISwan] == nil {
 		t.Fatalf("expected both sources in group")
 	}
-	if groups[0].PrimarySource != sourceIMISwan {
-		t.Fatalf("expected primary_source imi_swan for Ireland, got %s", groups[0].PrimarySource)
+	if groups[0].PrimarySource != sourceComposedIreland {
+		t.Fatalf("expected primary_source %s for Ireland, got %s", sourceComposedIreland, groups[0].PrimarySource)
+	}
+}
+
+func TestForecastService_GetSpotForecast_IrelandPrefersPremergedRow(t *testing.T) {
+	ctx := context.Background()
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+			return []*model.Forecast{
+				{
+					ForecastTimestamp: "1700000000#imi_swan+weatherkit",
+					Source:            sourceComposedIreland,
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data: map[string]interface{}{
+						"swellHeight": 9.0, "temperature": 99.0,
+					},
+				},
+				{
+					ForecastTimestamp: "1700000000#imi_swan",
+					Source:            sourceIMISwan,
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data: map[string]interface{}{
+						"swellHeight": 1.0, "temperature": 10.0,
+					},
+				},
+				{
+					ForecastTimestamp: "1700000000#weatherkit",
+					Source:            sourceWeatherKit,
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data: map[string]interface{}{
+						"temperature": 20.0, "windSpeed": 5.0,
+					},
+				},
+			}, nil
+		},
+	}
+	svc, err := NewForecastService(repo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 forecast, got %d", len(got))
+	}
+	if got[0].Source != sourceComposedIreland {
+		t.Fatalf("expected pre-merged row, got source %s", got[0].Source)
+	}
+	if v := floatFromMap(got[0].Data, "swellHeight", "swell_height"); v != 9.0 {
+		t.Fatalf("expected swell from pre-merged row 9, got %v", v)
+	}
+	if v := floatFromMap(got[0].Data, "temperature"); v != 99.0 {
+		t.Fatalf("expected temperature from pre-merged row 99, got %v", v)
 	}
 }
 
@@ -286,6 +362,96 @@ func TestForecastService_GetSpotForecast_IrelandComposedPrimary(t *testing.T) {
 	}
 	if v := floatFromMap(f.Data, "windSpeed", "wind_speed"); v != 15.0 {
 		t.Fatalf("expected windSpeed from WeatherKit 15, got %v", v)
+	}
+}
+
+func TestForecastService_GetSpotForecast_IrelandPrimaryExcludesStormglass(t *testing.T) {
+	ctx := context.Background()
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+			return []*model.Forecast{
+				{ForecastTimestamp: "1700000000#stormglass", Source: sourceStormglass, Country: country, Region: region, Spot: spot},
+			}, nil
+		},
+	}
+	svc, err := NewForecastService(repo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected no default primary when only Stormglass exists for Ireland, got %d rows", len(got))
+	}
+}
+
+func TestForecastService_GetSpotForecast_IrelandStormglassStillViaSourceParam(t *testing.T) {
+	ctx := context.Background()
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+			return []*model.Forecast{
+				{ForecastTimestamp: "1700000000#stormglass", Source: sourceStormglass, Country: country, Region: region, Spot: spot},
+				{ForecastTimestamp: "1700000000#imi_swan", Source: sourceIMISwan, Country: country, Region: region, Spot: spot},
+			}, nil
+		},
+	}
+	svc, err := NewForecastService(repo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, sourceStormglass)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 forecast, got %d", len(got))
+	}
+	if got[0].Source != sourceStormglass {
+		t.Fatalf("expected stormglass when source=stormglass, got %s", got[0].Source)
+	}
+}
+
+func TestForecastService_GetSpotForecast_IrelandSkipsStormglassOnlyHours(t *testing.T) {
+	ctx := context.Background()
+	const composedSource = "imi_swan+weatherkit"
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+			return []*model.Forecast{
+				{ForecastTimestamp: "1700000000#stormglass", Source: sourceStormglass, Country: country, Region: region, Spot: spot},
+				{
+					ForecastTimestamp: "1700003600#imi_swan",
+					Source:            sourceIMISwan,
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data:              map[string]interface{}{"swellHeight": 2.0},
+				},
+				{
+					ForecastTimestamp: "1700003600#weatherkit",
+					Source:            sourceWeatherKit,
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data:              map[string]interface{}{"temperature": 12.0},
+				},
+			}, nil
+		},
+	}
+	svc, err := NewForecastService(repo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 composed hour (stormglass-only hour skipped), got %d", len(got))
+	}
+	if got[0].Source != composedSource {
+		t.Fatalf("expected %s, got %s", composedSource, got[0].Source)
 	}
 }
 

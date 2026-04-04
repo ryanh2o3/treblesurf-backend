@@ -44,11 +44,11 @@ func NewForecastService(forecasts repository.ForecastRepository) (*ForecastServi
 	return &ForecastService{forecasts: forecasts}, nil
 }
 
-// primarySourceForRegion returns the preferred forecast source name for a region.
-// For Ireland the API composes primary from imi_swan (waves) + weatherkit (weather); this returns the label used when no compose is done.
+// primarySourceForRegion returns the metadata primary_source label for grouped API responses.
+// Ireland default primary is always imi_swan+weatherkit (stored or composed); elsewhere Stormglass.
 func primarySourceForRegion(country, _ string) string {
 	if strings.EqualFold(country, "ireland") {
-		return sourceIMISwan // Ireland primary is composed (SWAN + WeatherKit); this is the wave source name
+		return sourceComposedIreland
 	}
 	return sourceStormglass
 }
@@ -94,8 +94,15 @@ func composeIrelandForecast(swan, weatherkit *model.Forecast) *model.Forecast {
 }
 
 // primaryForecastFromGroup returns the forecast to use as "primary" for this group.
-// If preferredSource is set, that source is used when present. For Ireland, when both imi_swan and weatherkit
-// exist, returns a composed forecast (SWAN waves + WeatherKit weather). Otherwise uses PrimarySource or first.
+// If preferredSource is set, that source is used when present (e.g. source=stormglass).
+//
+// For Ireland with no preferred source, primary is only imi_swan+weatherkit:
+//   - persisted row from the forecaster, or
+//   - composed at read time when both imi_swan and weatherkit exist for that hour.
+// Partial hours (only SWAN, only WK, only Stormglass, legacy) yield no primary row.
+// Stormglass is never default for Ireland; use source=stormglass.
+//
+// Other countries use PrimarySource for the region, then any remaining source.
 func primaryForecastFromGroup(g *ForecastGroup, country, preferredSource string) *model.Forecast {
 	if g == nil {
 		return nil
@@ -106,15 +113,26 @@ func primaryForecastFromGroup(g *ForecastGroup, country, preferredSource string)
 		}
 	}
 	if strings.EqualFold(country, "ireland") {
-		if f := composeIrelandForecast(g.Sources[sourceIMISwan], g.Sources[sourceWeatherKit]); f != nil {
-			return f
-		}
+		return irelandDefaultPrimary(g)
 	}
 	if f := g.Sources[g.PrimarySource]; f != nil {
 		return f
 	}
 	for _, f := range g.Sources {
 		return f
+	}
+	return nil
+}
+
+// irelandDefaultPrimary selects the default (non–source-param) primary for Ireland.
+func irelandDefaultPrimary(g *ForecastGroup) *model.Forecast {
+	if f := g.Sources[sourceComposedIreland]; f != nil {
+		return f
+	}
+	swan := g.Sources[sourceIMISwan]
+	wk := g.Sources[sourceWeatherKit]
+	if swan != nil && wk != nil {
+		return composeIrelandForecast(swan, wk)
 	}
 	return nil
 }
@@ -276,9 +294,10 @@ func (s *ForecastService) GetCurrentWeather(
 	if len(groups) == 0 {
 		return nil, repository.ErrNotFound
 	}
-	f := primaryForecastFromGroup(&groups[0], countryName, preferredSource)
-	if f == nil {
-		return nil, repository.ErrNotFound
+	for i := range groups {
+		if f := primaryForecastFromGroup(&groups[i], countryName, preferredSource); f != nil {
+			return []*model.Forecast{f}, nil
+		}
 	}
-	return []*model.Forecast{f}, nil
+	return nil, repository.ErrNotFound
 }

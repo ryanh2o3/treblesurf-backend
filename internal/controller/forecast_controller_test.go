@@ -28,9 +28,15 @@ func TestForecastController_GetSpotForecast(t *testing.T) {
 			return []*model.Forecast{
 				{
 					CountryRegionSpot: country + "_" + region + "_" + spot,
-					WaveHeight:        2.5,
-					WindSpeed:         15.0,
-					ForecastTimestamp: "1700000000",
+					ForecastTimestamp: "1700000000#imi_swan+weatherkit",
+					Source:            "imi_swan+weatherkit",
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data: map[string]interface{}{
+						"swellHeight": 2.5,
+						"windSpeed":   15.0,
+					},
 				},
 			}, nil
 		},
@@ -120,8 +126,8 @@ func TestForecastController_GetSpotForecast_SourcesAll_ReturnsGrouped(t *testing
 	if len(sources) != 2 {
 		t.Fatalf("expected 2 sources, got %d", len(sources))
 	}
-	if group["primary_source"] != "imi_swan" {
-		t.Fatalf("expected primary_source imi_swan, got %v", group["primary_source"])
+	if group["primary_source"] != "imi_swan+weatherkit" {
+		t.Fatalf("expected primary_source imi_swan+weatherkit, got %v", group["primary_source"])
 	}
 }
 
@@ -161,7 +167,15 @@ func TestForecastController_GetListSpotsForecast(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
 		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
-				{CountryRegionSpot: country + "_" + region + "_" + spot},
+				{
+					CountryRegionSpot: country + "_" + region + "_" + spot,
+					ForecastTimestamp: "1700000000#imi_swan+weatherkit",
+					Source:            "imi_swan+weatherkit",
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data:              map[string]interface{}{"swellHeight": 1.0},
+				},
 			}, nil
 		},
 	}
@@ -195,7 +209,21 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 			return []*model.Forecast{
 				{
 					CountryRegionSpot: country + "_" + region + "_" + spot,
-					Temperature:       18.5,
+					ForecastTimestamp: "1700000000#imi_swan",
+					Source:            "imi_swan",
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data:              map[string]interface{}{"swellHeight": 2.0},
+				},
+				{
+					CountryRegionSpot: country + "_" + region + "_" + spot,
+					ForecastTimestamp: "1700000000#weatherkit",
+					Source:            "weatherkit",
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data:              map[string]interface{}{"temperature": 18.5},
 				},
 			}, nil
 		},
