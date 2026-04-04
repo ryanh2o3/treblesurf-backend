@@ -106,7 +106,7 @@ func buildServices(
 	if err := initAuthAndUserServices(appCfg, repos, services); err != nil {
 		return nil, err
 	}
-	if err := initDomainServices(repos, services); err != nil {
+	if err := initDomainServices(repos, services, appCfg); err != nil {
 		return nil, err
 	}
 
@@ -161,12 +161,12 @@ func initAuthAndUserServices(
 	return nil
 }
 
-func initDomainServices(repos *containerRepositories, services *containerServices) error {
+func initDomainServices(repos *containerRepositories, services *containerServices, appCfg *config.Config) error {
 	forecastService, err := service.NewForecastService(repos.forecastRepo)
 	if err != nil {
 		return fmt.Errorf("creating forecast service: %w", err)
 	}
-	locationService, err := service.NewLocationService(repos.locationRepo, repos.mediaRepo)
+	locationService, err := service.NewLocationService(repos.locationRepo, appCfg.ResolvedSpotImagesBaseURL())
 	if err != nil {
 		return fmt.Errorf("creating location service: %w", err)
 	}

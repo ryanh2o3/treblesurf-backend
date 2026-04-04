@@ -13,22 +13,14 @@ const (
 	locationTestCountry = "Ireland"
 	locationTestRegion  = "Donegal"
 	locationTestSpot    = "Bundoran"
+	locationTestBaseURL = "https://cdn.example.com"
 )
 
-func TestNewLocationService_NilRepositories_ReturnsError(t *testing.T) {
-	t.Run("nil location repository", func(t *testing.T) {
-		_, err := NewLocationService(nil, &mockrepo.MediaRepo{})
-		if err == nil {
-			t.Fatalf("expected error for nil location repository")
-		}
-	})
-
-	t.Run("nil media repository", func(t *testing.T) {
-		_, err := NewLocationService(&mockrepo.LocationRepo{}, nil)
-		if err == nil {
-			t.Fatalf("expected error for nil media repository")
-		}
-	})
+func TestNewLocationService_NilRepository_ReturnsError(t *testing.T) {
+	_, err := NewLocationService(nil, locationTestBaseURL)
+	if err == nil {
+		t.Fatalf("expected error for nil location repository")
+	}
 }
 
 func TestLocationService_GetRegions(t *testing.T) {
@@ -43,7 +35,7 @@ func TestLocationService_GetRegions(t *testing.T) {
 		},
 	}
 
-	service, err := NewLocationService(repo, &mockrepo.MediaRepo{})
+	service, err := NewLocationService(repo, locationTestBaseURL)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -72,7 +64,7 @@ func TestLocationService_GetSpots(t *testing.T) {
 		},
 	}
 
-	service, err := NewLocationService(repo, &mockrepo.MediaRepo{})
+	service, err := NewLocationService(repo, locationTestBaseURL)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -83,6 +75,39 @@ func TestLocationService_GetSpots(t *testing.T) {
 	}
 	if len(got) != len(expected) {
 		t.Fatalf("expected %d spots, got %d", len(expected), len(got))
+	}
+	want0 := locationTestBaseURL + "/spot-images/Ireland_Donegal_Bundoran.jpg"
+	if got[0].ImageURL != want0 {
+		t.Fatalf("expected ImageURL %q, got %q", want0, got[0].ImageURL)
+	}
+	want1 := locationTestBaseURL + "/spot-images/Ireland_Donegal_Rossnowlagh.jpg"
+	if got[1].ImageURL != want1 {
+		t.Fatalf("expected ImageURL %q, got %q", want1, got[1].ImageURL)
+	}
+}
+
+func TestLocationService_GetSpots_NoBaseURL_NoImageURL(t *testing.T) {
+	ctx := context.Background()
+	expected := []*model.LocationInfo{
+		{CountryRegionSpot: locationTestCountry + "/" + locationTestRegion + "/" + locationTestSpot},
+	}
+	repo := &mockrepo.LocationRepo{
+		GetSpotsFn: func(_ context.Context, _, _ string) ([]*model.LocationInfo, error) {
+			return expected, nil
+		},
+	}
+
+	service, err := NewLocationService(repo, "")
+	if err != nil {
+		t.Fatalf("unexpected error creating service: %v", err)
+	}
+
+	got, err := service.GetSpots(ctx, locationTestCountry, locationTestRegion)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].ImageURL != "" {
+		t.Fatalf("expected empty ImageURL without base URL, got %q", got[0].ImageURL)
 	}
 }
 
@@ -102,7 +127,7 @@ func TestLocationService_GetLocationInfo(t *testing.T) {
 		},
 	}
 
-	service, err := NewLocationService(repo, &mockrepo.MediaRepo{})
+	service, err := NewLocationService(repo, locationTestBaseURL)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -113,6 +138,10 @@ func TestLocationService_GetLocationInfo(t *testing.T) {
 	}
 	if got.CountryRegionSpot != expected.CountryRegionSpot {
 		t.Fatalf("expected %s, got %s", expected.CountryRegionSpot, got.CountryRegionSpot)
+	}
+	wantURL := locationTestBaseURL + "/spot-images/Ireland_Donegal_Bundoran.jpg"
+	if got.ImageURL != wantURL {
+		t.Fatalf("expected ImageURL %q, got %q", wantURL, got.ImageURL)
 	}
 }
 
@@ -126,7 +155,7 @@ func TestLocationService_GetCoordinates(t *testing.T) {
 		},
 	}
 
-	service, err := NewLocationService(repo, &mockrepo.MediaRepo{})
+	service, err := NewLocationService(repo, locationTestBaseURL)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -151,7 +180,7 @@ func TestLocationService_GetCoordinates_Error(t *testing.T) {
 		},
 	}
 
-	service, err := NewLocationService(repo, &mockrepo.MediaRepo{})
+	service, err := NewLocationService(repo, locationTestBaseURL)
 	if err != nil {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
@@ -162,24 +191,27 @@ func TestLocationService_GetCoordinates_Error(t *testing.T) {
 	}
 }
 
-func TestLocationService_PopulateImage(t *testing.T) {
+func TestLocationService_attachSpotImageURL_EdgeCases(t *testing.T) {
 	t.Run("handles nil location", func(_ *testing.T) {
-		service := &LocationService{}
-		service.populateImage(context.Background(), nil, "Ireland", "Donegal")
-		// Should not panic
+		service, _ := NewLocationService(&mockrepo.LocationRepo{}, locationTestBaseURL)
+		service.attachSpotImageURL(nil, "Ireland", "Donegal")
 	})
 
 	t.Run("handles empty CountryRegionSpot", func(_ *testing.T) {
-		service := &LocationService{}
+		service, _ := NewLocationService(&mockrepo.LocationRepo{}, locationTestBaseURL)
 		location := &model.LocationInfo{CountryRegionSpot: ""}
-		service.populateImage(context.Background(), location, "Ireland", "Donegal")
-		// Should not panic
+		service.attachSpotImageURL(location, "Ireland", "Donegal")
+		if location.ImageURL != "" {
+			t.Fatalf("expected empty ImageURL")
+		}
 	})
 
 	t.Run("handles invalid CountryRegionSpot format", func(_ *testing.T) {
-		service := &LocationService{}
+		service, _ := NewLocationService(&mockrepo.LocationRepo{}, locationTestBaseURL)
 		location := &model.LocationInfo{CountryRegionSpot: "invalid"}
-		service.populateImage(context.Background(), location, "Ireland", "Donegal")
-		// Should not panic (parts < 3)
+		service.attachSpotImageURL(location, "Ireland", "Donegal")
+		if location.ImageURL != "" {
+			t.Fatalf("expected empty ImageURL")
+		}
 	})
 }

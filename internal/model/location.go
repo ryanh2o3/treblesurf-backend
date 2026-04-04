@@ -11,7 +11,8 @@ type LocationInfo struct {
 	Image               string  `json:"Image"`
 	Type                string  `json:"Type"`
 	CountryRegionSpot   string  `json:"country_region_spot"`
-	ImageString         string  `json:"ImageString"`
+	ImageString         string  `json:"ImageString,omitempty"`
+	ImageURL            string  `json:"image_url,omitempty"`
 	BeachDirection      int     `json:"BeachDirection"`
 	Elevation           int     `json:"Elevation"`
 	Latitude            float64 `json:"Latitude"`

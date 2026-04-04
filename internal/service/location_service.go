@@ -3,9 +3,7 @@ package service
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"treblesurf-backend/internal/model"
@@ -14,25 +12,23 @@ import (
 
 // LocationService provides business logic for location operations.
 type LocationService struct {
-	locations repository.LocationRepository
-	media     repository.MediaRepository
+	locations         repository.LocationRepository
+	spotImagesBaseURL string
 }
 
 // NewLocationService creates a new LocationService with the given repositories.
-// Returns an error if any required repository is nil.
+// spotImagesBaseURL is the origin for JPEG keys under spot-images/ (no trailing slash), e.g. a CloudFront URL or S3 virtual-hosted base.
+// Returns an error if the location repository is nil.
 func NewLocationService(
 	locations repository.LocationRepository,
-	media repository.MediaRepository,
+	spotImagesBaseURL string,
 ) (*LocationService, error) {
 	if locations == nil {
 		return nil, fmt.Errorf("location repository is required")
 	}
-	if media == nil {
-		return nil, fmt.Errorf("media repository is required")
-	}
 	return &LocationService{
-		locations: locations,
-		media:     media,
+		locations:         locations,
+		spotImagesBaseURL: strings.TrimSuffix(strings.TrimSpace(spotImagesBaseURL), "/"),
 	}, nil
 }
 
@@ -52,7 +48,8 @@ func (s *LocationService) GetSpots(ctx context.Context, countryName, regionName 
 			continue
 		}
 		location := *spot
-		s.populateImage(ctx, &location, countryName, regionName)
+		location.ImageString = ""
+		s.attachSpotImageURL(&location, countryName, regionName)
 		locations = append(locations, location)
 	}
 
@@ -68,7 +65,8 @@ func (s *LocationService) GetLocationInfo(
 		return nil, err
 	}
 
-	s.populateImage(ctx, location, countryName, regionName)
+	location.ImageString = ""
+	s.attachSpotImageURL(location, countryName, regionName)
 	return location, nil
 }
 
@@ -83,12 +81,11 @@ func (s *LocationService) GetCoordinates(
 	return []float64{lat, lon}, nil
 }
 
-func (s *LocationService) populateImage(
-	ctx context.Context,
+func (s *LocationService) attachSpotImageURL(
 	location *model.LocationInfo,
 	countryName, regionName string,
 ) {
-	if location == nil || location.CountryRegionSpot == "" {
+	if location == nil || s.spotImagesBaseURL == "" || location.CountryRegionSpot == "" {
 		return
 	}
 
@@ -105,11 +102,5 @@ func (s *LocationService) populateImage(
 		strings.ReplaceAll(spotName, " ", ""),
 	)
 
-	imageData, err := s.media.Download(ctx, imageKey)
-	if err != nil {
-		slog.Debug("failed to fetch image", slog.String("key", imageKey), slog.Any("error", err))
-		return
-	}
-
-	location.ImageString = base64.StdEncoding.EncodeToString(imageData)
+	location.ImageURL = s.spotImagesBaseURL + "/" + imageKey
 }
