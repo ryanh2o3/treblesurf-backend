@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
@@ -33,6 +34,7 @@ func NewForecastController(
 func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
 	c.handleForecastRequest(
 		ctx,
+		"forecast.spot",
 		c.forecastService.GetSpotForecast,
 		"failed to get spot forecast",
 		"Failed to get forecast",
@@ -45,15 +47,36 @@ func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 	
-	requestLogger(ctx).Info("forecast spots requested", slog.Any("spots", spots))
+	log := requestLogger(ctx)
+	log.Info("forecast spots requested", slog.Any("spots", spots))
 
-	forecasts, err := c.forecastService.GetListSpotsForecast(ctx.Request.Context(), spots, regionName, countryName)
+	source := strings.TrimSpace(ctx.Query("source"))
+	listStart := time.Now()
+	var fetchDur, mapDur time.Duration
+	var groupCount int
+	defer func() {
+		log.Info("forecast request timing",
+			slog.String("op", "forecast.list_spots"),
+			slog.String("country", countryName),
+			slog.String("region", regionName),
+			slog.String("source", source),
+			slog.Int("spot_count", len(spots)),
+			slog.Duration("fetch", fetchDur),
+			slog.Duration("map_response", mapDur),
+			slog.Duration("total", time.Since(listStart)),
+			slog.Int("forecast_groups", groupCount),
+		)
+	}()
+
+	t0 := time.Now()
+	forecasts, err := c.forecastService.GetListSpotsForecast(ctx.Request.Context(), spots, regionName, countryName, source)
+	fetchDur = time.Since(t0)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecasts not found"})
 			return
 		}
-		requestLogger(ctx).Warn("failed to get spot forecasts", slog.Any("error", err))
+		log.Warn("failed to get spot forecasts", slog.Any("error", err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get forecasts"})
 		return
 	}
@@ -63,7 +86,12 @@ func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, mapForecastGroupsToClient(forecasts))
+	t1 := time.Now()
+	payload := mapForecastGroupsToClient(forecasts)
+	mapDur = time.Since(t1)
+	groupCount = len(payload)
+
+	ctx.JSON(http.StatusOK, payload)
 }
 
 func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
@@ -97,6 +125,7 @@ func (c *ForecastController) GetRegionForecast(ctx *gin.Context) {
 func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
 	c.handleForecastRequest(
 		ctx,
+		"forecast.current_conditions",
 		c.forecastService.GetCurrentWeather,
 		"failed to get current weather",
 		"Failed to get current conditions",
@@ -105,27 +134,54 @@ func (c *ForecastController) GetCurrentWeather(ctx *gin.Context) {
 
 func (c *ForecastController) handleForecastRequest(
 	ctx *gin.Context,
-	fetchFunc func(context.Context, string, string, string) ([]*model.Forecast, error),
+	op string,
+	fetchFunc func(context.Context, string, string, string, string) ([]*model.Forecast, error),
 	logMsg string,
 	errorMsg string,
 ) {
 	spotName := ctx.Query("spot")
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
+	source := strings.TrimSpace(ctx.Query("source"))
+	log := requestLogger(ctx)
+	handlerStart := time.Now()
 
-	forecast, err := fetchFunc(ctx.Request.Context(), spotName, regionName, countryName)
+	var fetchDur, mapDur time.Duration
+	var resultCount int
+
+	defer func() {
+		log.Info("forecast request timing",
+			slog.String("op", op),
+			slog.String("country", countryName),
+			slog.String("region", regionName),
+			slog.String("spot", spotName),
+			slog.String("source", source),
+			slog.Duration("fetch", fetchDur),
+			slog.Duration("map_response", mapDur),
+			slog.Duration("total", time.Since(handlerStart)),
+			slog.Int("items_returned", resultCount),
+		)
+	}()
+
+	t0 := time.Now()
+	forecast, err := fetchFunc(ctx.Request.Context(), spotName, regionName, countryName, source)
+	fetchDur = time.Since(t0)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})
 			return
 		}
-		requestLogger(ctx).Warn(logMsg, slog.Any("error", err))
+		log.Warn(logMsg, slog.Any("error", err))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
 		return
 	}
 
 	if len(forecast) > 0 {
-		ctx.JSON(http.StatusOK, mapForecastsToClient(forecast))
+		t1 := time.Now()
+		payload := mapForecastsToClient(forecast)
+		mapDur = time.Since(t1)
+		resultCount = len(payload)
+		ctx.JSON(http.StatusOK, payload)
 		return
 	}
 

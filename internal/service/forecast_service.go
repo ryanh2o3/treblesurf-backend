@@ -26,19 +26,19 @@ func NewForecastService(forecasts repository.ForecastRepository) (*ForecastServi
 
 func (s *ForecastService) GetSpotForecast(
 	ctx context.Context,
-	spotName, regionName, countryName string,
+	spotName, regionName, countryName, source string,
 ) ([]*model.Forecast, error) {
-	return s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName)
+	return s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, source)
 }
 
 func (s *ForecastService) GetListSpotsForecast(
 	ctx context.Context,
 	spots []string,
-	regionName, countryName string,
+	regionName, countryName, source string,
 ) ([][]*model.Forecast, error) {
 	results := make([][]*model.Forecast, 0, len(spots))
 	for _, spot := range spots {
-		forecast, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spot)
+		forecast, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spot, source)
 		if err != nil {
 			return nil, err
 		}
@@ -57,9 +57,9 @@ func (s *ForecastService) GetRegionForecast(
 
 func (s *ForecastService) GetCurrentWeather(
 	ctx context.Context,
-	spotName, regionName, countryName string,
+	spotName, regionName, countryName, source string,
 ) ([]*model.Forecast, error) {
-	current, err := s.forecasts.GetCurrentConditions(ctx, countryName, regionName, spotName)
+	current, err := s.forecasts.GetCurrentConditions(ctx, countryName, regionName, spotName, source)
 	if err != nil {
 		return nil, err
 	}

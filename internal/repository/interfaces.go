@@ -69,8 +69,10 @@ type LocationRepository interface {
 
 // ForecastRepository handles forecast data persistence.
 type ForecastRepository interface {
-	GetSpotForecast(ctx context.Context, country, region, spot string) ([]*model.Forecast, error)
-	GetCurrentConditions(ctx context.Context, country, region, spot string) (*model.Forecast, error)
+	// GetSpotForecast returns future forecast rows for a spot. When source is non-empty, only rows
+	// whose stored source (top-level or inside data) matches after case-folding are returned.
+	GetSpotForecast(ctx context.Context, country, region, spot, source string) ([]*model.Forecast, error)
+	GetCurrentConditions(ctx context.Context, country, region, spot, source string) (*model.Forecast, error)
 	GetForecastAtTime(ctx context.Context, country, region, spot string, t time.Time) (*model.Forecast, error)
 	GetRegionForecast(ctx context.Context, country, region string, forecastDate time.Time) ([]*model.Forecast, error)
 }

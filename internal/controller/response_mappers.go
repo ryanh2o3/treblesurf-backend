@@ -31,6 +31,7 @@ type clientForecastResponse struct {
 	ForecastTimestamp string             `json:"forecast_timestamp"`
 	GeneratedAt       string             `json:"generated_at"`
 	SpotID            string             `json:"spot_id"`
+	Source            string             `json:"source,omitempty"`
 	Data              clientForecastData `json:"data"`
 }
 
@@ -97,7 +98,10 @@ func mapForecastToClient(forecast *model.Forecast) clientForecastResponse {
 		forecastTimestamp = fmt.Sprintf("%d", forecast.Date.Unix())
 	}
 
+	source := stringFromData(forecast.Data, "source", "forecast_source", "forecastSource")
+
 	return clientForecastResponse{
+		Source: source,
 		Data: clientForecastData{
 			DateForecastedFor: firstString(
 				stringFromData(forecast.Data, "dateForecastedFor", "date_forecasted_for"),

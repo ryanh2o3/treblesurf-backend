@@ -24,7 +24,10 @@ func setupForecastController(repo *mockrepo.ForecastRepo) *ForecastController {
 
 func TestForecastController_GetSpotForecast(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot, source string) ([]*model.Forecast, error) {
+			if source != "" {
+				t.Fatalf("unexpected source %q", source)
+			}
 			return []*model.Forecast{
 				{
 					CountryRegionSpot: country + "_" + region + "_" + spot,
@@ -60,9 +63,40 @@ func TestForecastController_GetSpotForecast(t *testing.T) {
 	}
 }
 
+func TestForecastController_GetSpotForecast_PassesSourceToService(t *testing.T) {
+	var gotSource string
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot, source string) ([]*model.Forecast, error) {
+			gotSource = source
+			return []*model.Forecast{
+				{
+					CountryRegionSpot: country + "_" + region + "_" + spot,
+					Data:              map[string]interface{}{"source": "stormglass"},
+					ForecastTimestamp: "1700000000",
+				},
+			}, nil
+		},
+	}
+
+	controller := setupForecastController(repo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Bundoran&source=stormglass", http.NoBody)
+
+	controller.GetSpotForecast(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	if gotSource != "stormglass" {
+		t.Fatalf("expected source passed to service %q, got %q", "stormglass", gotSource)
+	}
+}
+
 func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, _, _, _ string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, _, _, _, _ string) ([]*model.Forecast, error) {
 			return []*model.Forecast{}, nil
 		},
 	}
@@ -82,7 +116,10 @@ func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 
 func TestForecastController_GetListSpotsForecast(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot, source string) ([]*model.Forecast, error) {
+			if source != "" {
+				t.Fatalf("unexpected source %q", source)
+			}
 			return []*model.Forecast{
 				{CountryRegionSpot: country + "_" + region + "_" + spot},
 			}, nil
@@ -114,7 +151,10 @@ func TestForecastController_GetListSpotsForecast(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetCurrentConditionsFn: func(_ context.Context, country, region, spot string) (*model.Forecast, error) {
+		GetCurrentConditionsFn: func(_ context.Context, country, region, spot, source string) (*model.Forecast, error) {
+			if source != "" {
+				t.Fatalf("unexpected source %q", source)
+			}
 			return &model.Forecast{
 				CountryRegionSpot: country + "_" + region + "_" + spot,
 				Temperature:       18.5,
@@ -145,7 +185,7 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetCurrentConditionsFn: func(_ context.Context, _, _, _ string) (*model.Forecast, error) {
+		GetCurrentConditionsFn: func(_ context.Context, _, _, _, _ string) (*model.Forecast, error) {
 			return nil, nil
 		},
 	}

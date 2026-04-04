@@ -27,12 +27,12 @@ func TestForecastService_GetSpotForecast_PropagatesContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), forecastCtxKeyValue, forecastCtxValue)
 	expected := []*model.Forecast{{CountryRegionSpot: "US_CA_Spot"}}
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(callCtx context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(callCtx context.Context, country, region, spot, source string) ([]*model.Forecast, error) {
 			if callCtx.Value(forecastCtxKeyValue) != forecastCtxValue {
 				t.Fatalf("expected context value to be propagated")
 			}
-			if country != "US" || region != "CA" || spot != "Spot" {
-				t.Fatalf("unexpected args: %s %s %s", country, region, spot)
+			if country != "US" || region != "CA" || spot != "Spot" || source != "" {
+				t.Fatalf("unexpected args: %s %s %s %q", country, region, spot, source)
 			}
 			return expected, nil
 		},
@@ -43,7 +43,7 @@ func TestForecastService_GetSpotForecast_PropagatesContext(t *testing.T) {
 		t.Fatalf("unexpected error creating service: %v", err)
 	}
 
-	got, err := service.GetSpotForecast(ctx, "Spot", "CA", "US")
+	got, err := service.GetSpotForecast(ctx, "Spot", "CA", "US", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -56,10 +56,13 @@ func TestForecastService_GetListSpotsForecast_PropagatesContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), forecastCtxKeyValue, forecastCtxValue)
 	calls := 0
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(callCtx context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(callCtx context.Context, country, region, spot, source string) ([]*model.Forecast, error) {
 			calls++
 			if callCtx.Value(forecastCtxKeyValue) != forecastCtxValue {
 				t.Fatalf("expected context value to be propagated")
+			}
+			if source != "" {
+				t.Fatalf("unexpected source %q", source)
 			}
 			return []*model.Forecast{{CountryRegionSpot: country + "_" + region + "_" + spot}}, nil
 		},
@@ -71,7 +74,7 @@ func TestForecastService_GetListSpotsForecast_PropagatesContext(t *testing.T) {
 	}
 
 	spots := []string{"Spot1", "Spot2"}
-	_, err = service.GetListSpotsForecast(ctx, spots, "CA", "US")
+	_, err = service.GetListSpotsForecast(ctx, spots, "CA", "US", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,9 +121,9 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 			WindSpeed:         15.0,
 		}
 		repo := &mockrepo.ForecastRepo{
-			GetCurrentConditionsFn: func(_ context.Context, country, region, spot string) (*model.Forecast, error) {
-				if country != forecastTestCountry || region != forecastTestRegion || spot != forecastTestSpot {
-					t.Fatalf("unexpected args: %s %s %s", country, region, spot)
+			GetCurrentConditionsFn: func(_ context.Context, country, region, spot, source string) (*model.Forecast, error) {
+				if country != forecastTestCountry || region != forecastTestRegion || spot != forecastTestSpot || source != "" {
+					t.Fatalf("unexpected args: %s %s %s %q", country, region, spot, source)
 				}
 				return expected, nil
 			},
@@ -131,7 +134,7 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
 
-		got, err := service.GetCurrentWeather(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry)
+		got, err := service.GetCurrentWeather(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -146,7 +149,7 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 	t.Run("handles nil current conditions", func(t *testing.T) {
 		ctx := context.Background()
 		repo := &mockrepo.ForecastRepo{
-			GetCurrentConditionsFn: func(_ context.Context, _, _, _ string) (*model.Forecast, error) {
+			GetCurrentConditionsFn: func(_ context.Context, _, _, _, _ string) (*model.Forecast, error) {
 				return nil, repository.ErrNotFound
 			},
 		}
@@ -156,7 +159,7 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 			t.Fatalf("unexpected error creating service: %v", err)
 		}
 
-		_, err = service.GetCurrentWeather(ctx, "Unknown", forecastTestRegion, forecastTestCountry)
+		_, err = service.GetCurrentWeather(ctx, "Unknown", forecastTestRegion, forecastTestCountry, "")
 		if !errors.Is(err, repository.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}

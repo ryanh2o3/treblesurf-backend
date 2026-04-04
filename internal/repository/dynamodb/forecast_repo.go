@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
+	"treblesurf-backend/internal/logging"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
 
@@ -30,14 +32,58 @@ func NewForecastRepo(client *dynamodb.DynamoDB, tableName string) *ForecastRepo 
 	}
 }
 
+func normalizeForecastQuerySource(source string) string {
+	return strings.ToLower(strings.TrimSpace(source))
+}
+
+func forecastRowSource(f *model.Forecast) string {
+	if f == nil || f.Data == nil {
+		return ""
+	}
+	return normalizeForecastQuerySource(mapString(f.Data, "source", "forecast_source", "forecastSource"))
+}
+
+func forecastMatchesSource(forecast *model.Forecast, wantNormalized string) bool {
+	if wantNormalized == "" {
+		return true
+	}
+	got := forecastRowSource(forecast)
+	if got == "" {
+		return false
+	}
+	return got == wantNormalized
+}
+
+func mergeTopLevelSourceFromItem(item map[string]*dynamodb.AttributeValue, forecast *model.Forecast) {
+	if forecast == nil {
+		return
+	}
+	var raw map[string]interface{}
+	if err := dynamodbattribute.UnmarshalMap(item, &raw); err != nil {
+		return
+	}
+	src := strings.TrimSpace(stringValue(raw["source"]))
+	if src == "" {
+		return
+	}
+	if forecast.Data == nil {
+		forecast.Data = map[string]interface{}{}
+	}
+	if existing := mapString(forecast.Data, "source", "forecast_source", "forecastSource"); existing == "" {
+		forecast.Data["source"] = src
+	}
+}
+
 func (r *ForecastRepo) GetSpotForecast(
 	ctx context.Context,
-	country, region, spot string,
+	country, region, spot, source string,
 ) ([]*model.Forecast, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", country, region, spot)
 	currentEpoch := time.Now().Unix()
+	wantSource := normalizeForecastQuerySource(source)
+	log := logging.FromContext(ctx)
 
-	input := &dynamodb.QueryInput{
+	baseInput := &dynamodb.QueryInput{
 		TableName:              aws.String(r.tableName),
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
@@ -51,59 +97,182 @@ func (r *ForecastRepo) GetSpotForecast(
 		ScanIndexForward: aws.Bool(true),
 	}
 
-	result, err := r.client.QueryWithContext(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("querying spot forecast: %w", err)
+	repoStart := time.Now()
+	var (
+		dynamoQueryDur time.Duration
+		parseDur       time.Duration
+		pages          int
+		itemsRead      int
+	)
+
+	var forecasts []*model.Forecast
+	var lastKey map[string]*dynamodb.AttributeValue
+	for {
+		pages++
+		input := *baseInput
+		if lastKey != nil {
+			input.ExclusiveStartKey = lastKey
+		}
+		tq := time.Now()
+		result, err := r.client.QueryWithContext(ctx, &input)
+		dynamoQueryDur += time.Since(tq)
+		if err != nil {
+			log.Warn("forecast repo GetSpotForecast dynamo query failed",
+				slog.String("spot_id", spotID),
+				slog.String("source_filter", source),
+				slog.Int("dynamo_pages_completed", pages-1),
+				slog.Duration("dynamo_query_total", dynamoQueryDur),
+				slog.Any("error", err),
+			)
+			return nil, fmt.Errorf("querying spot forecast: %w", err)
+		}
+		itemsRead += len(result.Items)
+		for _, item := range result.Items {
+			tp := time.Now()
+			forecast, err := parseForecastItem(item, country, region, spot)
+			parseDur += time.Since(tp)
+			if err != nil {
+				return nil, err
+			}
+			if wantSource != "" && !forecastMatchesSource(forecast, wantSource) {
+				continue
+			}
+			forecasts = append(forecasts, forecast)
+		}
+		if result.LastEvaluatedKey == nil {
+			break
+		}
+		lastKey = result.LastEvaluatedKey
 	}
 
-	forecasts := make([]*model.Forecast, 0, len(result.Items))
-	for _, item := range result.Items {
-		forecast, err := parseForecastItem(item, country, region, spot)
-		if err != nil {
-			return nil, err
-		}
-		forecasts = append(forecasts, forecast)
-	}
+	log.Info("forecast repo GetSpotForecast timing",
+		slog.String("spot_id", spotID),
+		slog.String("source_filter", source),
+		slog.Bool("source_filter_active", wantSource != ""),
+		slog.Int("dynamo_pages", pages),
+		slog.Int("dynamo_items_read", itemsRead),
+		slog.Int("items_returned", len(forecasts)),
+		slog.Duration("dynamo_query_total", dynamoQueryDur),
+		slog.Duration("parse_and_filter_total", parseDur),
+		slog.Duration("repo_total", time.Since(repoStart)),
+	)
 
 	return forecasts, nil
 }
 
 func (r *ForecastRepo) GetCurrentConditions(
 	ctx context.Context,
-	country, region, spot string,
+	country, region, spot, source string,
 ) (*model.Forecast, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", country, region, spot)
 	currentEpoch := time.Now().Unix()
+	wantSource := normalizeForecastQuerySource(source)
+	log := logging.FromContext(ctx)
 
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
+	repoStart := time.Now()
+	var (
+		dynamoQueryDur time.Duration
+		parseDur       time.Duration
+		roundTrips     int
+		itemsRead      int
+	)
+
+	var lastKey map[string]*dynamodb.AttributeValue
+	for {
+		roundTrips++
+		input := &dynamodb.QueryInput{
+			TableName:              aws.String(r.tableName),
+			KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":spot_id": {
+					S: aws.String(spotID),
+				},
+				":current_time": {
+					S: aws.String(fmt.Sprintf("%d", currentEpoch)),
+				},
 			},
-			":current_time": {
-				S: aws.String(fmt.Sprintf("%d", currentEpoch)),
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
-		Limit:            aws.Int64(1),
-	}
+			ScanIndexForward: aws.Bool(true),
+		}
+		if lastKey != nil {
+			input.ExclusiveStartKey = lastKey
+		}
+		if wantSource == "" {
+			input.Limit = aws.Int64(1)
+		}
 
-	result, err := r.client.QueryWithContext(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("querying current conditions: %w", err)
-	}
-	if len(result.Items) == 0 {
-		return nil, repository.ErrNotFound
-	}
+		tq := time.Now()
+		result, err := r.client.QueryWithContext(ctx, input)
+		dynamoQueryDur += time.Since(tq)
+		if err != nil {
+			log.Warn("forecast repo GetCurrentConditions dynamo query failed",
+				slog.String("spot_id", spotID),
+				slog.String("source_filter", source),
+				slog.Int("dynamo_round_trips", roundTrips),
+				slog.Duration("dynamo_query_total", dynamoQueryDur),
+				slog.Any("error", err),
+			)
+			return nil, fmt.Errorf("querying current conditions: %w", err)
+		}
+		itemsRead += len(result.Items)
+		if len(result.Items) == 0 {
+			if result.LastEvaluatedKey == nil {
+				log.Info("forecast repo GetCurrentConditions timing",
+					slog.String("spot_id", spotID),
+					slog.String("source_filter", source),
+					slog.Bool("source_filter_active", wantSource != ""),
+					slog.Int("dynamo_round_trips", roundTrips),
+					slog.Int("dynamo_items_read", itemsRead),
+					slog.Bool("found", false),
+					slog.Duration("dynamo_query_total", dynamoQueryDur),
+					slog.Duration("parse_total", parseDur),
+					slog.Duration("repo_total", time.Since(repoStart)),
+				)
+				return nil, repository.ErrNotFound
+			}
+			lastKey = result.LastEvaluatedKey
+			continue
+		}
 
-	forecast, err := parseForecastItem(result.Items[0], country, region, spot)
-	if err != nil {
-		return nil, err
-	}
+		for _, item := range result.Items {
+			tp := time.Now()
+			forecast, err := parseForecastItem(item, country, region, spot)
+			parseDur += time.Since(tp)
+			if err != nil {
+				return nil, err
+			}
+			if wantSource != "" && !forecastMatchesSource(forecast, wantSource) {
+				continue
+			}
+			log.Info("forecast repo GetCurrentConditions timing",
+				slog.String("spot_id", spotID),
+				slog.String("source_filter", source),
+				slog.Bool("source_filter_active", wantSource != ""),
+				slog.Int("dynamo_round_trips", roundTrips),
+				slog.Int("dynamo_items_read", itemsRead),
+				slog.Bool("found", true),
+				slog.Duration("dynamo_query_total", dynamoQueryDur),
+				slog.Duration("parse_total", parseDur),
+				slog.Duration("repo_total", time.Since(repoStart)),
+			)
+			return forecast, nil
+		}
 
-	return forecast, nil
+		if wantSource == "" || result.LastEvaluatedKey == nil {
+			log.Info("forecast repo GetCurrentConditions timing",
+				slog.String("spot_id", spotID),
+				slog.String("source_filter", source),
+				slog.Bool("source_filter_active", wantSource != ""),
+				slog.Int("dynamo_round_trips", roundTrips),
+				slog.Int("dynamo_items_read", itemsRead),
+				slog.Bool("found", false),
+				slog.Duration("dynamo_query_total", dynamoQueryDur),
+				slog.Duration("parse_total", parseDur),
+				slog.Duration("repo_total", time.Since(repoStart)),
+			)
+			return nil, repository.ErrNotFound
+		}
+		lastKey = result.LastEvaluatedKey
+	}
 }
 
 func (r *ForecastRepo) GetForecastAtTime(
@@ -298,17 +467,23 @@ func parseForecastItem(
 		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
 	}
 	if flat.isPopulated() {
-		return flat.toModel(), nil
+		out := flat.toModel()
+		mergeTopLevelSourceFromItem(item, out)
+		return out, nil
 	}
 
 	var raw map[string]interface{}
 	if err := dynamodbattribute.UnmarshalMap(item, &raw); err != nil {
-		return flat.toModel(), nil
+		out := flat.toModel()
+		mergeTopLevelSourceFromItem(item, out)
+		return out, nil
 	}
 
 	dataMap := extractForecastData(item, raw)
 	if len(dataMap) == 0 {
-		return flat.toModel(), nil
+		out := flat.toModel()
+		mergeTopLevelSourceFromItem(item, out)
+		return out, nil
 	}
 
 	dataItem := forecastDataItem{
@@ -317,7 +492,9 @@ func parseForecastItem(
 		ForecastTimestamp: stringValue(raw["forecast_timestamp"]),
 	}
 
-	return forecastFromData(raw, dataItem, fallbackCountry, fallbackRegion, fallbackSpot), nil
+	out := forecastFromData(raw, dataItem, fallbackCountry, fallbackRegion, fallbackSpot)
+	mergeTopLevelSourceFromItem(item, out)
+	return out, nil
 }
 
 func extractForecastData(

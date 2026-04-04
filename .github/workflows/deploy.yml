@@ -19,6 +19,8 @@ jobs:
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
       ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
+      # Public base for spot-images/* (same host as the site; route /spot-images/* to your image CDN/S3 origin).
+      SPOT_IMAGES_BASE_URL: https://treblesurf.com
       GO_ENV: production
       AWS_REGION: eu-west-1
 
@@ -98,7 +100,7 @@ jobs:
           # Update Lambda environment variables
           aws lambda update-function-configuration \
             --function-name $FUNCTION_NAME \
-            --environment "Variables={JWT_SECRET='$JWT_SECRET',GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID',GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID',ADMIN_EMAILS='$ADMIN_EMAILS',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID',GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID',ADMIN_EMAILS='$ADMIN_EMAILS',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com',SPOT_IMAGES_BASE_URL='$SPOT_IMAGES_BASE_URL'}"
 
       - name: Deploy WebSocket Lambda
         run: |
