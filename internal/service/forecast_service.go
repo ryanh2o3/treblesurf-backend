@@ -57,6 +57,22 @@ func primarySourceForRegion(country, _ string) string {
 	return sourceStormglass
 }
 
+// partitionSourcesForPreferred selects which DynamoDB partitions to query for spot forecast reads.
+// Default: Ireland → imi_swan+weatherkit only; elsewhere → stormglass only. Explicit source= queries one partition.
+func partitionSourcesForPreferred(country, preferredSource string) []string {
+	if preferredSource != "" {
+		return []string{preferredSource}
+	}
+	if strings.EqualFold(country, "ireland") {
+		return []string{sourceComposedIreland}
+	}
+	return []string{sourceStormglass}
+}
+
+func partitionSourcesAll() []string {
+	return []string{sourceStormglass, sourceComposedIreland}
+}
+
 // primaryForecastFromGroup returns the forecast to use as "primary" for this group.
 // If preferredSource is set, that source is used when present (e.g. source=stormglass).
 //
@@ -183,7 +199,7 @@ func (s *ForecastService) GetSpotForecast(
 	spotName, regionName, countryName string,
 	preferredSource string,
 ) ([]*model.Forecast, error) {
-	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName)
+	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource))
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +238,7 @@ func (s *ForecastService) GetSpotForecastGrouped(
 	ctx context.Context,
 	spotName, regionName, countryName string,
 ) ([]ForecastGroup, error) {
-	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName)
+	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesAll())
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +312,7 @@ func (s *ForecastService) GetCurrentWeather(
 	spotName, regionName, countryName string,
 	preferredSource string,
 ) ([]*model.Forecast, error) {
-	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName)
+	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource))
 	if err != nil {
 		return nil, err
 	}

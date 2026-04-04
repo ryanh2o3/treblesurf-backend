@@ -98,6 +98,9 @@ func mapForecastToClient(forecast *model.Forecast) clientForecastResponse {
 	}
 
 	generatedAt := stringFromData(forecast.Data, "generated_at", "generatedAt")
+	if generatedAt == "" {
+		generatedAt = forecast.GeneratedAt
+	}
 	if generatedAt == "" && !forecast.Date.IsZero() {
 		generatedAt = forecast.Date.UTC().Format(time.RFC3339)
 	}

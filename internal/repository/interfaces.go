@@ -69,7 +69,9 @@ type LocationRepository interface {
 
 // ForecastRepository handles forecast data persistence.
 type ForecastRepository interface {
-	GetSpotForecast(ctx context.Context, country, region, spot string) ([]*model.Forecast, error)
+	// GetSpotForecast loads rows from the given DynamoDB source partitions (e.g. "stormglass", "imi_swan+weatherkit").
+	// Pass multiple source strings to merge (e.g. for sources=all); a single string is the common case.
+	GetSpotForecast(ctx context.Context, country, region, spot string, partitionSources []string) ([]*model.Forecast, error)
 	GetCurrentConditions(ctx context.Context, country, region, spot string) (*model.Forecast, error)
 	GetForecastAtTime(ctx context.Context, country, region, spot string, t time.Time) (*model.Forecast, error)
 }

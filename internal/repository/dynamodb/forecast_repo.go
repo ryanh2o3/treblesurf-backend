@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"golang.org/x/sync/errgroup"
 )
 
 var _ repository.ForecastRepository = (*ForecastRepo)(nil)
@@ -26,10 +27,11 @@ const (
 	forecastSourceIrelandMerged = "imi_swan+weatherkit"
 )
 
-// defaultForecastPartitionSources matches what the forecaster writes (see treblesurf-forecaster app.py).
-var defaultForecastPartitionSources = []string{
-	forecastSourceStormglass,
-	forecastSourceIrelandMerged,
+func defaultPartitionSourceForCountry(country string) string {
+	if strings.EqualFold(strings.TrimSpace(country), "ireland") {
+		return forecastSourceIrelandMerged
+	}
+	return forecastSourceStormglass
 }
 
 type ForecastRepo struct {
@@ -115,18 +117,110 @@ func (r *ForecastRepo) queryPartitionRange(
 	return all, nil
 }
 
-func (r *ForecastRepo) queryMergedSpotPartitions(
+// queryPartitionLimitedRange reads up to limit items (ascending by timestamp_ts) within the range.
+func (r *ForecastRepo) queryPartitionLimitedRange(
 	ctx context.Context,
-	country, region, spot string,
-	startEpoch, endEpoch int64,
+	partitionKey string,
+	startInclusive, endInclusive, limit int64,
 ) ([]map[string]*dynamodb.AttributeValue, error) {
-	var merged []map[string]*dynamodb.AttributeValue
-	for _, src := range defaultForecastPartitionSources {
-		pk := partitionSpotID(country, region, spot, src)
-		items, err := r.queryPartitionRange(ctx, pk, startEpoch, endEpoch)
+	if limit <= 0 {
+		return nil, nil
+	}
+	var all []map[string]*dynamodb.AttributeValue
+	var eks map[string]*dynamodb.AttributeValue
+	for int64(len(all)) < limit {
+		pageLimit := limit - int64(len(all))
+		input := &dynamodb.QueryInput{
+			TableName:              aws.String(r.tableName),
+			KeyConditionExpression: aws.String("spot_id = :pk AND timestamp_ts BETWEEN :start AND :end"),
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":pk": {
+					S: aws.String(partitionKey),
+				},
+				":start": {
+					N: aws.String(strconv.FormatInt(startInclusive, 10)),
+				},
+				":end": {
+					N: aws.String(strconv.FormatInt(endInclusive, 10)),
+				},
+			},
+			ScanIndexForward: aws.Bool(true),
+			Limit:            aws.Int64(pageLimit),
+		}
+		if len(eks) > 0 {
+			input.ExclusiveStartKey = eks
+		}
+		result, err := r.client.QueryWithContext(ctx, input)
 		if err != nil {
 			return nil, err
 		}
+		all = append(all, result.Items...)
+		if len(result.LastEvaluatedKey) == 0 || int64(len(all)) >= limit {
+			break
+		}
+		eks = result.LastEvaluatedKey
+	}
+	return all, nil
+}
+
+// queryPartitionAtTimestamp performs a point read on (partitionKey, ts) using numeric equality on the sort key.
+func (r *ForecastRepo) queryPartitionAtTimestamp(
+	ctx context.Context,
+	partitionKey string,
+	ts int64,
+) ([]map[string]*dynamodb.AttributeValue, error) {
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		KeyConditionExpression: aws.String("spot_id = :pk AND timestamp_ts = :ts"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":pk": {
+				S: aws.String(partitionKey),
+			},
+			":ts": {
+				N: aws.String(strconv.FormatInt(ts, 10)),
+			},
+		},
+	}
+	result, err := r.client.QueryWithContext(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func (r *ForecastRepo) querySpotPartitionsBySources(
+	ctx context.Context,
+	country, region, spot string,
+	startEpoch, endEpoch int64,
+	sources []string,
+) ([]map[string]*dynamodb.AttributeValue, error) {
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("partitionSources must be non-empty")
+	}
+	if len(sources) == 1 {
+		pk := partitionSpotID(country, region, spot, sources[0])
+		return r.queryPartitionRange(ctx, pk, startEpoch, endEpoch)
+	}
+	partItems := make([][]map[string]*dynamodb.AttributeValue, len(sources))
+	g, gctx := errgroup.WithContext(ctx)
+	for i := range sources {
+		i := i
+		src := sources[i]
+		g.Go(func() error {
+			pk := partitionSpotID(country, region, spot, src)
+			items, err := r.queryPartitionRange(gctx, pk, startEpoch, endEpoch)
+			if err != nil {
+				return err
+			}
+			partItems[i] = items
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	var merged []map[string]*dynamodb.AttributeValue
+	for _, items := range partItems {
 		merged = append(merged, items...)
 	}
 	sortForecastItems(merged)
@@ -136,13 +230,17 @@ func (r *ForecastRepo) queryMergedSpotPartitions(
 func (r *ForecastRepo) GetSpotForecast(
 	ctx context.Context,
 	country, region, spot string,
+	partitionSources []string,
 ) ([]*model.Forecast, error) {
+	if len(partitionSources) == 0 {
+		return nil, fmt.Errorf("partitionSources must be non-empty")
+	}
 	now := time.Now()
 	startEpoch := now.Unix()
 	endEpoch := now.Add(7 * 24 * time.Hour).Unix()
 
 	dynamoStart := time.Now()
-	items, err := r.queryMergedSpotPartitions(ctx, country, region, spot, startEpoch, endEpoch)
+	items, err := r.querySpotPartitionsBySources(ctx, country, region, spot, startEpoch, endEpoch, partitionSources)
 	dynamoElapsed := time.Since(dynamoStart)
 	if err != nil {
 		return nil, fmt.Errorf("querying spot forecast: %w", err)
@@ -162,6 +260,7 @@ func (r *ForecastRepo) GetSpotForecast(
 	baseID := fmt.Sprintf("%s#%s#%s", country, region, spot)
 	logging.FromContext(ctx).Info("forecast timing: dynamodb get_spot_forecast",
 		slog.String("spot_id", baseID),
+		slog.Any("partition_sources", partitionSources),
 		slog.Int64("dynamo_query_ms", dynamoElapsed.Milliseconds()),
 		slog.Int64("parse_items_ms", parseElapsed.Milliseconds()),
 		slog.Int("dynamo_item_count", len(items)),
@@ -181,15 +280,14 @@ func (r *ForecastRepo) GetCurrentConditions(
 	startEpoch := now.Unix()
 	endEpoch := now.Add(48 * time.Hour).Unix()
 
-	items, err := r.queryMergedSpotPartitions(ctx, country, region, spot, startEpoch, endEpoch)
+	src := defaultPartitionSourceForCountry(country)
+	pk := partitionSpotID(country, region, spot, src)
+	items, err := r.queryPartitionLimitedRange(ctx, pk, startEpoch, endEpoch, 1)
 	if err != nil {
 		return nil, fmt.Errorf("querying current conditions: %w", err)
 	}
 	if len(items) == 0 {
 		return nil, repository.ErrNotFound
-	}
-	if len(items) > 100 {
-		items = items[:100]
 	}
 
 	forecast, err := parseForecastItem(items[0], country, region, spot)
@@ -207,7 +305,9 @@ func (r *ForecastRepo) GetForecastAtTime(
 ) (*model.Forecast, error) {
 	targetEpoch := t.Unix()
 
-	items, err := r.queryMergedSpotPartitions(ctx, country, region, spot, targetEpoch, targetEpoch)
+	src := defaultPartitionSourceForCountry(country)
+	pk := partitionSpotID(country, region, spot, src)
+	items, err := r.queryPartitionAtTimestamp(ctx, pk, targetEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("querying forecast at time: %w", err)
 	}
@@ -236,7 +336,9 @@ func (r *ForecastRepo) QuerySince(
 	sinceEpoch := since.UTC().Unix()
 	endEpoch := since.Add(30 * 24 * time.Hour).Unix()
 
-	items, err := r.queryMergedSpotPartitions(ctx, country, region, spot, sinceEpoch, endEpoch)
+	src := defaultPartitionSourceForCountry(country)
+	pk := partitionSpotID(country, region, spot, src)
+	items, err := r.queryPartitionRange(ctx, pk, sinceEpoch, endEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("querying forecast data: %w", err)
 	}
@@ -264,7 +366,9 @@ func (r *ForecastRepo) QueryBetween(
 	startEpoch := start.UTC().Unix()
 	endEpoch := end.UTC().Unix()
 
-	items, err := r.queryMergedSpotPartitions(ctx, country, region, spot, startEpoch, endEpoch)
+	src := defaultPartitionSourceForCountry(country)
+	pk := partitionSpotID(country, region, spot, src)
+	items, err := r.queryPartitionRange(ctx, pk, startEpoch, endEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("querying forecast data range: %w", err)
 	}

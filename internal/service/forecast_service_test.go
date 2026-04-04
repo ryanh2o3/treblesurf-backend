@@ -26,7 +26,7 @@ func TestForecastService_GetSpotForecast_PropagatesContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), forecastCtxKeyValue, forecastCtxValue)
 	expected := []*model.Forecast{{CountryRegionSpot: "US_CA_Spot"}}
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(callCtx context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(callCtx context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			if callCtx.Value(forecastCtxKeyValue) != forecastCtxValue {
 				t.Fatalf("expected context value to be propagated")
 			}
@@ -55,7 +55,7 @@ func TestForecastService_GetListSpotsForecast_PropagatesContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), forecastCtxKeyValue, forecastCtxValue)
 	calls := 0
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(callCtx context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(callCtx context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			calls++
 			if callCtx.Value(forecastCtxKeyValue) != forecastCtxValue {
 				t.Fatalf("expected context value to be propagated")
@@ -97,7 +97,7 @@ func TestForecastService_GetRegionForecast(t *testing.T) {
 		},
 	}
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{{
 				CountryRegionSpot: country + "_" + region + "_" + spot,
 				Source:            sourceComposedIreland,
@@ -123,7 +123,7 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 	t.Run("returns current weather forecast", func(t *testing.T) {
 		ctx := context.Background()
 		repo := &mockrepo.ForecastRepo{
-			GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+			GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 				if country != forecastTestCountry || region != forecastTestRegion || spot != forecastTestSpot {
 					t.Fatalf("unexpected args: %s %s %s", country, region, spot)
 				}
@@ -166,7 +166,7 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 	t.Run("handles nil current conditions", func(t *testing.T) {
 		ctx := context.Background()
 		repo := &mockrepo.ForecastRepo{
-			GetSpotForecastFn: func(_ context.Context, _, _, _ string) ([]*model.Forecast, error) {
+			GetSpotForecastFn: func(_ context.Context, _, _, _ string, _ []string) ([]*model.Forecast, error) {
 				return []*model.Forecast{}, nil
 			},
 		}
@@ -201,7 +201,7 @@ func TestForecastService_GetSpotForecast_PicksPrimarySource(t *testing.T) {
 	ctx := context.Background()
 	// Ireland: no imi_swan+weatherkit and no WeatherKit → no default primary (Stormglass ignored).
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{ForecastTimestamp: "1700000000#stormglass", Source: sourceStormglass, Country: country, Region: region, Spot: spot},
 				{ForecastTimestamp: "1700000000#imi_swan", Source: sourceIMISwan, Country: country, Region: region, Spot: spot},
@@ -224,7 +224,7 @@ func TestForecastService_GetSpotForecast_PicksPrimarySource(t *testing.T) {
 func TestForecastService_GetSpotForecastGrouped_ReturnsAllSources(t *testing.T) {
 	ctx := context.Background()
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{ForecastTimestamp: "1700000000#stormglass", Source: sourceStormglass, Country: country, Region: region, Spot: spot},
 				{ForecastTimestamp: "1700000000#imi_swan+weatherkit", Source: sourceComposedIreland, Country: country, Region: region, Spot: spot},
@@ -256,7 +256,7 @@ func TestForecastService_GetSpotForecastGrouped_ReturnsAllSources(t *testing.T) 
 func TestForecastService_GetSpotForecast_IrelandPrefersPremergedRow(t *testing.T) {
 	ctx := context.Background()
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{
 					ForecastTimestamp: "1700000000#imi_swan+weatherkit",
@@ -316,7 +316,7 @@ func TestForecastService_GetSpotForecast_IrelandPrefersPremergedRow(t *testing.T
 func TestForecastService_GetSpotForecast_IrelandLegacySplitRowsNoPrimary(t *testing.T) {
 	ctx := context.Background()
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{
 					ForecastTimestamp: "1700000000#imi_swan",
@@ -353,7 +353,7 @@ func TestForecastService_GetSpotForecast_IrelandLegacySplitRowsNoPrimary(t *test
 func TestForecastService_GetSpotForecast_IrelandPrimaryExcludesStormglass(t *testing.T) {
 	ctx := context.Background()
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{ForecastTimestamp: "1700000000#stormglass", Source: sourceStormglass, Country: country, Region: region, Spot: spot},
 			}, nil
@@ -375,7 +375,7 @@ func TestForecastService_GetSpotForecast_IrelandPrimaryExcludesStormglass(t *tes
 func TestForecastService_GetSpotForecast_IrelandStormglassStillViaSourceParam(t *testing.T) {
 	ctx := context.Background()
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{ForecastTimestamp: "1700000000#stormglass", Source: sourceStormglass, Country: country, Region: region, Spot: spot},
 				{ForecastTimestamp: "1700000000#imi_swan", Source: sourceIMISwan, Country: country, Region: region, Spot: spot},
@@ -401,7 +401,7 @@ func TestForecastService_GetSpotForecast_IrelandStormglassStillViaSourceParam(t 
 func TestForecastService_GetSpotForecast_IrelandSkipsStormglassOnlyHours(t *testing.T) {
 	ctx := context.Background()
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{ForecastTimestamp: "1700000000#stormglass", Source: sourceStormglass, Country: country, Region: region, Spot: spot},
 				{

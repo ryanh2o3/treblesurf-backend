@@ -26,7 +26,7 @@ func setupForecastController(repo *mockrepo.ForecastRepo, loc *mockrepo.Location
 
 func TestForecastController_GetSpotForecast(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{
 					CountryRegionSpot: country + "_" + region + "_" + spot,
@@ -70,7 +70,7 @@ func TestForecastController_GetSpotForecast(t *testing.T) {
 
 func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, _, _, _ string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, _, _, _ string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{}, nil
 		},
 	}
@@ -90,7 +90,7 @@ func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 
 func TestForecastController_GetSpotForecast_SourcesAll_ReturnsGrouped(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{ForecastTimestamp: "1700000000#stormglass", Source: "stormglass", SpotID: country + "#" + region + "#" + spot},
 				{ForecastTimestamp: "1700000000#imi_swan+weatherkit", Source: "imi_swan+weatherkit", SpotID: country + "#" + region + "#" + spot},
@@ -135,7 +135,7 @@ func TestForecastController_GetSpotForecast_SourcesAll_ReturnsGrouped(t *testing
 
 func TestForecastController_GetSpotForecast_SourceParam_ReturnsRequestedSource(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{ForecastTimestamp: "1700000000#stormglass", Source: "stormglass", SpotID: country + "#" + region + "#" + spot},
 				{ForecastTimestamp: "1700000000#weatherkit", Source: "weatherkit", SpotID: country + "#" + region + "#" + spot},
@@ -167,7 +167,7 @@ func TestForecastController_GetSpotForecast_SourceParam_ReturnsRequestedSource(t
 
 func TestForecastController_GetListSpotsForecast(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{
 					CountryRegionSpot: country + "_" + region + "_" + spot,
@@ -207,7 +207,7 @@ func TestForecastController_GetListSpotsForecast(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{
 					CountryRegionSpot: country + "_" + region + "_" + spot,
@@ -247,7 +247,7 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, _, _, _ string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, _, _, _ string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{}, nil
 		},
 	}
@@ -275,7 +275,7 @@ func TestForecastController_GetRegionForecast(t *testing.T) {
 		},
 	}
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string) ([]*model.Forecast, error) {
 			return []*model.Forecast{{
 				CountryRegionSpot: country + "_" + region + "_" + spot,
 				Source:            "imi_swan+weatherkit",
