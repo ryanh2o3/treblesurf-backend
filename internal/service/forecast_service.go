@@ -4,11 +4,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"treblesurf-backend/internal/logging"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
 )
@@ -184,13 +186,32 @@ func (s *ForecastService) GetSpotForecast(
 	if err != nil {
 		return nil, err
 	}
+
+	groupStart := time.Now()
 	groups := s.groupForecastsByTime(raw, countryName, regionName)
+	groupElapsed := time.Since(groupStart)
+
+	selectStart := time.Now()
 	out := make([]*model.Forecast, 0, len(groups))
 	for i := range groups {
 		if f := primaryForecastFromGroup(&groups[i], countryName, preferredSource); f != nil {
 			out = append(out, f)
 		}
 	}
+	selectElapsed := time.Since(selectStart)
+
+	logging.FromContext(ctx).Info("forecast timing: service get_spot_forecast",
+		slog.String("spot", spotName),
+		slog.String("region", regionName),
+		slog.String("country", countryName),
+		slog.String("preferred_source", preferredSource),
+		slog.Int("raw_row_count", len(raw)),
+		slog.Int("group_count", len(groups)),
+		slog.Int("output_row_count", len(out)),
+		slog.Int64("group_by_time_ms", groupElapsed.Milliseconds()),
+		slog.Int64("primary_per_group_ms", selectElapsed.Milliseconds()),
+	)
+
 	return out, nil
 }
 
@@ -203,7 +224,17 @@ func (s *ForecastService) GetSpotForecastGrouped(
 	if err != nil {
 		return nil, err
 	}
-	return s.groupForecastsByTime(raw, countryName, regionName), nil
+	groupStart := time.Now()
+	groups := s.groupForecastsByTime(raw, countryName, regionName)
+	logging.FromContext(ctx).Info("forecast timing: service get_spot_forecast_grouped",
+		slog.String("spot", spotName),
+		slog.String("region", regionName),
+		slog.String("country", countryName),
+		slog.Int("raw_row_count", len(raw)),
+		slog.Int("group_count", len(groups)),
+		slog.Int64("group_by_time_ms", time.Since(groupStart).Milliseconds()),
+	)
+	return groups, nil
 }
 
 func (s *ForecastService) GetListSpotsForecast(

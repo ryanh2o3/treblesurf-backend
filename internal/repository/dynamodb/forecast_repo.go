@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
+	"treblesurf-backend/internal/logging"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
 
@@ -63,11 +65,15 @@ func (r *ForecastRepo) GetSpotForecast(
 		ScanIndexForward: aws.Bool(true),
 	}
 
+	dynamoStart := time.Now()
 	result, err := r.client.QueryWithContext(ctx, input)
+	dynamoElapsed := time.Since(dynamoStart)
 	if err != nil {
 		return nil, fmt.Errorf("querying spot forecast: %w", err)
 	}
 
+	truncated := len(result.LastEvaluatedKey) > 0
+	parseStart := time.Now()
 	forecasts := make([]*model.Forecast, 0, len(result.Items))
 	for _, item := range result.Items {
 		forecast, err := parseForecastItem(item, country, region, spot)
@@ -76,6 +82,17 @@ func (r *ForecastRepo) GetSpotForecast(
 		}
 		forecasts = append(forecasts, forecast)
 	}
+	parseElapsed := time.Since(parseStart)
+
+	logging.FromContext(ctx).Info("forecast timing: dynamodb get_spot_forecast",
+		slog.String("spot_id", spotID),
+		slog.Int64("dynamo_query_ms", dynamoElapsed.Milliseconds()),
+		slog.Int64("parse_items_ms", parseElapsed.Milliseconds()),
+		slog.Int("dynamo_item_count", len(result.Items)),
+		slog.Bool("dynamo_result_truncated", truncated),
+		slog.Int64("range_start_epoch", startEpoch),
+		slog.Int64("range_end_epoch", endEpoch),
+	)
 
 	return forecasts, nil
 }
