@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
 
 var _ repository.ForecastRepository = (*ForecastRepo)(nil)
@@ -247,13 +248,37 @@ func (r *ForecastRepo) GetSpotForecast(
 	}
 
 	parseStart := time.Now()
-	forecasts := make([]*model.Forecast, 0, len(items))
-	for _, item := range items {
-		forecast, err := parseForecastItem(item, country, region, spot)
+	forecasts := make([]*model.Forecast, len(items))
+	switch len(items) {
+	case 0:
+	case 1:
+		f, err := parseForecastItem(items[0], country, region, spot)
 		if err != nil {
 			return nil, err
 		}
-		forecasts = append(forecasts, forecast)
+		forecasts[0] = f
+	default:
+		const parseParallelism = 8
+		sem := semaphore.NewWeighted(parseParallelism)
+		var parseEg errgroup.Group
+		for i := range items {
+			i := i
+			parseEg.Go(func() error {
+				if err := sem.Acquire(ctx, 1); err != nil {
+					return err
+				}
+				defer sem.Release(1)
+				f, err := parseForecastItem(items[i], country, region, spot)
+				if err != nil {
+					return err
+				}
+				forecasts[i] = f
+				return nil
+			})
+		}
+		if err := parseEg.Wait(); err != nil {
+			return nil, err
+		}
 	}
 	parseElapsed := time.Since(parseStart)
 
@@ -447,12 +472,31 @@ func parseForecastItem(
 	item map[string]*dynamodb.AttributeValue,
 	fallbackCountry, fallbackRegion, fallbackSpot string,
 ) (*model.Forecast, error) {
+	// Production items use a Document map at `data`; one UnmarshalMap into forecastDataItem is enough.
+	if dAttr := item["data"]; dAttr != nil && len(dAttr.M) > 0 {
+		var data forecastDataItem
+		if err := dynamodbattribute.UnmarshalMap(item, &data); err != nil {
+			return nil, fmt.Errorf("unmarshaling forecast: %w", err)
+		}
+		if len(data.Data) > 0 {
+			return forecastFromData(nil, data, fallbackCountry, fallbackRegion, fallbackSpot), nil
+		}
+	}
+
 	var flat forecastItem
 	if err := dynamodbattribute.UnmarshalMap(item, &flat); err != nil {
 		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
 	}
 	if flat.isPopulated() {
 		return flat.toModel(), nil
+	}
+
+	var data forecastDataItem
+	if err := dynamodbattribute.UnmarshalMap(item, &data); err != nil {
+		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
+	}
+	if len(data.Data) > 0 {
+		return forecastFromData(nil, data, fallbackCountry, fallbackRegion, fallbackSpot), nil
 	}
 
 	var raw map[string]interface{}
@@ -568,8 +612,15 @@ func forecastFromData(
 	region := fallbackRegion
 	spot := fallbackSpot
 
-	if spotID := stringValue(raw["spot_id"]); spotID != "" {
-		if parsedCountry, parsedRegion, parsedSpot, ok := splitSpotID(spotID); ok {
+	spotKey := ""
+	if raw != nil {
+		spotKey = stringValue(raw["spot_id"])
+	}
+	if spotKey == "" {
+		spotKey = item.SpotID
+	}
+	if spotKey != "" {
+		if parsedCountry, parsedRegion, parsedSpot, ok := splitSpotID(spotKey); ok {
 			country = chooseString(country, parsedCountry)
 			region = chooseString(region, parsedRegion)
 			spot = chooseString(spot, parsedSpot)
@@ -578,13 +629,17 @@ func forecastFromData(
 
 	baseSpotID := fmt.Sprintf("%s#%s#%s", country, region, spot)
 
-	countryRegionSpot := stringValue(raw["country_region_spot"])
+	countryRegionSpot := ""
+	forecastDate := ""
+	if raw != nil {
+		countryRegionSpot = stringValue(raw["country_region_spot"])
+		forecastDate = stringValue(raw["ForecastDate"])
+	}
 	if countryRegionSpot == "" && country != "" && region != "" && spot != "" {
 		countryRegionSpot = fmt.Sprintf("%s_%s_%s", country, region, spot)
 	}
 
 	dateForecastedFor := mapString(item.Data, "dateForecastedFor", "date_forecasted_for")
-	forecastDate := stringValue(raw["ForecastDate"])
 	if forecastDate == "" {
 		forecastDate = mapString(item.Data, "forecast_date", "ForecastDate")
 	}
