@@ -78,10 +78,12 @@ func connectionFailedResponse() events.APIGatewayProxyResponse {
 	}
 }
 
-// successResponse returns a success response.
-func successResponse(message string) events.APIGatewayProxyResponse {
+// integrationSuccessNoClientPayload returns OK with empty JSON body. API Gateway may
+// forward Body to the WebSocket client; use this when the payload was already sent
+// via PostToConnection or no client-visible message is needed.
+func integrationSuccessNoClientPayload() events.APIGatewayProxyResponse {
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
-		Body:       message,
+		Body:       "{}",
 	}
 }
