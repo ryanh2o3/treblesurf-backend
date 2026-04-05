@@ -592,7 +592,7 @@ func seedForecastSample(spotID string, sample map[string]interface{}, baseTime t
 	if err != nil {
 		return fmt.Errorf("failed to build forecast data map: %w", err)
 	}
-	partitionKey := fmt.Sprintf("%s#%s", spotID, seedForecastSource)
+	partitionKey := fmt.Sprintf("%s#%s#hourly", spotID, seedForecastSource)
 	forecast := map[string]interface{}{
 		"spot_id":      partitionKey,
 		"timestamp_ts": timestampTs,
@@ -730,7 +730,7 @@ func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]inte
 		if err != nil {
 			return fmt.Errorf("failed to build interpolated data map: %w", err)
 		}
-		partitionKey := fmt.Sprintf("%s#%s", spotID, seedForecastSource)
+		partitionKey := fmt.Sprintf("%s#%s#hourly", spotID, seedForecastSource)
 		interpolatedForecast := map[string]interface{}{
 			"spot_id":      partitionKey,
 			"timestamp_ts": stepTimestampTs,

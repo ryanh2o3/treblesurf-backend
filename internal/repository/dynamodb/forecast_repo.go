@@ -47,8 +47,8 @@ func NewForecastRepo(client *dynamodb.DynamoDB, tableName string) *ForecastRepo 
 	}
 }
 
-func partitionSpotID(country, region, spot, source string) string {
-	return fmt.Sprintf("%s#%s#%s#%s", country, region, spot, source)
+func partitionSpotID(country, region, spot, source, granularity string) string {
+	return fmt.Sprintf("%s#%s#%s#%s#%s", country, region, spot, source, granularity)
 }
 
 func itemTimestampTS(item map[string]*dynamodb.AttributeValue) (int64, bool) {
@@ -194,12 +194,13 @@ func (r *ForecastRepo) querySpotPartitionsBySources(
 	country, region, spot string,
 	startEpoch, endEpoch int64,
 	sources []string,
+	granularity string,
 ) ([]map[string]*dynamodb.AttributeValue, error) {
 	if len(sources) == 0 {
 		return nil, fmt.Errorf("partitionSources must be non-empty")
 	}
 	if len(sources) == 1 {
-		pk := partitionSpotID(country, region, spot, sources[0])
+		pk := partitionSpotID(country, region, spot, sources[0], granularity)
 		return r.queryPartitionRange(ctx, pk, startEpoch, endEpoch)
 	}
 	partItems := make([][]map[string]*dynamodb.AttributeValue, len(sources))
@@ -208,7 +209,7 @@ func (r *ForecastRepo) querySpotPartitionsBySources(
 		i := i
 		src := sources[i]
 		g.Go(func() error {
-			pk := partitionSpotID(country, region, spot, src)
+			pk := partitionSpotID(country, region, spot, src, granularity)
 			items, err := r.queryPartitionRange(gctx, pk, startEpoch, endEpoch)
 			if err != nil {
 				return err
@@ -232,16 +233,22 @@ func (r *ForecastRepo) GetSpotForecast(
 	ctx context.Context,
 	country, region, spot string,
 	partitionSources []string,
+	granularity string,
 ) ([]*model.Forecast, error) {
 	if len(partitionSources) == 0 {
 		return nil, fmt.Errorf("partitionSources must be non-empty")
 	}
+	g, err := repository.ParseForecastGranularity(granularity)
+	if err != nil {
+		return nil, err
+	}
+	granularity = g
 	now := time.Now()
 	startEpoch := now.Unix()
 	endEpoch := now.Add(7 * 24 * time.Hour).Unix()
 
 	dynamoStart := time.Now()
-	items, err := r.querySpotPartitionsBySources(ctx, country, region, spot, startEpoch, endEpoch, partitionSources)
+	items, err := r.querySpotPartitionsBySources(ctx, country, region, spot, startEpoch, endEpoch, partitionSources, granularity)
 	dynamoElapsed := time.Since(dynamoStart)
 	if err != nil {
 		return nil, fmt.Errorf("querying spot forecast: %w", err)
@@ -285,6 +292,7 @@ func (r *ForecastRepo) GetSpotForecast(
 	baseID := fmt.Sprintf("%s#%s#%s", country, region, spot)
 	logging.FromContext(ctx).Info("forecast timing: dynamodb get_spot_forecast",
 		slog.String("spot_id", baseID),
+		slog.String("granularity", granularity),
 		slog.Any("partition_sources", partitionSources),
 		slog.Int64("dynamo_query_ms", dynamoElapsed.Milliseconds()),
 		slog.Int64("parse_items_ms", parseElapsed.Milliseconds()),
@@ -306,7 +314,7 @@ func (r *ForecastRepo) GetCurrentConditions(
 	endEpoch := now.Add(48 * time.Hour).Unix()
 
 	src := defaultPartitionSourceForCountry(country)
-	pk := partitionSpotID(country, region, spot, src)
+	pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
 	items, err := r.queryPartitionLimitedRange(ctx, pk, startEpoch, endEpoch, 1)
 	if err != nil {
 		return nil, fmt.Errorf("querying current conditions: %w", err)
@@ -331,7 +339,7 @@ func (r *ForecastRepo) GetForecastAtTime(
 	targetEpoch := t.Unix()
 
 	src := defaultPartitionSourceForCountry(country)
-	pk := partitionSpotID(country, region, spot, src)
+	pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
 	items, err := r.queryPartitionAtTimestamp(ctx, pk, targetEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("querying forecast at time: %w", err)
@@ -362,7 +370,7 @@ func (r *ForecastRepo) QuerySince(
 	endEpoch := since.Add(30 * 24 * time.Hour).Unix()
 
 	src := defaultPartitionSourceForCountry(country)
-	pk := partitionSpotID(country, region, spot, src)
+	pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
 	items, err := r.queryPartitionRange(ctx, pk, sinceEpoch, endEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("querying forecast data: %w", err)
@@ -392,7 +400,7 @@ func (r *ForecastRepo) QueryBetween(
 	endEpoch := end.UTC().Unix()
 
 	src := defaultPartitionSourceForCountry(country)
-	pk := partitionSpotID(country, region, spot, src)
+	pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
 	items, err := r.queryPartitionRange(ctx, pk, startEpoch, endEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("querying forecast data range: %w", err)

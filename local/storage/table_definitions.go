@@ -46,7 +46,7 @@ func newLocationDataTable() tableDefinition {
 	}
 }
 
-// newSurfForecastsTable returns the definition for the surf_forecasts table (PK includes source, numeric SK).
+// newSurfForecastsTable returns the definition for the surf_forecasts table (PK country#region#spot#source#hourly|multiHour, numeric SK).
 func newSurfForecastsTable() tableDefinition {
 	return tableDefinition{
 		name: "surf_forecasts",

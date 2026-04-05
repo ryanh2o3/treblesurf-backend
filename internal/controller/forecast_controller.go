@@ -38,13 +38,18 @@ func (c *ForecastController) GetSpotForecast(ctx *gin.Context) {
 		c.getSpotForecastGrouped(ctx)
 		return
 	}
+	granularity, err := repository.ParseForecastGranularity(ctx.Query("granularity"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	sourceParam := ctx.Query("source") // optional: client can request a specific source (e.g. ?source=weatherkit)
 	c.handleForecastRequest(
 		ctx,
 		"spot_forecast",
 		sourceParam,
 		func(ctx context.Context, spot, region, country, source string) ([]*model.Forecast, error) {
-			return c.forecastService.GetSpotForecast(ctx, spot, region, country, source)
+			return c.forecastService.GetSpotForecast(ctx, spot, region, country, source, granularity)
 		},
 		"failed to get spot forecast",
 		"Failed to get forecast",
@@ -56,8 +61,14 @@ func (c *ForecastController) getSpotForecastGrouped(ctx *gin.Context) {
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 
+	granularity, err := repository.ParseForecastGranularity(ctx.Query("granularity"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	handlerStart := time.Now()
-	groups, err := c.forecastService.GetSpotForecastGrouped(ctx.Request.Context(), spotName, regionName, countryName)
+	groups, err := c.forecastService.GetSpotForecastGrouped(ctx.Request.Context(), spotName, regionName, countryName, granularity)
 	if err != nil {
 		requestLogger(ctx).Info("forecast timing: handler",
 			slog.String("operation", "spot_forecast_grouped"),
@@ -113,8 +124,14 @@ func (c *ForecastController) GetListSpotsForecast(ctx *gin.Context) {
 
 	requestLogger(ctx).Info("forecast spots requested", slog.Any("spots", spots))
 
+	granularity, err := repository.ParseForecastGranularity(ctx.Query("granularity"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	handlerStart := time.Now()
-	forecasts, err := c.forecastService.GetListSpotsForecast(ctx.Request.Context(), spots, regionName, countryName, sourceParam)
+	forecasts, err := c.forecastService.GetListSpotsForecast(ctx.Request.Context(), spots, regionName, countryName, sourceParam, granularity)
 	serviceElapsed := time.Since(handlerStart)
 	if err != nil {
 		requestLogger(ctx).Info("forecast timing: handler",
@@ -209,8 +226,9 @@ func (c *ForecastController) getCurrentWeatherGrouped(ctx *gin.Context) {
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
 
+	// Current conditions need the dense hourly partition, not sparse multiHour.
 	handlerStart := time.Now()
-	groups, err := c.forecastService.GetSpotForecastGrouped(ctx.Request.Context(), spotName, regionName, countryName)
+	groups, err := c.forecastService.GetSpotForecastGrouped(ctx.Request.Context(), spotName, regionName, countryName, repository.ForecastGranularityHourly)
 	if err != nil {
 		requestLogger(ctx).Info("forecast timing: handler",
 			slog.String("operation", "current_weather_grouped"),

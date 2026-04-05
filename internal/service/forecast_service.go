@@ -198,8 +198,9 @@ func (s *ForecastService) GetSpotForecast(
 	ctx context.Context,
 	spotName, regionName, countryName string,
 	preferredSource string,
+	granularity string,
 ) ([]*model.Forecast, error) {
-	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource))
+	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource), granularity)
 	if err != nil {
 		return nil, err
 	}
@@ -237,8 +238,9 @@ func (s *ForecastService) GetSpotForecast(
 func (s *ForecastService) GetSpotForecastGrouped(
 	ctx context.Context,
 	spotName, regionName, countryName string,
+	granularity string,
 ) ([]ForecastGroup, error) {
-	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesAll())
+	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesAll(), granularity)
 	if err != nil {
 		return nil, err
 	}
@@ -261,10 +263,11 @@ func (s *ForecastService) GetListSpotsForecast(
 	spots []string,
 	regionName, countryName string,
 	preferredSource string,
+	granularity string,
 ) ([][]*model.Forecast, error) {
 	results := make([][]*model.Forecast, 0, len(spots))
 	for _, spot := range spots {
-		forecast, err := s.GetSpotForecast(ctx, spot, regionName, countryName, preferredSource)
+		forecast, err := s.GetSpotForecast(ctx, spot, regionName, countryName, preferredSource, granularity)
 		if err != nil {
 			return nil, err
 		}
@@ -295,7 +298,7 @@ func (s *ForecastService) GetRegionForecast(
 			continue
 		}
 		spotName := parts[2]
-		rows, err := s.GetSpotForecast(ctx, spotName, regionName, countryName, "")
+		rows, err := s.GetSpotForecast(ctx, spotName, regionName, countryName, "", repository.ForecastGranularityHourly)
 		if err != nil {
 			return nil, err
 		}
@@ -312,7 +315,7 @@ func (s *ForecastService) GetCurrentWeather(
 	spotName, regionName, countryName string,
 	preferredSource string,
 ) ([]*model.Forecast, error) {
-	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource))
+	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource), repository.ForecastGranularityHourly)
 	if err != nil {
 		return nil, err
 	}
