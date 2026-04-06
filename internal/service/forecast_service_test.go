@@ -126,24 +126,19 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 	t.Run("returns current weather forecast", func(t *testing.T) {
 		ctx := context.Background()
 		repo := &mockrepo.ForecastRepo{
-			GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string, g string) ([]*model.Forecast, error) {
-				if g != repository.ForecastGranularityHourly {
-					t.Fatalf("expected hourly granularity for current weather, got %q", g)
-				}
+			GetCurrentConditionsFn: func(_ context.Context, country, region, spot string, _ []string) (*model.Forecast, error) {
 				if country != forecastTestCountry || region != forecastTestRegion || spot != forecastTestSpot {
 					t.Fatalf("unexpected args: %s %s %s", country, region, spot)
 				}
-				return []*model.Forecast{
-					{
-						ForecastTimestamp: "1700000000#imi_swan+weatherkit",
-						Source:            sourceComposedIreland,
-						Country:           country,
-						Region:            region,
-						Spot:              spot,
-						CountryRegionSpot: forecastTestSpotID,
-						Data: map[string]interface{}{
-							"swellHeight": 2.0, "temperature": 18.5, "windSpeed": 15.0,
-						},
+				return &model.Forecast{
+					ForecastTimestamp: "1700000000#imi_swan+weatherkit",
+					Source:            sourceComposedIreland,
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					CountryRegionSpot: forecastTestSpotID,
+					Data: map[string]interface{}{
+						"swellHeight": 2.0, "temperature": 18.5, "windSpeed": 15.0,
 					},
 				}, nil
 			},
@@ -172,8 +167,8 @@ func TestForecastService_GetCurrentWeather(t *testing.T) {
 	t.Run("handles nil current conditions", func(t *testing.T) {
 		ctx := context.Background()
 		repo := &mockrepo.ForecastRepo{
-			GetSpotForecastFn: func(_ context.Context, _, _, _ string, _ []string, _ string) ([]*model.Forecast, error) {
-				return []*model.Forecast{}, nil
+			GetCurrentConditionsFn: func(_ context.Context, _, _, _ string, _ []string) (*model.Forecast, error) {
+				return nil, repository.ErrNotFound
 			},
 		}
 

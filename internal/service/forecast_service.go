@@ -315,19 +315,17 @@ func (s *ForecastService) GetCurrentWeather(
 	spotName, regionName, countryName string,
 	preferredSource string,
 ) ([]*model.Forecast, error) {
-	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource), repository.ForecastGranularityHourly)
+	f, err := s.forecasts.GetCurrentConditions(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource))
 	if err != nil {
 		return nil, err
 	}
-	raw = filterIrelandReadRows(raw, countryName, preferredSource, false)
-	groups := s.groupForecastsByTime(raw, countryName, regionName)
-	if len(groups) == 0 {
+	if f == nil {
 		return nil, repository.ErrNotFound
 	}
-	for i := range groups {
-		if f := primaryForecastFromGroup(&groups[i], countryName, preferredSource); f != nil {
-			return []*model.Forecast{f}, nil
-		}
+	// Ireland: preserve behavior where default responses only return the persisted imi_swan+weatherkit row.
+	rows := filterIrelandReadRows([]*model.Forecast{f}, countryName, preferredSource, false)
+	if len(rows) == 0 {
+		return nil, repository.ErrNotFound
 	}
-	return nil, repository.ErrNotFound
+	return rows, nil
 }

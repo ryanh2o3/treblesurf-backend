@@ -9,6 +9,7 @@ import (
 
 	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	mockrepo "treblesurf-backend/internal/repository/mock"
 	"treblesurf-backend/internal/service"
 
@@ -224,18 +225,16 @@ func TestForecastController_GetListSpotsForecast(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string, _ string) ([]*model.Forecast, error) {
-			return []*model.Forecast{
-				{
-					CountryRegionSpot: country + "_" + region + "_" + spot,
-					ForecastTimestamp: "1700000000#imi_swan+weatherkit",
-					Source:            "imi_swan+weatherkit",
-					Country:           country,
-					Region:            region,
-					Spot:              spot,
-					Data: map[string]interface{}{
-						"swellHeight": 2.0, "temperature": 18.5,
-					},
+		GetCurrentConditionsFn: func(_ context.Context, country, region, spot string, _ []string) (*model.Forecast, error) {
+			return &model.Forecast{
+				CountryRegionSpot: country + "_" + region + "_" + spot,
+				ForecastTimestamp: "1700000000#imi_swan+weatherkit",
+				Source:            "imi_swan+weatherkit",
+				Country:           country,
+				Region:            region,
+				Spot:              spot,
+				Data: map[string]interface{}{
+					"swellHeight": 2.0, "temperature": 18.5,
 				},
 			}, nil
 		},
@@ -264,8 +263,8 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, _, _, _ string, _ []string, _ string) ([]*model.Forecast, error) {
-			return []*model.Forecast{}, nil
+		GetCurrentConditionsFn: func(_ context.Context, _, _, _ string, _ []string) (*model.Forecast, error) {
+			return nil, repository.ErrNotFound
 		},
 	}
 

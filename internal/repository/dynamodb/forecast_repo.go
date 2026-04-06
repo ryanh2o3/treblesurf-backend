@@ -308,26 +308,42 @@ func (r *ForecastRepo) GetSpotForecast(
 func (r *ForecastRepo) GetCurrentConditions(
 	ctx context.Context,
 	country, region, spot string,
+	partitionSources []string,
 ) (*model.Forecast, error) {
 	now := time.Now()
 	startEpoch := now.Unix()
 	endEpoch := now.Add(48 * time.Hour).Unix()
 
-	src := defaultPartitionSourceForCountry(country)
-	pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
-	items, err := r.queryPartitionLimitedRange(ctx, pk, startEpoch, endEpoch, 1)
-	if err != nil {
-		return nil, fmt.Errorf("querying current conditions: %w", err)
+	if len(partitionSources) == 0 {
+		return nil, fmt.Errorf("partitionSources must be non-empty")
 	}
-	if len(items) == 0 {
+	var best map[string]*dynamodb.AttributeValue
+	for _, src := range partitionSources {
+		pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
+		items, err := r.queryPartitionLimitedRange(ctx, pk, startEpoch, endEpoch, 1)
+		if err != nil {
+			return nil, fmt.Errorf("querying current conditions: %w", err)
+		}
+		if len(items) == 0 {
+			continue
+		}
+		if best == nil {
+			best = items[0]
+			continue
+		}
+		bt, _ := itemTimestampTS(best)
+		ct, _ := itemTimestampTS(items[0])
+		if ct != 0 && (bt == 0 || ct < bt) {
+			best = items[0]
+		}
+	}
+	if best == nil {
 		return nil, repository.ErrNotFound
 	}
-
-	forecast, err := parseForecastItem(items[0], country, region, spot)
+	forecast, err := parseForecastItem(best, country, region, spot)
 	if err != nil {
 		return nil, err
 	}
-
 	return forecast, nil
 }
 
