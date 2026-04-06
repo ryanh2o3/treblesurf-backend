@@ -51,13 +51,16 @@ func partitionSpotID(country, region, spot, source, granularity string) string {
 	return fmt.Sprintf("%s#%s#%s#%s#%s", country, region, spot, source, granularity)
 }
 
-func itemTimestampTS(item map[string]*dynamodb.AttributeValue) (int64, bool) {
+func itemTimestampTS(item map[string]*dynamodb.AttributeValue) int64 {
 	av := item["timestamp_ts"]
 	if av == nil || av.N == nil {
-		return 0, false
+		return 0
 	}
 	n, err := strconv.ParseInt(aws.StringValue(av.N), 10, 64)
-	return n, err == nil
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func itemSourceString(item map[string]*dynamodb.AttributeValue) string {
@@ -69,8 +72,8 @@ func itemSourceString(item map[string]*dynamodb.AttributeValue) string {
 
 func sortForecastItems(items []map[string]*dynamodb.AttributeValue) {
 	sort.Slice(items, func(i, j int) bool {
-		ti, _ := itemTimestampTS(items[i])
-		tj, _ := itemTimestampTS(items[j])
+		ti := itemTimestampTS(items[i])
+		tj := itemTimestampTS(items[j])
 		if ti != tj {
 			return ti < tj
 		}
@@ -206,7 +209,6 @@ func (r *ForecastRepo) querySpotPartitionsBySources(
 	partItems := make([][]map[string]*dynamodb.AttributeValue, len(sources))
 	g, gctx := errgroup.WithContext(ctx)
 	for i := range sources {
-		i := i
 		src := sources[i]
 		g.Go(func() error {
 			pk := partitionSpotID(country, region, spot, src, granularity)
@@ -255,21 +257,46 @@ func (r *ForecastRepo) GetSpotForecast(
 	}
 
 	parseStart := time.Now()
+	forecasts, err := parseForecastItems(ctx, items, country, region, spot)
+	if err != nil {
+		return nil, err
+	}
+	parseElapsed := time.Since(parseStart)
+
+	logGetSpotForecastTiming(
+		ctx,
+		country, region, spot,
+		granularity,
+		partitionSources,
+		startEpoch, endEpoch,
+		dynamoElapsed, parseElapsed,
+		len(items),
+	)
+
+	return forecasts, nil
+}
+
+func parseForecastItems(
+	ctx context.Context,
+	items []map[string]*dynamodb.AttributeValue,
+	country, region, spot string,
+) ([]*model.Forecast, error) {
 	forecasts := make([]*model.Forecast, len(items))
 	switch len(items) {
 	case 0:
+		return forecasts, nil
 	case 1:
 		f, err := parseForecastItem(items[0], country, region, spot)
 		if err != nil {
 			return nil, err
 		}
 		forecasts[0] = f
+		return forecasts, nil
 	default:
 		const parseParallelism = 8
 		sem := semaphore.NewWeighted(parseParallelism)
 		var parseEg errgroup.Group
 		for i := range items {
-			i := i
 			parseEg.Go(func() error {
 				if err := sem.Acquire(ctx, 1); err != nil {
 					return err
@@ -286,9 +313,19 @@ func (r *ForecastRepo) GetSpotForecast(
 		if err := parseEg.Wait(); err != nil {
 			return nil, err
 		}
+		return forecasts, nil
 	}
-	parseElapsed := time.Since(parseStart)
+}
 
+func logGetSpotForecastTiming(
+	ctx context.Context,
+	country, region, spot string,
+	granularity string,
+	partitionSources []string,
+	startEpoch, endEpoch int64,
+	dynamoElapsed, parseElapsed time.Duration,
+	itemCount int,
+) {
 	baseID := fmt.Sprintf("%s#%s#%s", country, region, spot)
 	logging.FromContext(ctx).Info("forecast timing: dynamodb get_spot_forecast",
 		slog.String("spot_id", baseID),
@@ -296,13 +333,11 @@ func (r *ForecastRepo) GetSpotForecast(
 		slog.Any("partition_sources", partitionSources),
 		slog.Int64("dynamo_query_ms", dynamoElapsed.Milliseconds()),
 		slog.Int64("parse_items_ms", parseElapsed.Milliseconds()),
-		slog.Int("dynamo_item_count", len(items)),
+		slog.Int("dynamo_item_count", itemCount),
 		slog.Bool("dynamo_result_truncated", false),
 		slog.Int64("range_start_epoch", startEpoch),
 		slog.Int64("range_end_epoch", endEpoch),
 	)
-
-	return forecasts, nil
 }
 
 func (r *ForecastRepo) GetCurrentConditions(
@@ -331,8 +366,8 @@ func (r *ForecastRepo) GetCurrentConditions(
 			best = items[0]
 			continue
 		}
-		bt, _ := itemTimestampTS(best)
-		ct, _ := itemTimestampTS(items[0])
+		bt := itemTimestampTS(best)
+		ct := itemTimestampTS(items[0])
 		if ct != 0 && (bt == 0 || ct < bt) {
 			best = items[0]
 		}
@@ -441,18 +476,18 @@ func splitBaseSpotID(spotID string) (country, region, spot string, ok bool) {
 }
 
 type forecastDataItem struct {
-	Data        map[string]interface{} `dynamodbav:"data"`
+	TimestampTS int64                  `dynamodbav:"timestamp_ts"`
 	SpotID      string                 `dynamodbav:"spot_id"`
-	TimestampTs int64                  `dynamodbav:"timestamp_ts"`
 	Source      string                 `dynamodbav:"source"`
 	GeneratedAt string                 `dynamodbav:"generated_at"`
+	Data        map[string]interface{} `dynamodbav:"data"`
 }
 
 func (item *forecastDataItem) forecastTimestampString() string {
-	if item == nil || item.TimestampTs == 0 {
+	if item == nil || item.TimestampTS == 0 {
 		return ""
 	}
-	return strconv.FormatInt(item.TimestampTs, 10)
+	return strconv.FormatInt(item.TimestampTS, 10)
 }
 
 func unmarshalForecastDataPoints(items []map[string]*dynamodb.AttributeValue, baseSpotID string) ([]*model.ForecastDataPoint, error) {
@@ -462,7 +497,7 @@ func unmarshalForecastDataPoints(items []map[string]*dynamodb.AttributeValue, ba
 		if err := dynamodbattribute.UnmarshalMap(item, &forecastItem); err != nil {
 			return nil, fmt.Errorf("unmarshaling forecast data: %w", err)
 		}
-		forecastTime := time.Unix(forecastItem.TimestampTs, 0).UTC()
+		forecastTime := time.Unix(forecastItem.TimestampTS, 0).UTC()
 		forecasts = append(forecasts, &model.ForecastDataPoint{
 			SpotID:            baseSpotID,
 			ForecastTimestamp: forecastTime,
@@ -536,7 +571,7 @@ func parseForecastItem(
 	dataItem := forecastDataItem{
 		Data:        dataMap,
 		SpotID:      stringValue(raw["spot_id"]),
-		TimestampTs: int64FromInterface(raw["timestamp_ts"]),
+		TimestampTS: int64FromInterface(raw["timestamp_ts"]),
 		Source:      stringValue(raw["source"]),
 		GeneratedAt: stringValue(raw["generated_at"]),
 	}
@@ -555,10 +590,16 @@ func int64FromInterface(v interface{}) int64 {
 	case float32:
 		return int64(x)
 	case string:
-		n, _ := strconv.ParseInt(x, 10, 64)
+		n, err := strconv.ParseInt(x, 10, 64)
+		if err != nil {
+			return 0
+		}
 		return n
 	case json.Number:
-		n, _ := x.Int64()
+		n, err := x.Int64()
+		if err != nil {
+			return 0
+		}
 		return n
 	default:
 		return 0
@@ -632,54 +673,24 @@ func forecastFromData(
 	item forecastDataItem,
 	fallbackCountry, fallbackRegion, fallbackSpot string,
 ) *model.Forecast {
-	country := fallbackCountry
-	region := fallbackRegion
-	spot := fallbackSpot
-
-	spotKey := ""
-	if raw != nil {
-		spotKey = stringValue(raw["spot_id"])
-	}
-	if spotKey == "" {
-		spotKey = item.SpotID
-	}
-	if spotKey != "" {
-		if parsedCountry, parsedRegion, parsedSpot, ok := splitSpotID(spotKey); ok {
-			country = chooseString(country, parsedCountry)
-			region = chooseString(region, parsedRegion)
-			spot = chooseString(spot, parsedSpot)
-		}
-	}
-
-	baseSpotID := fmt.Sprintf("%s#%s#%s", country, region, spot)
-
-	countryRegionSpot := ""
-	forecastDate := ""
-	if raw != nil {
-		countryRegionSpot = stringValue(raw["country_region_spot"])
-		forecastDate = stringValue(raw["ForecastDate"])
-	}
-	if countryRegionSpot == "" && country != "" && region != "" && spot != "" {
-		countryRegionSpot = fmt.Sprintf("%s_%s_%s", country, region, spot)
-	}
+	country, region, spot, baseSpotID := resolveSpot(raw, item, fallbackCountry, fallbackRegion, fallbackSpot)
+	countryRegionSpot, rawForecastDate := resolveCountryRegionSpotAndForecastDate(raw, country, region, spot)
 
 	dateForecastedFor := mapString(item.Data, "dateForecastedFor", "date_forecasted_for")
-	if forecastDate == "" {
-		forecastDate = mapString(item.Data, "forecast_date", "ForecastDate")
-	}
+	forecastDate := chooseString(rawForecastDate, mapString(item.Data, "forecast_date", "ForecastDate"))
 
 	ftStr := item.forecastTimestampString()
 	date := parseForecastDate(mapString(item.Data, "date"), dateForecastedFor, ftStr)
-	hour := mapInt(item.Data, "hour")
-	if hour == 0 && !date.IsZero() {
-		hour = date.Hour()
-	}
+	hour := resolveForecastHour(item.Data, date)
 
 	return &model.Forecast{
 		ForecastTimestamp: ftStr,
 		SpotID:            baseSpotID,
 		Source:            item.Source,
-		GeneratedAt:       chooseString(item.GeneratedAt, mapString(item.Data, "generated_at", "generatedAt")),
+		GeneratedAt: chooseString(
+			item.GeneratedAt,
+			mapString(item.Data, "generated_at", "generatedAt"),
+		),
 		CountryRegionSpot: countryRegionSpot,
 		ForecastDate:      chooseString(forecastDate, date.Format("2006-01-02")),
 		Date:              date,
@@ -699,6 +710,54 @@ func forecastFromData(
 		Temperature:       mapFloat(item.Data, "temperature", "waterTemperature"),
 		Data:              item.Data,
 	}
+}
+
+func resolveSpot(
+	raw map[string]interface{},
+	item forecastDataItem,
+	fallbackCountry, fallbackRegion, fallbackSpot string,
+) (country, region, spot, baseSpotID string) {
+	country = fallbackCountry
+	region = fallbackRegion
+	spot = fallbackSpot
+
+	spotKey := ""
+	if raw != nil {
+		spotKey = stringValue(raw["spot_id"])
+	}
+	if spotKey == "" {
+		spotKey = item.SpotID
+	}
+	if parsedCountry, parsedRegion, parsedSpot, ok := splitSpotID(spotKey); ok {
+		country = chooseString(country, parsedCountry)
+		region = chooseString(region, parsedRegion)
+		spot = chooseString(spot, parsedSpot)
+	}
+
+	baseSpotID = fmt.Sprintf("%s#%s#%s", country, region, spot)
+	return country, region, spot, baseSpotID
+}
+
+func resolveCountryRegionSpotAndForecastDate(
+	raw map[string]interface{},
+	country, region, spot string,
+) (countryRegionSpot, forecastDate string) {
+	if raw != nil {
+		countryRegionSpot = stringValue(raw["country_region_spot"])
+		forecastDate = stringValue(raw["ForecastDate"])
+	}
+	if countryRegionSpot == "" && country != "" && region != "" && spot != "" {
+		countryRegionSpot = fmt.Sprintf("%s_%s_%s", country, region, spot)
+	}
+	return countryRegionSpot, forecastDate
+}
+
+func resolveForecastHour(data map[string]interface{}, date time.Time) int {
+	hour := mapInt(data, "hour")
+	if hour == 0 && !date.IsZero() {
+		return date.Hour()
+	}
+	return hour
 }
 
 func parseForecastDate(dateValue, dateForecastedFor, forecastTimestamp string) time.Time {

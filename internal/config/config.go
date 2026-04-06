@@ -34,7 +34,8 @@ type AWSConfig struct {
 	Region            string
 	BucketName        string
 	SpotImagesBaseURL string // SPOT_IMAGES_BASE_URL: CDN or public origin for spot-images/* (no trailing slash)
-	ForecastTable     string // FORECAST_TABLE: DynamoDB surf_forecasts (PK spot_id = country#region#spot#source#hourly|multiHour, SK timestamp_ts)
+	ForecastTable     string // FORECAST_TABLE: DynamoDB surf_forecasts (PK spot_id = country#region#spot#source#hourly|multiHour)
+	// Sort key is timestamp_ts (Number).
 }
 
 // AuthConfig holds authentication-related configuration.

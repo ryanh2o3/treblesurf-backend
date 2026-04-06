@@ -586,7 +586,7 @@ func seedForecastSample(spotID string, sample map[string]interface{}, baseTime t
 	currentTime := time.Now()
 	generatedAtTimestampStr := fmt.Sprintf("%d", currentTime.Unix())
 	dateForecastedFor := forecastTime.Format("2006-01-02 15:04:05")
-	timestampTs := forecastTime.Unix()
+	timestampTS := forecastTime.Unix()
 
 	dataMap, err := buildForecastDataMap(sample, dateForecastedFor)
 	if err != nil {
@@ -595,7 +595,7 @@ func seedForecastSample(spotID string, sample map[string]interface{}, baseTime t
 	partitionKey := fmt.Sprintf("%s#%s#hourly", spotID, seedForecastSource)
 	forecast := map[string]interface{}{
 		"spot_id":      partitionKey,
-		"timestamp_ts": timestampTs,
+		"timestamp_ts": timestampTS,
 		"data":         dataMap,
 		"generated_at": generatedAtTimestampStr,
 		"source":       seedForecastSource,
@@ -723,7 +723,7 @@ func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]inte
 		progress := float64(step*3) / float64(hourDiff)
 		stepHours := sampleOffset + step*3
 		stepTime := baseTime.Add(time.Duration(stepHours) * time.Hour)
-		stepTimestampTs := stepTime.Unix()
+		stepTimestampTS := stepTime.Unix()
 		stepDateForecastedFor := stepTime.Format("2006-01-02 15:04:05")
 
 		interpDataMap, err := buildInterpolatedDataMap(sample, nextSample, progress, stepDateForecastedFor)
@@ -733,7 +733,7 @@ func seedInterpolatedForecasts(spotID string, sample, nextSample map[string]inte
 		partitionKey := fmt.Sprintf("%s#%s#hourly", spotID, seedForecastSource)
 		interpolatedForecast := map[string]interface{}{
 			"spot_id":      partitionKey,
-			"timestamp_ts": stepTimestampTs,
+			"timestamp_ts": stepTimestampTS,
 			"data":         interpDataMap,
 			"generated_at": generatedAtTimestampStr,
 			"source":       seedForecastSource,

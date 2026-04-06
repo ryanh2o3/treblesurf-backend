@@ -228,7 +228,13 @@ func (c *ForecastController) getCurrentWeatherGrouped(ctx *gin.Context) {
 
 	// Current conditions need the dense hourly partition, not sparse multiHour.
 	handlerStart := time.Now()
-	groups, err := c.forecastService.GetSpotForecastGrouped(ctx.Request.Context(), spotName, regionName, countryName, repository.ForecastGranularityHourly)
+	groups, err := c.forecastService.GetSpotForecastGrouped(
+		ctx.Request.Context(),
+		spotName,
+		regionName,
+		countryName,
+		repository.ForecastGranularityHourly,
+	)
 	if err != nil {
 		requestLogger(ctx).Info("forecast timing: handler",
 			slog.String("operation", "current_weather_grouped"),
@@ -290,15 +296,7 @@ func (c *ForecastController) handleForecastRequest(
 	forecast, err := fetchFunc(ctx.Request.Context(), spotName, regionName, countryName, preferredSource)
 	fetchElapsed := time.Since(handlerStart)
 	if err != nil {
-		requestLogger(ctx).Info("forecast timing: handler",
-			slog.String("operation", operation),
-			slog.String("spot", spotName),
-			slog.String("region", regionName),
-			slog.String("country", countryName),
-			slog.String("preferred_source", preferredSource),
-			slog.Int64("fetch_ms", fetchElapsed.Milliseconds()),
-			slog.Bool("ok", false),
-		)
+		logForecastHandlerFailure(ctx, operation, spotName, regionName, countryName, preferredSource, fetchElapsed)
 		if errors.Is(err, repository.ErrNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "Forecast not found"})
 			return
@@ -312,17 +310,17 @@ func (c *ForecastController) handleForecastRequest(
 		mapStart := time.Now()
 		payload := mapForecastsToClient(forecast)
 		mapElapsed := time.Since(mapStart)
-		requestLogger(ctx).Info("forecast timing: handler",
-			slog.String("operation", operation),
-			slog.String("spot", spotName),
-			slog.String("region", regionName),
-			slog.String("country", countryName),
-			slog.String("preferred_source", preferredSource),
-			slog.Int("response_row_count", len(forecast)),
-			slog.Int64("fetch_ms", fetchElapsed.Milliseconds()),
-			slog.Int64("map_response_ms", mapElapsed.Milliseconds()),
-			slog.Int64("handler_total_ms", time.Since(handlerStart).Milliseconds()),
-			slog.Bool("ok", true),
+		logForecastHandlerSuccess(
+			ctx,
+			operation,
+			spotName,
+			regionName,
+			countryName,
+			preferredSource,
+			len(forecast),
+			fetchElapsed,
+			mapElapsed,
+			time.Since(handlerStart),
 		)
 		ctx.JSON(http.StatusOK, payload)
 		return
@@ -339,6 +337,42 @@ func (c *ForecastController) handleForecastRequest(
 		slog.String("reason", "empty_forecast"),
 	)
 	ctx.JSON(http.StatusNotFound, gin.H{"error": "No forecast found in the last 48 hours"})
+}
+
+func logForecastHandlerFailure(
+	ctx *gin.Context,
+	operation, spot, region, country, preferredSource string,
+	fetchElapsed time.Duration,
+) {
+	requestLogger(ctx).Info("forecast timing: handler",
+		slog.String("operation", operation),
+		slog.String("spot", spot),
+		slog.String("region", region),
+		slog.String("country", country),
+		slog.String("preferred_source", preferredSource),
+		slog.Int64("fetch_ms", fetchElapsed.Milliseconds()),
+		slog.Bool("ok", false),
+	)
+}
+
+func logForecastHandlerSuccess(
+	ctx *gin.Context,
+	operation, spot, region, country, preferredSource string,
+	responseRowCount int,
+	fetchElapsed, mapElapsed, handlerElapsed time.Duration,
+) {
+	requestLogger(ctx).Info("forecast timing: handler",
+		slog.String("operation", operation),
+		slog.String("spot", spot),
+		slog.String("region", region),
+		slog.String("country", country),
+		slog.String("preferred_source", preferredSource),
+		slog.Int("response_row_count", responseRowCount),
+		slog.Int64("fetch_ms", fetchElapsed.Milliseconds()),
+		slog.Int64("map_response_ms", mapElapsed.Milliseconds()),
+		slog.Int64("handler_total_ms", handlerElapsed.Milliseconds()),
+		slog.Bool("ok", true),
+	)
 }
 
 func compareSpot(a, b *model.Forecast) bool {

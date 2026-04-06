@@ -200,7 +200,14 @@ func (s *ForecastService) GetSpotForecast(
 	preferredSource string,
 	granularity string,
 ) ([]*model.Forecast, error) {
-	raw, err := s.forecasts.GetSpotForecast(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource), granularity)
+	raw, err := s.forecasts.GetSpotForecast(
+		ctx,
+		countryName,
+		regionName,
+		spotName,
+		partitionSourcesForPreferred(countryName, preferredSource),
+		granularity,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +322,13 @@ func (s *ForecastService) GetCurrentWeather(
 	spotName, regionName, countryName string,
 	preferredSource string,
 ) ([]*model.Forecast, error) {
-	f, err := s.forecasts.GetCurrentConditions(ctx, countryName, regionName, spotName, partitionSourcesForPreferred(countryName, preferredSource))
+	f, err := s.forecasts.GetCurrentConditions(
+		ctx,
+		countryName,
+		regionName,
+		spotName,
+		partitionSourcesForPreferred(countryName, preferredSource),
+	)
 	if err != nil {
 		return nil, err
 	}

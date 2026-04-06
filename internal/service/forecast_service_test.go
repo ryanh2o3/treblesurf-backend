@@ -213,7 +213,14 @@ func TestForecastService_GetSpotForecast_PicksPrimarySource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, "", repository.ForecastGranularityMultiHour)
+	got, err := svc.GetSpotForecast(
+		ctx,
+		forecastTestSpot,
+		forecastTestRegion,
+		forecastTestCountry,
+		"",
+		repository.ForecastGranularityMultiHour,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -236,7 +243,13 @@ func TestForecastService_GetSpotForecastGrouped_ReturnsAllSources(t *testing.T) 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	groups, err := svc.GetSpotForecastGrouped(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, repository.ForecastGranularityMultiHour)
+	groups, err := svc.GetSpotForecastGrouped(
+		ctx,
+		forecastTestSpot,
+		forecastTestRegion,
+		forecastTestCountry,
+		repository.ForecastGranularityMultiHour,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -296,7 +309,14 @@ func TestForecastService_GetSpotForecast_IrelandPrefersPremergedRow(t *testing.T
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, "", repository.ForecastGranularityMultiHour)
+	got, err := svc.GetSpotForecast(
+		ctx,
+		forecastTestSpot,
+		forecastTestRegion,
+		forecastTestCountry,
+		"",
+		repository.ForecastGranularityMultiHour,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -342,7 +362,14 @@ func TestForecastService_GetSpotForecast_IrelandLegacySplitRowsNoPrimary(t *test
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, "", repository.ForecastGranularityMultiHour)
+	got, err := svc.GetSpotForecast(
+		ctx,
+		forecastTestSpot,
+		forecastTestRegion,
+		forecastTestCountry,
+		"",
+		repository.ForecastGranularityMultiHour,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -364,7 +391,14 @@ func TestForecastService_GetSpotForecast_IrelandPrimaryExcludesStormglass(t *tes
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, "", repository.ForecastGranularityMultiHour)
+	got, err := svc.GetSpotForecast(
+		ctx,
+		forecastTestSpot,
+		forecastTestRegion,
+		forecastTestCountry,
+		"",
+		repository.ForecastGranularityMultiHour,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -387,7 +421,14 @@ func TestForecastService_GetSpotForecast_IrelandStormglassStillViaSourceParam(t 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, sourceStormglass, repository.ForecastGranularityMultiHour)
+	got, err := svc.GetSpotForecast(
+		ctx,
+		forecastTestSpot,
+		forecastTestRegion,
+		forecastTestCountry,
+		sourceStormglass,
+		repository.ForecastGranularityMultiHour,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -422,7 +463,14 @@ func TestForecastService_GetSpotForecast_IrelandSkipsStormglassOnlyHours(t *test
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got, err := svc.GetSpotForecast(ctx, forecastTestSpot, forecastTestRegion, forecastTestCountry, "", repository.ForecastGranularityMultiHour)
+	got, err := svc.GetSpotForecast(
+		ctx,
+		forecastTestSpot,
+		forecastTestRegion,
+		forecastTestCountry,
+		"",
+		repository.ForecastGranularityMultiHour,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
