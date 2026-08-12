@@ -21,6 +21,10 @@ type UserRepository interface {
 	// Returns ErrNotFound if the user doesn't exist.
 	GetByUUID(ctx context.Context, uuid string) (*model.User, error)
 
+	// GetByAppleID retrieves a user by their Apple Sign in with Apple subject (sub).
+	// Returns ErrNotFound if the user doesn't exist.
+	GetByAppleID(ctx context.Context, appleID string) (*model.User, error)
+
 	// Create stores a new user in the database.
 	// Returns ErrAlreadyExists if a user with the same email exists.
 	Create(ctx context.Context, user *model.User) error
@@ -245,4 +249,3 @@ type ModerationActionRepository interface {
 	// Results are ordered by created_at descending (newest first).
 	List(ctx context.Context, limit, offset int) ([]*model.ModerationAction, error)
 }
-

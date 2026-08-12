@@ -17,6 +17,7 @@ type userItem struct {
 	LastLogin  string `dynamodbav:"last_login"`
 	Theme      string `dynamodbav:"theme"`
 	Role       string `dynamodbav:"role,omitempty"`
+	AppleID    string `dynamodbav:"apple_id,omitempty"`
 }
 
 func userItemFromModel(u *model.User) userItem {
@@ -34,6 +35,7 @@ func userItemFromModel(u *model.User) userItem {
 		LastLogin:  u.LastLogin,
 		Theme:      u.Theme,
 		Role:       u.Role,
+		AppleID:    u.AppleID,
 	}
 }
 
@@ -49,6 +51,7 @@ func (u *userItem) toModel() *model.User {
 		LastLogin:  u.LastLogin,
 		Theme:      u.Theme,
 		Role:       u.Role,
+		AppleID:    u.AppleID,
 	}
 }
 
@@ -360,24 +363,24 @@ func (b *buoyDataItem) toModel() *model.BuoyData {
 }
 
 type buoyLocationItem struct {
-	Name      string  `dynamodbav:"name"`
-	RegionBuoy string `dynamodbav:"region_buoy,omitempty"`
-	Country   string  `dynamodbav:"country"`
-	Region    string  `dynamodbav:"region"`
-	Spot      string  `dynamodbav:"spot"`
-	Latitude  float64 `dynamodbav:"latitude"`
-	Longitude float64 `dynamodbav:"longitude"`
+	Name       string  `dynamodbav:"name"`
+	RegionBuoy string  `dynamodbav:"region_buoy,omitempty"`
+	Country    string  `dynamodbav:"country"`
+	Region     string  `dynamodbav:"region"`
+	Spot       string  `dynamodbav:"spot"`
+	Latitude   float64 `dynamodbav:"latitude"`
+	Longitude  float64 `dynamodbav:"longitude"`
 }
 
 func (b *buoyLocationItem) toModel() *model.BuoyLocation {
 	return &model.BuoyLocation{
-		Name:      b.Name,
+		Name:       b.Name,
 		RegionBuoy: b.RegionBuoy,
-		Country:   b.Country,
-		Region:    b.Region,
-		Spot:      b.Spot,
-		Latitude:  b.Latitude,
-		Longitude: b.Longitude,
+		Country:    b.Country,
+		Region:     b.Region,
+		Spot:       b.Spot,
+		Latitude:   b.Latitude,
+		Longitude:  b.Longitude,
 	}
 }
 
@@ -512,4 +515,3 @@ func (a *moderationActionItem) toModel() *model.ModerationAction {
 		CreatedAt:   a.CreatedAt,
 	}
 }
-

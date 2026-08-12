@@ -13,6 +13,7 @@ var _ repository.UserRepository = (*UserRepo)(nil)
 type UserRepo struct {
 	GetByEmailFn      func(ctx context.Context, email string) (*model.User, error)
 	GetByUUIDFn       func(ctx context.Context, uuid string) (*model.User, error)
+	GetByAppleIDFn    func(ctx context.Context, appleID string) (*model.User, error)
 	CreateFn          func(ctx context.Context, user *model.User) error
 	UpdateFn          func(ctx context.Context, user *model.User) error
 	DeleteFn          func(ctx context.Context, email string) error
@@ -30,6 +31,13 @@ func (m *UserRepo) GetByEmail(ctx context.Context, email string) (*model.User, e
 func (m *UserRepo) GetByUUID(ctx context.Context, uuid string) (*model.User, error) {
 	if m.GetByUUIDFn != nil {
 		return m.GetByUUIDFn(ctx, uuid)
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (m *UserRepo) GetByAppleID(ctx context.Context, appleID string) (*model.User, error) {
+	if m.GetByAppleIDFn != nil {
+		return m.GetByAppleIDFn(ctx, appleID)
 	}
 	return nil, repository.ErrNotFound
 }

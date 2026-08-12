@@ -47,6 +47,7 @@ type User struct {
 	CreatedAt  string `json:"created_at"`
 	LastLogin  string `json:"last_login"`
 	Theme      string `json:"theme"`
+	AppleID    string `json:"apple_id,omitempty"`
 }
 
 type SessionJSON struct {
@@ -72,7 +73,9 @@ type Service struct {
 	sessionRepo     repository.SessionRepository
 	sessionService  *sessions.Service
 	sessionStore    *store.DynamoDBStore
+	appleKeyCache   *appleKeyCache
 	googleClientIDs map[string]bool
+	appleClientIDs  map[string]bool
 	devUserEmail    string
 	jwtSecret       []byte
 	cookieSecure    bool
@@ -103,6 +106,8 @@ func NewService(
 		userRepo:        users,
 		sessionRepo:     sessionsRepo,
 		googleClientIDs: buildClientIDMap(cfg.Auth.GoogleClientIDs),
+		appleClientIDs:  buildClientIDMap(cfg.Auth.AppleClientIDs),
+		appleKeyCache:   newAppleKeyCache(),
 		cookieSecure:    cfg.Auth.CookieSecure,
 		isDevelopment:   cfg.IsDevelopment(),
 		devUserEmail:    cfg.Security.DevUserEmail,
@@ -150,6 +155,15 @@ func (s *Service) initSessionService() error {
 
 func (s *Service) getUserByEmail(ctx context.Context, email string) (*User, error) {
 	userData, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	return toAuthUser(userData), nil
+}
+
+func (s *Service) getUserByAppleID(ctx context.Context, appleID string) (*User, error) {
+	userData, err := s.userRepo.GetByAppleID(ctx, appleID)
 	if err != nil {
 		return nil, err
 	}
@@ -220,6 +234,7 @@ func toAuthUser(userData *model.User) *User {
 		CreatedAt:  userData.CreatedAt,
 		LastLogin:  userData.LastLogin,
 		Theme:      userData.Theme,
+		AppleID:    userData.AppleID,
 	}
 }
 
@@ -237,6 +252,7 @@ func toModelUser(userData *User) *model.User {
 		CreatedAt:  userData.CreatedAt,
 		LastLogin:  userData.LastLogin,
 		Theme:      userData.Theme,
+		AppleID:    userData.AppleID,
 	}
 }
 
@@ -283,6 +299,44 @@ func (s *Service) GoogleAuthHandler(c *gin.Context) {
 	})
 }
 
+func (s *Service) AppleAuthHandler(c *gin.Context) {
+	var req AppleTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	if req.IdentityToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "identity_token is required"})
+		return
+	}
+
+	claims := s.validateAndExtractAppleClaims(c, req.IdentityToken)
+	if claims == nil {
+		return
+	}
+
+	// authorization_code is accepted for forward compatibility (refresh/revoke) but unused in MVP.
+	_ = req.AuthorizationCode
+
+	finalUser, theme := s.processAppleAuthUser(claims, c)
+	if finalUser == nil {
+		return
+	}
+
+	s.setupAuthSession(finalUser.Email, c)
+	c.JSON(http.StatusOK, gin.H{
+		"user": buildUserResponse(
+			finalUser,
+			finalUser.Email,
+			finalUser.Name,
+			finalUser.Picture,
+			finalUser.FamilyName,
+			finalUser.GivenName,
+			theme,
+		),
+	})
+}
+
 //nolint:gocritic // Multiple return values needed for all claims
 func (s *Service) validateAndExtractGoogleClaims(
 	c *gin.Context,
@@ -310,6 +364,86 @@ func (s *Service) validateAndExtractGoogleClaims(
 
 	slog.Info("validated user email", slog.String("email", email))
 	return payload, email, name, picture, familyName, givenName
+}
+
+func (s *Service) validateAndExtractAppleClaims(c *gin.Context, identityToken string) *AppleClaims {
+	if len(s.appleClientIDs) == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Apple Sign In not configured"})
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	claims, err := validateAppleIdentityToken(ctx, identityToken, s.appleClientIDs, s.appleKeyCache)
+	if err != nil {
+		slog.Warn("apple identity token validation failed", slog.Any("error", err))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return nil
+	}
+
+	slog.Info("validated apple identity token", slog.String("apple_id", claims.Sub))
+	return claims
+}
+
+func (s *Service) processAppleAuthUser(claims *AppleClaims, c *gin.Context) (authUser *User, theme string) {
+	theme = constants.DefaultUserTheme
+
+	existingByApple, err := s.getUserByAppleID(c.Request.Context(), claims.Sub)
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		slog.Error("error looking up user by apple_id", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return nil, ""
+	}
+
+	if existingByApple != nil {
+		finalUser, err := s.handleExistingAppleUser(c.Request.Context(), existingByApple)
+		if err != nil {
+			slog.Error("error handling existing apple user", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+			return nil, ""
+		}
+		if finalUser != nil && finalUser.Theme != "" {
+			theme = finalUser.Theme
+		}
+		return finalUser, theme
+	}
+
+	email := claims.Email
+	if email == "" {
+		// First Sign in with Apple should include email; subsequent tokens may omit it.
+		// Without a prior apple_id row we cannot create a durable account.
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token: missing email"})
+		return nil, ""
+	}
+
+	existingByEmail, err := s.getUserByEmail(c.Request.Context(), email)
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		slog.Error("error checking user by email", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return nil, ""
+	}
+
+	if existingByEmail != nil {
+		finalUser, err := s.linkAppleIDToUser(c.Request.Context(), existingByEmail, claims.Sub)
+		if err != nil {
+			slog.Error("error linking apple_id to user", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+			return nil, ""
+		}
+		if finalUser != nil && finalUser.Theme != "" {
+			theme = finalUser.Theme
+		}
+		return finalUser, theme
+	}
+
+	finalUser, err := s.handleNewAppleUser(c.Request.Context(), email, claims.Sub)
+	if err != nil {
+		slog.Error("error creating apple user", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return nil, ""
+	}
+	return finalUser, theme
 }
 
 func (s *Service) processGoogleAuthUser(
@@ -663,13 +797,13 @@ func (s *Service) DevLoginHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"uuid":       userUUID,
-			"email":      email,
-			"name":       name,
-			"picture":    "",
+			"uuid":        userUUID,
+			"email":       email,
+			"name":        name,
+			"picture":     "",
 			"family_name": "",
 			"given_name":  "",
-			"theme":      theme,
+			"theme":       theme,
 		},
 	})
 }

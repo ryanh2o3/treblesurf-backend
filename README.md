@@ -57,6 +57,7 @@ treblesurf-backend/
 ### Authentication
 
 - `POST /auth/google` - Authenticate with Google OAuth
+- `POST /auth/apple` - Authenticate with Sign in with Apple (native iOS)
 - `GET /auth/validate` - Validate authentication token
 - `POST /auth/logout` - Log out
 - `GET /auth/csrf` - Get CSRF token (requires auth)

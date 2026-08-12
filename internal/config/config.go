@@ -42,6 +42,7 @@ type AWSConfig struct {
 type AuthConfig struct {
 	JWTSecret       string
 	GoogleClientIDs []string
+	AppleClientIDs  []string
 	CookieSecure    bool
 }
 
@@ -220,6 +221,7 @@ func loadAuthConfig(cfg *Config, env Environment) error {
 	}
 
 	cfg.Auth.GoogleClientIDs = loadGoogleClientIDs()
+	cfg.Auth.AppleClientIDs = loadAppleClientIDs()
 
 	cfg.Auth.CookieSecure = !cfg.IsDevelopment()
 	if secure, ok := getEnvBool("COOKIE_SECURE"); ok {
@@ -245,6 +247,17 @@ func loadGoogleClientIDs() []string {
 		}
 	}
 	return out
+}
+
+func loadAppleClientIDs() []string {
+	if ids := strings.TrimSpace(os.Getenv("APPLE_CLIENT_IDS")); ids != "" {
+		return splitCommaSeparated(ids)
+	}
+	// Native iOS Sign in with Apple uses the App ID / bundle ID as JWT audience.
+	if id := strings.TrimSpace(os.Getenv("APPLE_BUNDLE_ID")); id != "" {
+		return []string{id}
+	}
+	return []string{"treble.TrebleSurf"}
 }
 
 func loadSecurityConfig(cfg *Config, env Environment) {

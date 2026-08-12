@@ -99,6 +99,7 @@ func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 // setupPublicRoutes configures public authentication routes.
 func setupPublicRoutes(r gin.IRouter, authService *auth.Service) {
 	r.POST("/auth/google", authService.GoogleAuthHandler)
+	r.POST("/auth/apple", authService.AppleAuthHandler)
 	r.GET("/auth/validate", authService.ValidateTokenHandler)
 	r.POST("/auth/logout", authService.LogoutHandler)
 }
