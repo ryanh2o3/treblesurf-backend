@@ -18,11 +18,11 @@ const (
 
 func TestReportService_getUserAndValidate(t *testing.T) {
 	tests := []struct {
+		wantIs    error
 		setupMock func() *UserService
 		name      string
 		userEmail string
 		wantErr   bool
-		wantIs    error
 	}{
 		{
 			name:      "valid user with UUID",

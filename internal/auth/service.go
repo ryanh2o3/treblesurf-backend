@@ -397,9 +397,9 @@ func (s *Service) processAppleAuthUser(claims *AppleClaims, c *gin.Context) (aut
 	}
 
 	if existingByApple != nil {
-		finalUser, err := s.handleExistingAppleUser(c.Request.Context(), existingByApple)
-		if err != nil {
-			slog.Error("error handling existing apple user", slog.Any("error", err))
+		finalUser, handleErr := s.handleExistingAppleUser(c.Request.Context(), existingByApple)
+		if handleErr != nil {
+			slog.Error("error handling existing apple user", slog.Any("error", handleErr))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 			return nil, ""
 		}
@@ -425,9 +425,9 @@ func (s *Service) processAppleAuthUser(claims *AppleClaims, c *gin.Context) (aut
 	}
 
 	if existingByEmail != nil {
-		finalUser, err := s.linkAppleIDToUser(c.Request.Context(), existingByEmail, claims.Sub)
-		if err != nil {
-			slog.Error("error linking apple_id to user", slog.Any("error", err))
+		finalUser, linkErr := s.linkAppleIDToUser(c.Request.Context(), existingByEmail, claims.Sub)
+		if linkErr != nil {
+			slog.Error("error linking apple_id to user", slog.Any("error", linkErr))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 			return nil, ""
 		}

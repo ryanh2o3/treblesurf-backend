@@ -58,10 +58,10 @@ type appleJWK struct {
 }
 
 type appleKeyCache struct {
-	mu        sync.RWMutex
-	keysByKid map[string]*rsa.PublicKey
 	fetchedAt time.Time
+	keysByKid map[string]*rsa.PublicKey
 	fetchFn   func(ctx context.Context) (appleJWKSet, error)
+	mu        sync.RWMutex
 }
 
 func newAppleKeyCache() *appleKeyCache {
@@ -72,7 +72,7 @@ func newAppleKeyCache() *appleKeyCache {
 }
 
 func fetchAppleJWKS(ctx context.Context) (appleJWKSet, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, appleJWKSURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, appleJWKSURL, http.NoBody)
 	if err != nil {
 		return appleJWKSet{}, err
 	}
@@ -84,7 +84,10 @@ func fetchAppleJWKS(ctx context.Context) (appleJWKSet, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 512))
+		if readErr != nil {
+			return appleJWKSet{}, fmt.Errorf("apple jwks unexpected status %d", resp.StatusCode)
+		}
 		return appleJWKSet{}, fmt.Errorf("apple jwks unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -136,7 +139,7 @@ func (c *appleKeyCache) refresh(ctx context.Context, force bool) error {
 		if jwk.Kty != "RSA" || jwk.Kid == "" {
 			continue
 		}
-		pub, err := jwkToRSAPublicKey(jwk)
+		pub, err := jwkToRSAPublicKey(&jwk)
 		if err != nil {
 			continue
 		}
@@ -151,7 +154,7 @@ func (c *appleKeyCache) refresh(ctx context.Context, force bool) error {
 	return nil
 }
 
-func jwkToRSAPublicKey(jwk appleJWK) (*rsa.PublicKey, error) {
+func jwkToRSAPublicKey(jwk *appleJWK) (*rsa.PublicKey, error) {
 	nBytes, err := base64.RawURLEncoding.DecodeString(jwk.N)
 	if err != nil {
 		return nil, fmt.Errorf("decoding jwk n: %w", err)
@@ -194,8 +197,8 @@ func validateAppleIdentityToken(
 
 	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}))
 	token, err := parser.ParseWithClaims(identityToken, &appleIDTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-		kid, _ := token.Header["kid"].(string)
-		if kid == "" {
+		kid, ok := token.Header["kid"].(string)
+		if !ok || kid == "" {
 			return nil, fmt.Errorf("%w: missing kid", errAppleInvalidToken)
 		}
 		return keys.getKey(ctx, kid)

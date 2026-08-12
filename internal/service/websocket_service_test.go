@@ -15,7 +15,13 @@ import (
 
 const websocketTestSpotIdentifier = "Ireland/Donegal/Bundoran"
 
-func newTestWebSocketService(t *testing.T, connections *mockrepo.WebSocketRepo, subscriptions *mockrepo.SpotSubscriptionRepo, jwtSecret []byte, endpoint, stage string) *WebSocketService {
+func newTestWebSocketService(
+	t *testing.T,
+	connections *mockrepo.WebSocketRepo,
+	subscriptions *mockrepo.SpotSubscriptionRepo,
+	jwtSecret []byte,
+	endpoint, stage string,
+) *WebSocketService {
 	t.Helper()
 	svc, err := NewWebSocketService(connections, subscriptions, jwtSecret, endpoint, stage)
 	if err != nil {

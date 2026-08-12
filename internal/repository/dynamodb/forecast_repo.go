@@ -476,11 +476,10 @@ func splitBaseSpotID(spotID string) (country, region, spot string, ok bool) {
 }
 
 type forecastDataItem struct {
-	// Put pointer fields first to reduce GC scan range.
+	Data        map[string]interface{} `dynamodbav:"data"`
 	SpotID      string                 `dynamodbav:"spot_id"`
 	Source      string                 `dynamodbav:"source"`
 	GeneratedAt string                 `dynamodbav:"generated_at"`
-	Data        map[string]interface{} `dynamodbav:"data"`
 	TimestampTS int64                  `dynamodbav:"timestamp_ts"`
 }
 

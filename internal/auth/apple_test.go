@@ -40,7 +40,7 @@ func TestValidateAppleIdentityToken(t *testing.T) {
 	audiences := map[string]bool{"treble.TrebleSurf": true}
 
 	t.Run("valid token", func(t *testing.T) {
-		token := signAppleTestToken(t, privateKey, kid, appleIDTokenClaims{
+		token := signAppleTestToken(t, privateKey, kid, &appleIDTokenClaims{
 			Email: "relay@privaterelay.appleid.apple.com",
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    appleIssuer,
@@ -64,7 +64,7 @@ func TestValidateAppleIdentityToken(t *testing.T) {
 	})
 
 	t.Run("expired token", func(t *testing.T) {
-		token := signAppleTestToken(t, privateKey, kid, appleIDTokenClaims{
+		token := signAppleTestToken(t, privateKey, kid, &appleIDTokenClaims{
 			Email: "user@example.com",
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    appleIssuer,
@@ -85,7 +85,7 @@ func TestValidateAppleIdentityToken(t *testing.T) {
 	})
 
 	t.Run("wrong audience", func(t *testing.T) {
-		token := signAppleTestToken(t, privateKey, kid, appleIDTokenClaims{
+		token := signAppleTestToken(t, privateKey, kid, &appleIDTokenClaims{
 			Email: "user@example.com",
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    appleIssuer,
@@ -103,7 +103,7 @@ func TestValidateAppleIdentityToken(t *testing.T) {
 	})
 
 	t.Run("wrong issuer", func(t *testing.T) {
-		token := signAppleTestToken(t, privateKey, kid, appleIDTokenClaims{
+		token := signAppleTestToken(t, privateKey, kid, &appleIDTokenClaims{
 			Email: "user@example.com",
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    "https://evil.example",
@@ -117,6 +117,27 @@ func TestValidateAppleIdentityToken(t *testing.T) {
 		_, err := validateAppleIdentityToken(context.Background(), token, audiences, cache)
 		if err == nil {
 			t.Fatal("expected error for wrong issuer")
+		}
+	})
+
+	t.Run("unknown kid", func(t *testing.T) {
+		token := signAppleTestToken(t, privateKey, "unknown-kid", &appleIDTokenClaims{
+			Email: "user@example.com",
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    appleIssuer,
+				Subject:   "apple-sub-123",
+				Audience:  jwt.ClaimStrings{"treble.TrebleSurf"},
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+			},
+		})
+
+		_, err := validateAppleIdentityToken(context.Background(), token, audiences, cache)
+		if err == nil {
+			t.Fatal("expected error for unknown kid")
+		}
+		if !errors.Is(err, errAppleInvalidToken) {
+			t.Fatalf("expected errAppleInvalidToken, got %v", err)
 		}
 	})
 }
@@ -210,7 +231,7 @@ func TestAppleAuthHandler_NewAndReturningUser(t *testing.T) {
 		if includeEmail {
 			claims.Email = email
 		}
-		return signAppleTestToken(t, privateKey, kid, claims)
+		return signAppleTestToken(t, privateKey, kid, &claims)
 	}
 
 	t.Run("new user", func(t *testing.T) {
@@ -275,7 +296,7 @@ func TestAppleAuthHandler_NewAndReturningUser(t *testing.T) {
 	})
 
 	t.Run("wrong audience", func(t *testing.T) {
-		token := signAppleTestToken(t, privateKey, kid, appleIDTokenClaims{
+		token := signAppleTestToken(t, privateKey, kid, &appleIDTokenClaims{
 			Email: email,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    appleIssuer,
@@ -316,7 +337,7 @@ func TestConfigAppleClientIDsDefault(t *testing.T) {
 	}
 }
 
-func signAppleTestToken(t *testing.T, key *rsa.PrivateKey, kid string, claims appleIDTokenClaims) string {
+func signAppleTestToken(t *testing.T, key *rsa.PrivateKey, kid string, claims *appleIDTokenClaims) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = kid

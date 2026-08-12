@@ -101,19 +101,37 @@ func buildServices(
 ) (*containerServices, error) {
 	services := &containerServices{}
 
-	tideService, err := service.NewTideService(appCfg)
-	if err != nil {
-		return nil, fmt.Errorf("creating tide service: %w", err)
+	if err := initTideService(appCfg, services); err != nil {
+		return nil, err
 	}
-	services.tideService = tideService
-
 	if err := initAuthAndUserServices(appCfg, repos, services); err != nil {
 		return nil, err
 	}
 	if err := initDomainServices(repos, services, appCfg); err != nil {
 		return nil, err
 	}
+	if err := initRealtimeAndReportServices(repos, storage, cfg, services); err != nil {
+		return nil, err
+	}
 
+	return services, nil
+}
+
+func initTideService(appCfg *config.Config, services *containerServices) error {
+	tideService, err := service.NewTideService(appCfg)
+	if err != nil {
+		return fmt.Errorf("creating tide service: %w", err)
+	}
+	services.tideService = tideService
+	return nil
+}
+
+func initRealtimeAndReportServices(
+	repos *containerRepositories,
+	storage *containerStorage,
+	cfg *containerConfig,
+	services *containerServices,
+) error {
 	websocketService, err := service.NewWebSocketService(
 		repos.websocketRepo,
 		repos.subscriptionRepo,
@@ -122,7 +140,7 @@ func buildServices(
 		cfg.websocketStage,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating websocket service: %w", err)
+		return fmt.Errorf("creating websocket service: %w", err)
 	}
 	services.websocketService = websocketService
 
@@ -137,7 +155,7 @@ func buildServices(
 		services.websocketService,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating report service: %w", err)
+		return fmt.Errorf("creating report service: %w", err)
 	}
 	services.reportService = reportService
 
@@ -147,7 +165,7 @@ func buildServices(
 		repos.userRepo,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating content report service: %w", err)
+		return fmt.Errorf("creating content report service: %w", err)
 	}
 	services.contentReportService = contentReportService
 
@@ -157,11 +175,11 @@ func buildServices(
 		repos.userRepo,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating moderation service: %w", err)
+		return fmt.Errorf("creating moderation service: %w", err)
 	}
 	services.moderationService = moderationService
 
-	return services, nil
+	return nil
 }
 
 func initAuthAndUserServices(
