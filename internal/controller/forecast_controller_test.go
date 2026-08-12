@@ -16,12 +16,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func setupForecastController(repo *mockrepo.ForecastRepo, loc *mockrepo.LocationRepo) *ForecastController {
+func setupForecastController(t *testing.T, repo *mockrepo.ForecastRepo, loc *mockrepo.LocationRepo) *ForecastController {
+	t.Helper()
 	if loc == nil {
 		loc = &mockrepo.LocationRepo{}
 	}
-	forecastSvc, _ := service.NewForecastService(repo, loc)
-	tideSvc := service.NewTideService(&config.Config{Env: config.EnvDevelopment})
+	forecastSvc, err := service.NewForecastService(repo, loc)
+	if err != nil {
+		t.Fatalf("NewForecastService: %v", err)
+	}
+	tideSvc, err := service.NewTideService(&config.Config{Env: config.EnvDevelopment})
+	if err != nil {
+		t.Fatalf("NewTideService: %v", err)
+	}
 	return NewForecastController(forecastSvc, tideSvc)
 }
 
@@ -45,7 +52,7 @@ func TestForecastController_GetSpotForecast(t *testing.T) {
 		},
 	}
 
-	controller := setupForecastController(repo, nil)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -76,7 +83,7 @@ func TestForecastController_GetSpotForecast_InvalidGranularity(t *testing.T) {
 			return nil, nil
 		},
 	}
-	controller := setupForecastController(repo, nil)
+	controller := setupForecastController(t, repo, nil)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Bundoran&granularity=invalid", http.NoBody)
@@ -93,7 +100,7 @@ func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 		},
 	}
 
-	controller := setupForecastController(repo, nil)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -116,7 +123,7 @@ func TestForecastController_GetSpotForecast_SourcesAll_ReturnsGrouped(t *testing
 		},
 	}
 
-	controller := setupForecastController(repo, nil)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -160,7 +167,7 @@ func TestForecastController_GetSpotForecast_SourceParam_ReturnsRequestedSource(t
 			}, nil
 		},
 	}
-	controller := setupForecastController(repo, nil)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -200,7 +207,7 @@ func TestForecastController_GetListSpotsForecast(t *testing.T) {
 		},
 	}
 
-	controller := setupForecastController(repo, nil)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -240,7 +247,7 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 		},
 	}
 
-	controller := setupForecastController(repo, nil)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -268,7 +275,7 @@ func TestForecastController_GetCurrentWeather_NotFound(t *testing.T) {
 		},
 	}
 
-	controller := setupForecastController(repo, nil)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -299,7 +306,7 @@ func TestForecastController_GetRegionForecast(t *testing.T) {
 		},
 	}
 
-	controller := setupForecastController(repo, loc)
+	controller := setupForecastController(t, repo, loc)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -313,7 +320,7 @@ func TestForecastController_GetRegionForecast(t *testing.T) {
 }
 
 func TestForecastController_GetBeforeAfterTides(t *testing.T) {
-	controller := setupForecastController(nil, nil)
+	controller := setupForecastController(t, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -336,7 +343,7 @@ func TestForecastController_GetBeforeAfterTides(t *testing.T) {
 }
 
 func TestForecastController_GetDayTides(t *testing.T) {
-	controller := setupForecastController(nil, nil)
+	controller := setupForecastController(t, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

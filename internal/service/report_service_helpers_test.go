@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -22,8 +21,8 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 		setupMock func() *UserService
 		name      string
 		userEmail string
-		errMsg    string
 		wantErr   bool
+		wantIs    error
 	}{
 		{
 			name:      "valid user with UUID",
@@ -52,7 +51,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 				return service
 			},
 			wantErr: true,
-			errMsg:  "user not found",
+			wantIs:  ErrReportUserNotFound,
 		},
 		{
 			name:      "user nil",
@@ -67,7 +66,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 				return service
 			},
 			wantErr: true,
-			errMsg:  "user not found",
+			wantIs:  ErrReportUserNotFound,
 		},
 		{
 			name:      "user without UUID",
@@ -82,7 +81,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 				return service
 			},
 			wantErr: true,
-			errMsg:  "user does not have a UUID",
+			wantIs:  ErrReportUserMissingUUID,
 		},
 		{
 			name:      "repository error",
@@ -97,7 +96,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 				return service
 			},
 			wantErr: true,
-			errMsg:  "failed to get user",
+			wantIs:  ErrReportUserLookupFailed,
 		},
 	}
 
@@ -105,15 +104,15 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			userService := tt.setupMock()
-			reportService := &ReportService{userService: userService}
+			reportService := &ReportService{userLookup: userService}
 
 			user, err := reportService.getUserAndValidate(ctx, tt.userEmail)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error but got none")
 				}
-				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("expected error to contain %q, got %q", tt.errMsg, err.Error())
+				if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+					t.Errorf("errors.Is: want %v, got %v", tt.wantIs, err)
 				}
 				if user != nil {
 					t.Error("expected nil user on error")

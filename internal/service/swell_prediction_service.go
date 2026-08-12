@@ -26,13 +26,12 @@ func NewSwellPredictionService(predictions repository.SwellPredictionRepository)
 	}, nil
 }
 
-
 func (s *SwellPredictionService) GetSpotSwellPrediction(
 	ctx context.Context,
 	spotName, regionName, countryName string,
 ) ([]model.SwellPrediction, error) {
 	spotID := fmt.Sprintf("%s#%s#%s", countryName, regionName, spotName)
-	
+
 	now := time.Now().UTC()
 	currentHour := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.UTC)
 	return s.predictions.GetSpotPredictions(ctx, spotID, currentHour, 25)

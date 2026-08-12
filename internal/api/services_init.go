@@ -99,9 +99,13 @@ func buildServices(
 	cfg *containerConfig,
 	appCfg *config.Config,
 ) (*containerServices, error) {
-	services := &containerServices{
-		tideService: service.NewTideService(appCfg),
+	services := &containerServices{}
+
+	tideService, err := service.NewTideService(appCfg)
+	if err != nil {
+		return nil, fmt.Errorf("creating tide service: %w", err)
 	}
+	services.tideService = tideService
 
 	if err := initAuthAndUserServices(appCfg, repos, services); err != nil {
 		return nil, err
@@ -110,14 +114,19 @@ func buildServices(
 		return nil, err
 	}
 
-	services.websocketService = service.NewWebSocketService(
+	websocketService, err := service.NewWebSocketService(
 		repos.websocketRepo,
 		repos.subscriptionRepo,
 		[]byte(cfg.jwtSecret),
 		cfg.websocketEndpoint,
 		cfg.websocketStage,
 	)
-	services.reportService = service.NewReportService(
+	if err != nil {
+		return nil, fmt.Errorf("creating websocket service: %w", err)
+	}
+	services.websocketService = websocketService
+
+	reportService, err := service.NewReportService(
 		repos.mediaRepo,
 		repos.reportRepo,
 		repos.buoyRepo,
@@ -127,18 +136,30 @@ func buildServices(
 		services.userService,
 		services.websocketService,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("creating report service: %w", err)
+	}
+	services.reportService = reportService
 
-	// Content moderation services
-	services.contentReportService = service.NewContentReportService(
+	contentReportService, err := service.NewContentReportService(
 		repos.contentReportRepo,
 		repos.reportRepo,
 		repos.userRepo,
 	)
-	services.moderationService = service.NewModerationService(
+	if err != nil {
+		return nil, fmt.Errorf("creating content report service: %w", err)
+	}
+	services.contentReportService = contentReportService
+
+	moderationService, err := service.NewModerationService(
 		repos.contentReportRepo,
 		repos.moderationActionRepo,
 		repos.userRepo,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("creating moderation service: %w", err)
+	}
+	services.moderationService = moderationService
 
 	return services, nil
 }
@@ -221,4 +242,3 @@ func initializeControllers(
 		moderationController:      controller.NewModerationController(services.moderationService),
 	}
 }
-

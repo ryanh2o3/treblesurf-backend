@@ -40,12 +40,20 @@ func NewContentReportService(
 	reportRepo repository.ContentReportRepository,
 	surfReportRepo repository.ReportRepository,
 	userRepo repository.UserRepository,
-) *ContentReportService {
+) (*ContentReportService, error) {
+	switch {
+	case reportRepo == nil:
+		return nil, fmt.Errorf("content report repository is required")
+	case surfReportRepo == nil:
+		return nil, fmt.Errorf("surf report repository is required")
+	case userRepo == nil:
+		return nil, fmt.Errorf("user repository is required")
+	}
 	return &ContentReportService{
 		reportRepo:     reportRepo,
 		surfReportRepo: surfReportRepo,
 		userRepo:       userRepo,
-	}
+	}, nil
 }
 
 // SubmitReportInput contains the input for submitting a report.

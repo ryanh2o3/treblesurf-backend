@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	sourceStormglass          = "stormglass"
-	sourceIMISwan             = "imi_swan"
-	sourceWeatherKit          = "weatherkit"
-	sourceComposedIreland     = "imi_swan+weatherkit"
+	sourceStormglass      = "stormglass"
+	sourceIMISwan         = "imi_swan"
+	sourceWeatherKit      = "weatherkit"
+	sourceComposedIreland = "imi_swan+weatherkit"
 )
 
 // ForecastGroup holds forecasts for one timestamp, keyed by source.

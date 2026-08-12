@@ -25,18 +25,18 @@ const (
 )
 
 func (s *ReportService) getUserAndValidate(ctx context.Context, userEmail string) (*model.User, error) {
-	user, err := s.userService.GetByEmail(ctx, userEmail)
+	user, err := s.userLookup.GetByEmail(ctx, userEmail)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, fmt.Errorf("user not found")
+			return nil, fmt.Errorf("%w", ErrReportUserNotFound)
 		}
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrReportUserLookupFailed, err)
 	}
 	if user == nil {
-		return nil, fmt.Errorf("user not found")
+		return nil, fmt.Errorf("%w", ErrReportUserNotFound)
 	}
 	if user.UUID == "" {
-		return nil, fmt.Errorf("user does not have a UUID")
+		return nil, fmt.Errorf("%w", ErrReportUserMissingUUID)
 	}
 	return user, nil
 }

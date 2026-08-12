@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+
 	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/validation"
 
@@ -14,8 +16,8 @@ type ReportService struct {
 	locationRepo      repository.LocationRepository
 	forecastDataRepo  repository.ForecastDataRepository
 	rekognitionClient RekognitionAPI
-	userService       *UserService
-	websocketService  *WebSocketService
+	userLookup        UserByEmail
+	spotBroadcaster   SpotNotificationBroadcaster
 }
 
 type RekognitionAPI interface {
@@ -29,9 +31,25 @@ func NewReportService(
 	locationRepo repository.LocationRepository,
 	forecastDataRepo repository.ForecastDataRepository,
 	rekognitionClient RekognitionAPI,
-	userService *UserService,
-	websocketService *WebSocketService,
-) *ReportService {
+	userLookup UserByEmail,
+	spotBroadcaster SpotNotificationBroadcaster,
+) (*ReportService, error) {
+	switch {
+	case mediaRepo == nil:
+		return nil, fmt.Errorf("media repository is required")
+	case reportRepo == nil:
+		return nil, fmt.Errorf("report repository is required")
+	case buoyRepo == nil:
+		return nil, fmt.Errorf("buoy repository is required")
+	case locationRepo == nil:
+		return nil, fmt.Errorf("location repository is required")
+	case forecastDataRepo == nil:
+		return nil, fmt.Errorf("forecast data repository is required")
+	case rekognitionClient == nil:
+		return nil, fmt.Errorf("rekognition client is required")
+	case userLookup == nil:
+		return nil, fmt.Errorf("user lookup is required")
+	}
 	return &ReportService{
 		mediaRepo:         mediaRepo,
 		reportRepo:        reportRepo,
@@ -39,9 +57,9 @@ func NewReportService(
 		locationRepo:      locationRepo,
 		forecastDataRepo:  forecastDataRepo,
 		rekognitionClient: rekognitionClient,
-		userService:       userService,
-		websocketService:  websocketService,
-	}
+		userLookup:        userLookup,
+		spotBroadcaster:   spotBroadcaster,
+	}, nil
 }
 
 func (s *ReportService) IsValidSurfSize(swellSize string) bool {

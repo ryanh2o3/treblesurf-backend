@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	testSwellSpotID     = "Ireland#Donegal#Bundoran"
-	swellTestCountry    = "Ireland"
-	swellTestRegion     = "Donegal"
-	swellTestSpot       = "Bundoran"
+	testSwellSpotID  = "Ireland#Donegal#Bundoran"
+	swellTestCountry = "Ireland"
+	swellTestRegion  = "Donegal"
+	swellTestSpot    = "Bundoran"
 )
 
 func TestNewSwellPredictionService_NilRepository_ReturnsError(t *testing.T) {

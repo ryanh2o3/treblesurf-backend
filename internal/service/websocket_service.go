@@ -34,14 +34,22 @@ func NewWebSocketService(
 	jwtSecret []byte,
 	endpoint string,
 	stage string,
-) *WebSocketService {
+) (*WebSocketService, error) {
+	switch {
+	case connections == nil:
+		return nil, fmt.Errorf("websocket connections repository is required")
+	case subscriptions == nil:
+		return nil, fmt.Errorf("spot subscription repository is required")
+	case len(jwtSecret) == 0:
+		return nil, fmt.Errorf("JWT secret is required")
+	}
 	return &WebSocketService{
 		connections:   connections,
 		subscriptions: subscriptions,
 		jwtSecret:     jwtSecret,
 		endpoint:      endpoint,
 		stage:         stage,
-	}
+	}, nil
 }
 
 func (s *WebSocketService) ValidateWebSocketToken(token string) (*jwt.Token, error) {

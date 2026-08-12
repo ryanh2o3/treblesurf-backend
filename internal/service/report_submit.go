@@ -160,23 +160,34 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(
 	return nil
 }
 
+func (s *ReportService) spotBroadcasterReady() bool {
+	if s.spotBroadcaster == nil {
+		return false
+	}
+	ws, ok := s.spotBroadcaster.(*WebSocketService)
+	if ok {
+		return ws != nil
+	}
+	return true
+}
+
 func (s *ReportService) getSpotSubscribers(ctx context.Context, country, region, spot string) ([]string, error) {
-	if s.websocketService == nil {
-		return nil, fmt.Errorf("websocket service not initialized")
+	if !s.spotBroadcasterReady() {
+		return nil, fmt.Errorf("%w", ErrReportWebSocketUnavailable)
 	}
 	spotIdentifier := fmt.Sprintf("%s/%s/%s", country, region, spot)
-	return s.websocketService.GetSubscribersBySpot(ctx, spotIdentifier)
+	return s.spotBroadcaster.GetSubscribersBySpot(ctx, spotIdentifier)
 }
 
 func (s *ReportService) broadcastToUsers(ctx context.Context, subscribers []string, message interface{}) {
 	if len(subscribers) == 0 {
 		return
 	}
-	if s.websocketService == nil {
+	if !s.spotBroadcasterReady() {
 		slog.Warn("websocket service not initialized; unable to broadcast")
 		return
 	}
-	if err := s.websocketService.BroadcastToUsers(ctx, subscribers, message); err != nil {
+	if err := s.spotBroadcaster.BroadcastToUsers(ctx, subscribers, message); err != nil {
 		slog.Warn("failed to broadcast message to subscribers", slog.Any("error", err))
 	}
 }

@@ -13,13 +13,13 @@ import (
 type forecastCtxKey string
 
 const (
-	forecastCtxKeyValue   forecastCtxKey = "ctx-key"
-	forecastCtxValue      string         = "ctx-value"
-	forecastTestCountry                  = "Ireland"
-	forecastTestRegion                   = "Donegal"
-	forecastTestSpot                     = "Bundoran"
-	forecastTestSpotID                   = "Ireland_Donegal_Bundoran"
-	forecastTestSpotIDRoss               = "Ireland_Donegal_Rossnowlagh"
+	forecastCtxKeyValue    forecastCtxKey = "ctx-key"
+	forecastCtxValue       string         = "ctx-value"
+	forecastTestCountry                   = "Ireland"
+	forecastTestRegion                    = "Donegal"
+	forecastTestSpot                      = "Bundoran"
+	forecastTestSpotID                    = "Ireland_Donegal_Bundoran"
+	forecastTestSpotIDRoss                = "Ireland_Donegal_Rossnowlagh"
 )
 
 func TestForecastService_GetSpotForecast_PropagatesContext(t *testing.T) {

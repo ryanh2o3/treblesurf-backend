@@ -130,8 +130,8 @@ func TestReportService_GenerateImageUploadURL(t *testing.T) {
 			ctx := context.Background()
 			userService, mediaRepo := tt.setupMock()
 			service := &ReportService{
-				userService: userService,
-				mediaRepo:   mediaRepo,
+				userLookup: userService,
+				mediaRepo:  mediaRepo,
 			}
 
 			result, err := service.GenerateImageUploadURL(ctx, tt.country, tt.region, tt.spot, tt.userEmail)
@@ -220,8 +220,8 @@ func TestReportService_GenerateVideoUploadURL(t *testing.T) {
 			ctx := context.Background()
 			userService, mediaRepo := tt.setupMock()
 			service := &ReportService{
-				userService: userService,
-				mediaRepo:   mediaRepo,
+				userLookup: userService,
+				mediaRepo:  mediaRepo,
 			}
 
 			result, err := service.GenerateVideoUploadURL(ctx, tt.country, tt.region, tt.spot, tt.userEmail)
@@ -475,8 +475,8 @@ func TestReportService_GenerateVideoViewURL(t *testing.T) {
 			ctx := context.Background()
 			userService, mediaRepo := tt.setupMock()
 			service := &ReportService{
-				userService: userService,
-				mediaRepo:   mediaRepo,
+				userLookup: userService,
+				mediaRepo:  mediaRepo,
 			}
 
 			result, err := service.GenerateVideoViewURL(ctx, tt.videoKey, tt.userEmail)

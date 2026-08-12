@@ -18,15 +18,20 @@ import (
 
 const testSpotIdentifier = "Ireland/Donegal/Bundoran"
 
-// createTestWebSocketService creates a minimal WebSocketService for testing
-func createTestWebSocketService(
+// testWebSocketService creates a minimal WebSocketService for testing.
+func testWebSocketService(
 	getSubscribersFn func(ctx context.Context, spotIdentifier string) ([]string, error),
 ) *WebSocketService {
 	wsRepo := &mockrepo.WebSocketRepo{}
-	subRepo := &mockrepo.SpotSubscriptionRepo{
-		GetSubscribersBySpotFn: getSubscribersFn,
+	subRepo := &mockrepo.SpotSubscriptionRepo{}
+	if getSubscribersFn != nil {
+		subRepo.GetSubscribersBySpotFn = getSubscribersFn
 	}
-	return NewWebSocketService(wsRepo, subRepo, []byte("test-secret"), "", "")
+	svc, err := NewWebSocketService(wsRepo, subRepo, []byte("test-secret"), "", "")
+	if err != nil {
+		panic(err)
+	}
+	return svc
 }
 
 func TestReportService_SubmitSurfReport(t *testing.T) {
@@ -96,7 +101,7 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 						}, nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
+				wsService := testWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{"user1", "user2"}, nil
 				})
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
@@ -131,7 +136,7 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 				}
 				mediaRepo := &mockrepo.MediaRepo{}
 				rekognitionClient := &mockRekognitionClient{}
-				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
+				wsService := testWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{}, nil
 				})
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
@@ -157,7 +162,7 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 				reportRepo := &mockrepo.ReportRepo{}
 				mediaRepo := &mockrepo.MediaRepo{}
 				rekognitionClient := &mockRekognitionClient{}
-				wsService := createTestWebSocketService(nil)
+				wsService := testWebSocketService(nil)
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
 			},
 			wantErr: true,
@@ -183,7 +188,7 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 				reportRepo := &mockrepo.ReportRepo{}
 				mediaRepo := &mockrepo.MediaRepo{}
 				rekognitionClient := &mockRekognitionClient{}
-				wsService := createTestWebSocketService(nil)
+				wsService := testWebSocketService(nil)
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
 			},
 			wantErr: true,
@@ -212,7 +217,7 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 				}
 				mediaRepo := &mockrepo.MediaRepo{}
 				rekognitionClient := &mockRekognitionClient{}
-				wsService := createTestWebSocketService(nil)
+				wsService := testWebSocketService(nil)
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
 			},
 			wantErr: true,
@@ -224,11 +229,11 @@ func TestReportService_SubmitSurfReport(t *testing.T) {
 			ctx := context.Background()
 			userService, reportRepo, mediaRepo, rekognitionClient, wsService := tt.setupMock()
 			service := &ReportService{
-				userService:       userService,
+				userLookup:        userService,
 				reportRepo:        reportRepo,
 				mediaRepo:         mediaRepo,
 				rekognitionClient: rekognitionClient,
-				websocketService:  wsService,
+				spotBroadcaster:   wsService,
 			}
 
 			err := service.SubmitSurfReport(ctx, tt.report, tt.userEmail, tt.userName)
@@ -307,7 +312,7 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 						}, nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
+				wsService := testWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{"user1"}, nil
 				})
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
@@ -338,7 +343,7 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 					},
 				}
 				rekognitionClient := &mockRekognitionClient{}
-				wsService := createTestWebSocketService(nil)
+				wsService := testWebSocketService(nil)
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
 			},
 			wantErr: true,
@@ -379,7 +384,7 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 						}, nil
 					},
 				}
-				wsService := createTestWebSocketService(nil)
+				wsService := testWebSocketService(nil)
 				return userService, reportRepo, mediaRepo, rekognitionClient, wsService
 			},
 			wantErr: true,
@@ -397,11 +402,11 @@ func TestReportService_SubmitSurfReportWithS3Image(t *testing.T) {
 			ctx := context.Background()
 			userService, reportRepo, mediaRepo, rekognitionClient, wsService := tt.setupMock()
 			service := &ReportService{
-				userService:       userService,
+				userLookup:        userService,
 				reportRepo:        reportRepo,
 				mediaRepo:         mediaRepo,
 				rekognitionClient: rekognitionClient,
-				websocketService:  wsService,
+				spotBroadcaster:   wsService,
 			}
 
 			err := service.SubmitSurfReportWithS3Image(ctx, tt.report, tt.userEmail, tt.userName)
@@ -459,7 +464,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 						return nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
+				wsService := testWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{"user1"}, nil
 				})
 				return userService, reportRepo, wsService
@@ -494,7 +499,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 						return nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
+				wsService := testWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{}, nil
 				})
 				return userService, reportRepo, wsService
@@ -530,7 +535,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 						return nil
 					},
 				}
-				wsService := createTestWebSocketService(func(_ context.Context, _ string) ([]string, error) {
+				wsService := testWebSocketService(func(_ context.Context, _ string) ([]string, error) {
 					return []string{}, nil
 				})
 				return userService, reportRepo, wsService
@@ -554,7 +559,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 				}
 				userService, _ := NewUserService(userRepo)
 				reportRepo := &mockrepo.ReportRepo{}
-				wsService := createTestWebSocketService(nil)
+				wsService := testWebSocketService(nil)
 				return userService, reportRepo, wsService
 			},
 			wantErr: true,
@@ -581,7 +586,7 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 						return errors.New("database error")
 					},
 				}
-				wsService := createTestWebSocketService(nil)
+				wsService := testWebSocketService(nil)
 				return userService, reportRepo, wsService
 			},
 			wantErr: true,
@@ -593,9 +598,9 @@ func TestReportService_SubmitSurfReportWithIOSValidation(t *testing.T) {
 			ctx := context.Background()
 			userService, reportRepo, wsService := tt.setupMock()
 			service := &ReportService{
-				userService:      userService,
-				reportRepo:       reportRepo,
-				websocketService: wsService,
+				userLookup:      userService,
+				reportRepo:      reportRepo,
+				spotBroadcaster: wsService,
 			}
 
 			err := service.SubmitSurfReportWithIOSValidation(ctx, tt.report, tt.userEmail, tt.userName)
@@ -629,7 +634,7 @@ func TestReportService_getSpotSubscribers(t *testing.T) {
 			region:  "Donegal",
 			spot:    "Bundoran",
 			setupMock: func() *WebSocketService {
-				return createTestWebSocketService(func(_ context.Context, spotIdentifier string) ([]string, error) {
+				return testWebSocketService(func(_ context.Context, spotIdentifier string) ([]string, error) {
 					if spotIdentifier != testSpotIdentifier {
 						t.Errorf("unexpected spot identifier: %s", spotIdentifier)
 					}
@@ -657,13 +662,16 @@ func TestReportService_getSpotSubscribers(t *testing.T) {
 			ctx := context.Background()
 			wsService := tt.setupMock()
 			service := &ReportService{
-				websocketService: wsService,
+				spotBroadcaster: wsService,
 			}
 
 			subscribers, err := service.getSpotSubscribers(ctx, tt.country, tt.region, tt.spot)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error but got none")
+				}
+				if !errors.Is(err, ErrReportWebSocketUnavailable) {
+					t.Fatalf("expected ErrReportWebSocketUnavailable, got %v", err)
 				}
 			} else {
 				if err != nil {
@@ -690,7 +698,7 @@ func TestReportService_broadcastToUsers(t *testing.T) {
 			subscribers: []string{"user1", "user2"},
 			message:     map[string]interface{}{"action": "new_report"},
 			setupMock: func() *WebSocketService {
-				return createTestWebSocketService(nil)
+				return testWebSocketService(nil)
 			},
 			wantErr: false,
 		},
@@ -699,7 +707,7 @@ func TestReportService_broadcastToUsers(t *testing.T) {
 			subscribers: []string{},
 			message:     map[string]interface{}{"action": "new_report"},
 			setupMock: func() *WebSocketService {
-				return createTestWebSocketService(nil)
+				return testWebSocketService(nil)
 			},
 			wantErr: false,
 		},
@@ -717,7 +725,7 @@ func TestReportService_broadcastToUsers(t *testing.T) {
 			subscribers: []string{"user1"},
 			message:     map[string]interface{}{"action": "new_report"},
 			setupMock: func() *WebSocketService {
-				return createTestWebSocketService(nil)
+				return testWebSocketService(nil)
 			},
 			wantErr: false, // Errors are logged but not returned
 		},
@@ -728,7 +736,7 @@ func TestReportService_broadcastToUsers(t *testing.T) {
 			ctx := context.Background()
 			wsService := tt.setupMock()
 			service := &ReportService{
-				websocketService: wsService,
+				spotBroadcaster: wsService,
 			}
 
 			service.broadcastToUsers(ctx, tt.subscribers, tt.message)

@@ -23,12 +23,20 @@ func NewModerationService(
 	reportRepo repository.ContentReportRepository,
 	actionRepo repository.ModerationActionRepository,
 	userRepo repository.UserRepository,
-) *ModerationService {
+) (*ModerationService, error) {
+	switch {
+	case reportRepo == nil:
+		return nil, fmt.Errorf("content report repository is required")
+	case actionRepo == nil:
+		return nil, fmt.Errorf("moderation action repository is required")
+	case userRepo == nil:
+		return nil, fmt.Errorf("user repository is required")
+	}
 	return &ModerationService{
 		reportRepo: reportRepo,
 		actionRepo: actionRepo,
 		userRepo:   userRepo,
-	}
+	}, nil
 }
 
 // GetPendingReports retrieves pending reports for the moderation queue.

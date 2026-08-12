@@ -32,16 +32,9 @@ func (s *ReportService) prepareUploadURLParams(
 	country, region, spot, userEmail string,
 	fileExt string,
 ) (*generateUploadURLParams, error) {
-	// Get the user's UUID
-	user, err := s.userService.GetByEmail(ctx, userEmail)
+	user, err := s.getUserAndValidate(ctx, userEmail)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
-	}
-	if user == nil {
-		return nil, fmt.Errorf("user not found")
-	}
-	if user.UUID == "" {
-		return nil, fmt.Errorf("user does not have a UUID")
+		return nil, err
 	}
 
 	// Generate a predictable S3 key based on location and user UUID
@@ -77,7 +70,7 @@ func (s *ReportService) GenerateImageUploadURL(
 	// Generate presigned URL valid for 15 minutes
 	presignedURL, err := s.mediaRepo.GenerateUploadURL(ctx, imageKey, params.expiration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrReportPresignedUploadURL, err)
 	}
 
 	expiresAt := currentTime.Add(params.expiration)
@@ -110,7 +103,7 @@ func (s *ReportService) GenerateVideoUploadURL(
 	// Generate presigned URL valid for 15 minutes
 	presignedURL, err := s.mediaRepo.GenerateUploadURL(ctx, videoKey, params.expiration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrReportPresignedUploadURL, err)
 	}
 
 	expiresAt := currentTime.Add(params.expiration)
@@ -125,7 +118,7 @@ func (s *ReportService) GenerateVideoUploadURL(
 func (s *ReportService) GetReportImage(ctx context.Context, imageKey string) (imageData []byte, contentType string, err error) {
 	imageData, err = s.mediaRepo.Download(ctx, imageKey)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to read image data: %w", err)
+		return nil, "", fmt.Errorf("%w: %w", ErrReadReportImage, err)
 	}
 
 	contentType = detectContentType(imageData, "image/jpeg")
@@ -136,7 +129,7 @@ func (s *ReportService) GetReportImage(ctx context.Context, imageKey string) (im
 func (s *ReportService) GetReportVideo(ctx context.Context, videoKey string) (videoData []byte, contentType string, err error) {
 	videoData, err = s.mediaRepo.Download(ctx, videoKey)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to read video data: %w", err)
+		return nil, "", fmt.Errorf("%w: %w", ErrReadReportVideo, err)
 	}
 
 	contentType = detectContentType(videoData, "video/mp4")
@@ -146,37 +139,31 @@ func (s *ReportService) GetReportVideo(ctx context.Context, videoKey string) (vi
 
 func (s *ReportService) GenerateVideoViewURL(ctx context.Context, videoKey, userEmail string) (*model.VideoViewURLResponse, error) {
 	if videoKey == "" {
-		return nil, fmt.Errorf("video key is required")
+		return nil, fmt.Errorf("%w", ErrReportVideoKeyRequired)
 	}
 
-	user, err := s.userService.GetByEmail(ctx, userEmail)
+	user, err := s.getUserAndValidate(ctx, userEmail)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
-	}
-	if user == nil {
-		return nil, fmt.Errorf("user not found")
-	}
-	if user.UUID == "" {
-		return nil, fmt.Errorf("user does not have a UUID")
+		return nil, err
 	}
 
 	exists, err := s.mediaRepo.Exists(ctx, videoKey)
 	if err != nil {
-		return nil, fmt.Errorf("video not found or not accessible: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrReportVideoNotFound, err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("video not found or not accessible: %w", repository.ErrNotFound)
+		return nil, fmt.Errorf("%w: %w", ErrReportVideoNotFound, repository.ErrNotFound)
 	}
 
 	// Video keys follow the pattern: surf-reports/Country_Region_Spot/Timestamp_UUID.mp4
 	if !s.canUserAccessVideo(videoKey, user.UUID) {
-		return nil, fmt.Errorf("access denied: you don't have permission to view this video")
+		return nil, fmt.Errorf("%w: you don't have permission to view this video", ErrReportVideoAccessDenied)
 	}
 
 	expires := 1 * time.Hour
 	viewURL, err := s.mediaRepo.GenerateViewURL(ctx, videoKey, expires)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate presigned view URL: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrReportPresignedViewURL, err)
 	}
 
 	expiresAt := time.Now().Add(expires)
@@ -269,14 +256,14 @@ func (s *ReportService) CleanupOrphanedImage(ctx context.Context, imageKey strin
 
 func (s *ReportService) DeleteMediaFromS3(ctx context.Context, mediaKey string) error {
 	if mediaKey == "" {
-		return fmt.Errorf("media key is required")
+		return fmt.Errorf("%w", ErrReportMediaKeyRequired)
 	}
 
 	slog.Info("deleting media", slog.String("key", mediaKey))
 	err := s.mediaRepo.Delete(ctx, mediaKey)
 	if err != nil {
 		slog.Warn("failed to delete media", slog.String("key", mediaKey), slog.Any("error", err))
-		return fmt.Errorf("failed to delete media from S3: %w", err)
+		return fmt.Errorf("%w: %w", ErrReportMediaDelete, err)
 	}
 
 	slog.Info("successfully deleted media", slog.String("key", mediaKey))
