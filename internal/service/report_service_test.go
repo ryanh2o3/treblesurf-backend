@@ -4,21 +4,45 @@ import (
 	"testing"
 
 	mockrepo "treblesurf-backend/internal/repository/mock"
+
+	"github.com/aws/aws-sdk-go/service/rekognition"
 )
 
+type stubRekognition struct{}
+
+func (stubRekognition) DetectLabels(*rekognition.DetectLabelsInput) (*rekognition.DetectLabelsOutput, error) {
+	return &rekognition.DetectLabelsOutput{}, nil
+}
+
 func TestNewReportService(t *testing.T) {
-	service := NewReportService(
+	userSvc, err := NewUserService(&mockrepo.UserRepo{})
+	if err != nil {
+		t.Fatalf("NewUserService: %v", err)
+	}
+	wsSvc, err := NewWebSocketService(
+		&mockrepo.WebSocketRepo{},
+		&mockrepo.SpotSubscriptionRepo{},
+		[]byte("secret"),
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("NewWebSocketService: %v", err)
+	}
+	svc, err := NewReportService(
 		&mockrepo.MediaRepo{},
 		&mockrepo.ReportRepo{},
 		&mockrepo.BuoyRepo{},
 		&mockrepo.LocationRepo{},
 		&mockrepo.ForecastRepo{},
-		nil, // rekognitionClient
-		&UserService{},
-		&WebSocketService{},
+		stubRekognition{},
+		userSvc,
+		wsSvc,
 	)
-
-	if service == nil {
+	if err != nil {
+		t.Fatalf("NewReportService: %v", err)
+	}
+	if svc == nil {
 		t.Fatal("expected non-nil service")
 	}
 }
@@ -26,9 +50,9 @@ func TestNewReportService(t *testing.T) {
 func TestReportService_IsValidSurfSize(t *testing.T) {
 	service := &ReportService{}
 	tests := []struct {
-		name     string
+		name      string
 		swellSize string
-		want     bool
+		want      bool
 	}{
 		{"valid size", "knee-waist", true},
 		{"valid size", "head-high", true},
@@ -49,9 +73,9 @@ func TestReportService_IsValidSurfSize(t *testing.T) {
 func TestReportService_IsValidWindAmount(t *testing.T) {
 	service := &ReportService{}
 	tests := []struct {
-		name      string
+		name       string
 		windAmount string
-		want      bool
+		want       bool
 	}{
 		{"valid amount", "light", true},
 		{"valid amount", "moderate", true},
@@ -95,9 +119,9 @@ func TestReportService_IsValidWindDirection(t *testing.T) {
 func TestReportService_IsValidSurfConditions(t *testing.T) {
 	service := &ReportService{}
 	tests := []struct {
-		name          string
+		name           string
 		surfConditions string
-		want          bool
+		want           bool
 	}{
 		{"valid condition", "good", true},
 		{"valid condition", "excellent", true},
@@ -141,9 +165,9 @@ func TestReportService_IsValidSurfDifficulty(t *testing.T) {
 func TestReportService_IsValidMessiness(t *testing.T) {
 	service := &ReportService{}
 	tests := []struct {
-		name     string
+		name      string
 		messiness string
-		want     bool
+		want      bool
 	}{
 		{"valid messiness", "clean", true},
 		{"valid messiness", "messy", true},
@@ -160,4 +184,3 @@ func TestReportService_IsValidMessiness(t *testing.T) {
 		})
 	}
 }
-

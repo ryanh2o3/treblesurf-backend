@@ -76,7 +76,7 @@ func (h *Handler) handleConnect(
 		slog.String("connection_id", connectionID),
 		slog.String("user_id", userID),
 	)
-	return successResponse("Connected"), nil
+	return integrationSuccessNoClientPayload(), nil
 }
 
 //nolint:gocritic // AWS Lambda handler signature cannot be changed
@@ -187,10 +187,7 @@ func (h *Handler) handleSubscribeAction(
 		return *resp, nil
 	}
 
-	return events.APIGatewayProxyResponse{
-		StatusCode: http.StatusOK,
-		Body:       "Subscribed",
-	}, nil
+	return integrationSuccessNoClientPayload(), nil
 }
 
 func parseSubscriptionRequest(data json.RawMessage) (model.SubscriptionRequest, *events.APIGatewayProxyResponse) {
@@ -294,8 +291,5 @@ func (h *Handler) handlePingAction(
 		slog.Warn("failed to send message to connection", slog.Any("error", err))
 	}
 
-	return events.APIGatewayProxyResponse{
-		StatusCode: http.StatusOK,
-		Body:       "Ping received",
-	}, nil
+	return integrationSuccessNoClientPayload(), nil
 }

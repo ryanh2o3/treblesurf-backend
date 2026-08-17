@@ -126,6 +126,57 @@ func TestUserService_Delete_UsesContext(t *testing.T) {
 	}
 }
 
+func TestUserService_Delete_CleansSessionsAndReports(t *testing.T) {
+	ctx := context.Background()
+	anonymized := false
+	deletedSession := ""
+	repo := &mockrepo.UserRepo{
+		DeleteFn: func(_ context.Context, email string) error {
+			if email != testUserEmail {
+				t.Fatalf("unexpected email: %s", email)
+			}
+			return nil
+		},
+	}
+	sessions := &mockrepo.SessionRepo{
+		GetByUserIDFn: func(_ context.Context, userID string) ([]*model.Session, error) {
+			if userID != testUserEmail {
+				t.Fatalf("unexpected user id: %s", userID)
+			}
+			return []*model.Session{{SessionID: "sess-1", UserID: userID}}, nil
+		},
+		DeleteFn: func(_ context.Context, sessionID string) error {
+			deletedSession = sessionID
+			return nil
+		},
+	}
+	reports := &mockrepo.ReportRepo{
+		AnonymizeByUserEmailFn: func(_ context.Context, email string) error {
+			anonymized = true
+			if email != testUserEmail {
+				t.Fatalf("unexpected email: %s", email)
+			}
+			return nil
+		},
+	}
+
+	svc, err := NewUserService(repo)
+	if err != nil {
+		t.Fatalf("unexpected error creating service: %v", err)
+	}
+	svc.WithAccountCleanup(sessions, reports)
+
+	if err := svc.Delete(ctx, testUserEmail); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !anonymized {
+		t.Fatalf("expected surf reports to be anonymized")
+	}
+	if deletedSession != "sess-1" {
+		t.Fatalf("expected session to be deleted, got %q", deletedSession)
+	}
+}
+
 func TestNewUserService_NilRepository_ReturnsError(t *testing.T) {
 	_, err := NewUserService(nil)
 	if err == nil {

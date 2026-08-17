@@ -12,10 +12,11 @@ type TideService struct {
 	isDevelopment bool
 }
 
-func NewTideService(cfg *config.Config) *TideService {
-	isDevelopment := cfg != nil && cfg.IsDevelopment()
-
-	return &TideService{isDevelopment: isDevelopment}
+func NewTideService(cfg *config.Config) (*TideService, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is required")
+	}
+	return &TideService{isDevelopment: cfg.IsDevelopment()}, nil
 }
 
 func (s *TideService) GetCurrentTides(locationName string) []map[string]interface{} {

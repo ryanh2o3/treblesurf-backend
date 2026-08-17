@@ -17,6 +17,7 @@ type userItem struct {
 	LastLogin  string `dynamodbav:"last_login"`
 	Theme      string `dynamodbav:"theme"`
 	Role       string `dynamodbav:"role,omitempty"`
+	AppleID    string `dynamodbav:"apple_id,omitempty"`
 }
 
 func userItemFromModel(u *model.User) userItem {
@@ -34,6 +35,7 @@ func userItemFromModel(u *model.User) userItem {
 		LastLogin:  u.LastLogin,
 		Theme:      u.Theme,
 		Role:       u.Role,
+		AppleID:    u.AppleID,
 	}
 }
 
@@ -49,6 +51,7 @@ func (u *userItem) toModel() *model.User {
 		LastLogin:  u.LastLogin,
 		Theme:      u.Theme,
 		Role:       u.Role,
+		AppleID:    u.AppleID,
 	}
 }
 
@@ -316,52 +319,68 @@ func (s *spotSnapshotItem) toModel() *model.SpotSnapshot {
 }
 
 type buoyDataItem struct {
-	Timestamp     time.Time `dynamodbav:"timestamp"`
-	BuoyName      string    `dynamodbav:"buoy_name"`
-	WaveHeight    float64   `dynamodbav:"wave_height"`
-	WavePeriod    float64   `dynamodbav:"wave_period"`
-	MaxPeriod     float64   `dynamodbav:"max_period"`
-	WaveDirection float64   `dynamodbav:"wave_direction"`
-	WindSpeed     float64   `dynamodbav:"wind_speed"`
-	WindDirection float64   `dynamodbav:"wind_direction"`
-	Temperature   float64   `dynamodbav:"temperature"`
-	Pressure      float64   `dynamodbav:"pressure"`
+	Timestamp        time.Time `dynamodbav:"timestamp"`
+	BuoyName         string    `dynamodbav:"buoy_name"`
+	WaveHeight       float64   `dynamodbav:"wave_height"`
+	WavePeriod       float64   `dynamodbav:"wave_period"`
+	MaxPeriod        float64   `dynamodbav:"max_period"`
+	WaveDirection    float64   `dynamodbav:"wave_direction"`
+	WindSpeed        float64   `dynamodbav:"wind_speed"`
+	WindDirection    float64   `dynamodbav:"wind_direction"`
+	Temperature      float64   `dynamodbav:"temperature"`
+	Pressure         float64   `dynamodbav:"pressure"`
+	SprTp            float64   `dynamodbav:"SprTp"`
+	ThTp             float64   `dynamodbav:"ThTp"`
+	MaxHeight        float64   `dynamodbav:"MaxHeight"`
+	Gust             float64   `dynamodbav:"Gust"`
+	AirTemperature   float64   `dynamodbav:"AirTemperature"`
+	DewPoint         float64   `dynamodbav:"DewPoint"`
+	RelativeHumidity float64   `dynamodbav:"RelativeHumidity"`
+	Salinity         float64   `dynamodbav:"salinity"`
 }
 
 func (b *buoyDataItem) toModel() *model.BuoyData {
 	return &model.BuoyData{
-		Timestamp:     b.Timestamp,
-		BuoyName:      b.BuoyName,
-		WaveHeight:    b.WaveHeight,
-		WavePeriod:    b.WavePeriod,
-		MaxPeriod:     b.MaxPeriod,
-		WaveDirection: b.WaveDirection,
-		WindSpeed:     b.WindSpeed,
-		WindDirection: b.WindDirection,
-		Temperature:   b.Temperature,
-		Pressure:      b.Pressure,
+		Timestamp:        b.Timestamp,
+		BuoyName:         b.BuoyName,
+		WaveHeight:       b.WaveHeight,
+		WavePeriod:       b.WavePeriod,
+		MaxPeriod:        b.MaxPeriod,
+		WaveDirection:    b.WaveDirection,
+		WindSpeed:        b.WindSpeed,
+		WindDirection:    b.WindDirection,
+		Temperature:      b.Temperature,
+		Pressure:         b.Pressure,
+		SprTp:            b.SprTp,
+		ThTp:             b.ThTp,
+		MaxHeight:        b.MaxHeight,
+		Gust:             b.Gust,
+		AirTemperature:   b.AirTemperature,
+		DewPoint:         b.DewPoint,
+		RelativeHumidity: b.RelativeHumidity,
+		Salinity:         b.Salinity,
 	}
 }
 
 type buoyLocationItem struct {
-	Name      string  `dynamodbav:"name"`
-	RegionBuoy string `dynamodbav:"region_buoy,omitempty"`
-	Country   string  `dynamodbav:"country"`
-	Region    string  `dynamodbav:"region"`
-	Spot      string  `dynamodbav:"spot"`
-	Latitude  float64 `dynamodbav:"latitude"`
-	Longitude float64 `dynamodbav:"longitude"`
+	Name       string  `dynamodbav:"name"`
+	RegionBuoy string  `dynamodbav:"region_buoy,omitempty"`
+	Country    string  `dynamodbav:"country"`
+	Region     string  `dynamodbav:"region"`
+	Spot       string  `dynamodbav:"spot"`
+	Latitude   float64 `dynamodbav:"latitude"`
+	Longitude  float64 `dynamodbav:"longitude"`
 }
 
 func (b *buoyLocationItem) toModel() *model.BuoyLocation {
 	return &model.BuoyLocation{
-		Name:      b.Name,
+		Name:       b.Name,
 		RegionBuoy: b.RegionBuoy,
-		Country:   b.Country,
-		Region:    b.Region,
-		Spot:      b.Spot,
-		Latitude:  b.Latitude,
-		Longitude: b.Longitude,
+		Country:    b.Country,
+		Region:     b.Region,
+		Spot:       b.Spot,
+		Latitude:   b.Latitude,
+		Longitude:  b.Longitude,
 	}
 }
 
@@ -402,5 +421,97 @@ func (c *connectionItem) toModel() *model.ConnectionInfo {
 		IPAddress:    c.IPAddress,
 		CurrentSpot:  c.CurrentSpot,
 		TTL:          c.TTL,
+	}
+}
+
+type contentReportItem struct {
+	ReviewedAt      time.Time `dynamodbav:"reviewed_at,omitempty"`
+	CreatedAt       time.Time `dynamodbav:"created_at"`
+	UpdatedAt       time.Time `dynamodbav:"updated_at"`
+	ID              string    `dynamodbav:"id"`
+	SurfReportID    string    `dynamodbav:"surf_report_id"`
+	ReporterUserID  string    `dynamodbav:"reporter_user_id"`
+	Reason          string    `dynamodbav:"reason"`
+	Description     string    `dynamodbav:"description,omitempty"`
+	Status          string    `dynamodbav:"status"`
+	ReviewedBy      string    `dynamodbav:"reviewed_by,omitempty"`
+	Resolution      string    `dynamodbav:"resolution,omitempty"`
+	ResolutionNotes string    `dynamodbav:"resolution_notes,omitempty"`
+}
+
+func contentReportItemFromModel(r *model.ContentReport) contentReportItem {
+	if r == nil {
+		return contentReportItem{}
+	}
+	return contentReportItem{
+		ID:              r.ID,
+		SurfReportID:    r.SurfReportID,
+		ReporterUserID:  r.ReporterUserID,
+		Reason:          r.Reason,
+		Description:     r.Description,
+		Status:          r.Status,
+		ReviewedBy:      r.ReviewedBy,
+		ReviewedAt:      r.ReviewedAt,
+		Resolution:      r.Resolution,
+		ResolutionNotes: r.ResolutionNotes,
+		CreatedAt:       r.CreatedAt,
+		UpdatedAt:       r.UpdatedAt,
+	}
+}
+
+func (r *contentReportItem) toModel() *model.ContentReport {
+	return &model.ContentReport{
+		ID:              r.ID,
+		SurfReportID:    r.SurfReportID,
+		ReporterUserID:  r.ReporterUserID,
+		Reason:          r.Reason,
+		Description:     r.Description,
+		Status:          r.Status,
+		ReviewedBy:      r.ReviewedBy,
+		ReviewedAt:      r.ReviewedAt,
+		Resolution:      r.Resolution,
+		ResolutionNotes: r.ResolutionNotes,
+		CreatedAt:       r.CreatedAt,
+		UpdatedAt:       r.UpdatedAt,
+	}
+}
+
+type moderationActionItem struct {
+	CreatedAt   time.Time `dynamodbav:"created_at"`
+	ID          string    `dynamodbav:"id"`
+	ReportID    string    `dynamodbav:"report_id"`
+	ActionType  string    `dynamodbav:"action_type"`
+	TargetType  string    `dynamodbav:"target_type"`
+	TargetID    string    `dynamodbav:"target_id"`
+	PerformedBy string    `dynamodbav:"performed_by"`
+	Notes       string    `dynamodbav:"notes,omitempty"`
+}
+
+func moderationActionItemFromModel(a *model.ModerationAction) moderationActionItem {
+	if a == nil {
+		return moderationActionItem{}
+	}
+	return moderationActionItem{
+		ID:          a.ID,
+		ReportID:    a.ReportID,
+		ActionType:  a.ActionType,
+		TargetType:  a.TargetType,
+		TargetID:    a.TargetID,
+		PerformedBy: a.PerformedBy,
+		Notes:       a.Notes,
+		CreatedAt:   a.CreatedAt,
+	}
+}
+
+func (a *moderationActionItem) toModel() *model.ModerationAction {
+	return &model.ModerationAction{
+		ID:          a.ID,
+		ReportID:    a.ReportID,
+		ActionType:  a.ActionType,
+		TargetType:  a.TargetType,
+		TargetID:    a.TargetID,
+		PerformedBy: a.PerformedBy,
+		Notes:       a.Notes,
+		CreatedAt:   a.CreatedAt,
 	}
 }

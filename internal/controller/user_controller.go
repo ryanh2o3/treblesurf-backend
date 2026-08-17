@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 
+	"treblesurf-backend/internal/auth"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -11,10 +12,18 @@ import (
 // UserController handles user-related routes.
 type UserController struct {
 	users *service.UserService
+	auth  *auth.Service
 }
 
 func NewUserController(users *service.UserService) *UserController {
 	return &UserController{users: users}
+}
+
+func (uc *UserController) WithAuth(authService *auth.Service) *UserController {
+	if uc != nil {
+		uc.auth = authService
+	}
+	return uc
 }
 
 // Note: Session handlers (TerminateSessionHandler, GetUserSessionsHandler, GetWebSocketTokenHandler)
@@ -56,18 +65,15 @@ func (uc *UserController) DeleteMyAccount(c *gin.Context) {
 		return
 	}
 
-	// Delete the user account
 	err = uc.users.Delete(c.Request.Context(), emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete account"})
 		return
 	}
 
-	// Here you could add additional cleanup for user data if needed
-	// For example:
-	// - Delete user preferences
-	// - Delete saved spots
-	// - Remove user reports/contributions
+	if uc.auth != nil {
+		uc.auth.ClearAuthCookies(c)
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
 }

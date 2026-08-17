@@ -21,6 +21,10 @@ type UserRepository interface {
 	// Returns ErrNotFound if the user doesn't exist.
 	GetByUUID(ctx context.Context, uuid string) (*model.User, error)
 
+	// GetByAppleID retrieves a user by their Apple Sign in with Apple subject (sub).
+	// Returns ErrNotFound if the user doesn't exist.
+	GetByAppleID(ctx context.Context, appleID string) (*model.User, error)
+
 	// Create stores a new user in the database.
 	// Returns ErrAlreadyExists if a user with the same email exists.
 	Create(ctx context.Context, user *model.User) error
@@ -57,6 +61,9 @@ type ReportRepository interface {
 	// ScanSince retrieves all reports since a given time across all spots.
 	// Use limit=0 for no limit.
 	ScanSince(ctx context.Context, since time.Time, limit int) ([]*model.SurfReport, error)
+
+	// AnonymizeByUserEmail strips personal identifiers from surf reports posted by email.
+	AnonymizeByUserEmail(ctx context.Context, email string) error
 }
 
 // LocationRepository handles location data persistence.
@@ -69,10 +76,23 @@ type LocationRepository interface {
 
 // ForecastRepository handles forecast data persistence.
 type ForecastRepository interface {
-	GetSpotForecast(ctx context.Context, country, region, spot string) ([]*model.Forecast, error)
-	GetCurrentConditions(ctx context.Context, country, region, spot string) (*model.Forecast, error)
+	// GetSpotForecast loads rows from the given DynamoDB source partitions (e.g. "stormglass", "imi_swan+weatherkit").
+	// Pass multiple source strings to merge (e.g. for sources=all); a single string is the common case.
+	// granularity must be "hourly" or "multiHour" (partition key suffix on spot_id).
+	GetSpotForecast(
+		ctx context.Context,
+		country, region, spot string,
+		partitionSources []string,
+		granularity string,
+	) ([]*model.Forecast, error)
+	// GetCurrentConditions loads the earliest hourly row within a near-term window (used for /currentConditions).
+	// partitionSources follows the same source selection rules as GetSpotForecast (e.g. preferred source vs default).
+	GetCurrentConditions(
+		ctx context.Context,
+		country, region, spot string,
+		partitionSources []string,
+	) (*model.Forecast, error)
 	GetForecastAtTime(ctx context.Context, country, region, spot string, t time.Time) (*model.Forecast, error)
-	GetRegionForecast(ctx context.Context, country, region string, forecastDate time.Time) ([]*model.Forecast, error)
 }
 
 // ForecastDataRepository handles raw forecast data queries needed for report logic.
@@ -186,4 +206,49 @@ type StreamRequestRepository interface {
 type SnapshotRepository interface {
 	Save(ctx context.Context, snapshot *model.SpotSnapshot) error
 	GetLatestBySpot(ctx context.Context, spotID string) (*model.SpotSnapshot, error)
+}
+
+// ContentReportRepository handles content report persistence.
+// Content reports are user-submitted reports about surf reports that may violate guidelines.
+type ContentReportRepository interface {
+	// Create stores a new content report.
+	Create(ctx context.Context, report *model.ContentReport) error
+
+	// GetByID retrieves a content report by its ID.
+	// Returns ErrNotFound if the report doesn't exist.
+	GetByID(ctx context.Context, id string) (*model.ContentReport, error)
+
+	// GetBySurfReportID retrieves all reports for a specific surf report.
+	GetBySurfReportID(ctx context.Context, surfReportID string) ([]*model.ContentReport, error)
+
+	// GetByReporterID retrieves all reports submitted by a specific user.
+	GetByReporterID(ctx context.Context, userID string) ([]*model.ContentReport, error)
+
+	// GetPendingReports retrieves pending reports for the moderation queue.
+	// Results are ordered by created_at ascending (oldest first).
+	GetPendingReports(ctx context.Context, limit, offset int) ([]*model.ContentReport, error)
+
+	// UpdateStatus updates the status of a report.
+	UpdateStatus(ctx context.Context, id, status, reviewedBy string) error
+
+	// Resolve marks a report as resolved with the given resolution.
+	Resolve(ctx context.Context, id, resolution, notes, reviewedBy string) error
+
+	// CountByReporterSince counts reports submitted by a user since a given time.
+	// Used for rate limiting.
+	CountByReporterSince(ctx context.Context, userID string, since time.Time) (int, error)
+}
+
+// ModerationActionRepository handles moderation action persistence.
+// Moderation actions are records of actions taken by moderators on reports.
+type ModerationActionRepository interface {
+	// Create stores a new moderation action.
+	Create(ctx context.Context, action *model.ModerationAction) error
+
+	// GetByReportID retrieves all actions for a specific report.
+	GetByReportID(ctx context.Context, reportID string) ([]*model.ModerationAction, error)
+
+	// List retrieves moderation actions with pagination.
+	// Results are ordered by created_at descending (newest first).
+	List(ctx context.Context, limit, offset int) ([]*model.ModerationAction, error)
 }

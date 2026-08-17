@@ -14,6 +14,8 @@ type Forecast struct {
 	Conditions        string                 `json:"conditions"`
 	ForecastTimestamp string                 `json:"forecast_timestamp,omitempty"`
 	SpotID            string                 `json:"spot_id,omitempty"`
+	Source            string                 `json:"source,omitempty"`
+	GeneratedAt       string                 `json:"generated_at,omitempty"`
 	CountryRegionSpot string                 `json:"country_region_spot"`
 	WaveDirection     float64                `json:"wave_direction"`
 	Temperature       float64                `json:"temperature"`

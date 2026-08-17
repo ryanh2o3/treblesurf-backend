@@ -82,6 +82,35 @@ func (r *UserRepo) GetByUUID(ctx context.Context, uuid string) (*model.User, err
 	return userRecord.toModel(), nil
 }
 
+func (r *UserRepo) GetByAppleID(ctx context.Context, appleID string) (*model.User, error) {
+	if appleID == "" {
+		return nil, repository.ErrNotFound
+	}
+
+	input := &dynamodb.ScanInput{
+		TableName:        aws.String(r.tableName),
+		FilterExpression: aws.String("apple_id = :apple_id"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":apple_id": {S: aws.String(appleID)},
+		},
+	}
+
+	result, err := r.client.ScanWithContext(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("scanning user by apple_id: %w", err)
+	}
+	if len(result.Items) == 0 {
+		return nil, repository.ErrNotFound
+	}
+
+	var userRecord userItem
+	if err := dynamodbattribute.UnmarshalMap(result.Items[0], &userRecord); err != nil {
+		return nil, fmt.Errorf("unmarshaling user: %w", err)
+	}
+
+	return userRecord.toModel(), nil
+}
+
 func (r *UserRepo) Create(ctx context.Context, user *model.User) error {
 	item, err := dynamodbattribute.MarshalMap(userItemFromModel(user))
 	if err != nil {

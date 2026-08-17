@@ -22,8 +22,7 @@ const (
 )
 
 func setupLocationController(repo *mockrepo.LocationRepo) *LocationController {
-	mediaRepo := &mockrepo.MediaRepo{}
-	svc, _ := service.NewLocationService(repo, mediaRepo)
+	svc, _ := service.NewLocationService(repo, "https://cdn.example.com")
 	return NewLocationController(svc)
 }
 

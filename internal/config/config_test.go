@@ -7,11 +7,21 @@ import (
 
 func TestLoad_Defaults(t *testing.T) {
 	// Clear environment for testing defaults
-	os.Unsetenv("GO_ENV")
-	os.Unsetenv("AWS_REGION")
-	os.Unsetenv("S3_BUCKET_NAME")
-	os.Unsetenv("JWT_SECRET")
-	os.Unsetenv("PORT")
+	if err := os.Unsetenv("GO_ENV"); err != nil {
+		t.Fatalf("failed to unset GO_ENV: %v", err)
+	}
+	if err := os.Unsetenv("AWS_REGION"); err != nil {
+		t.Fatalf("failed to unset AWS_REGION: %v", err)
+	}
+	if err := os.Unsetenv("S3_BUCKET_NAME"); err != nil {
+		t.Fatalf("failed to unset S3_BUCKET_NAME: %v", err)
+	}
+	if err := os.Unsetenv("JWT_SECRET"); err != nil {
+		t.Fatalf("failed to unset JWT_SECRET: %v", err)
+	}
+	if err := os.Unsetenv("PORT"); err != nil {
+		t.Fatalf("failed to unset PORT: %v", err)
+	}
 
 	// Should fail in production without JWT_SECRET
 	cfg, err := Load()
@@ -20,8 +30,14 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 
 	// Set environment to development
-	os.Setenv("GO_ENV", "development")
-	defer os.Unsetenv("GO_ENV")
+	if setErr := os.Setenv("GO_ENV", "development"); setErr != nil {
+		t.Fatalf("failed to set GO_ENV: %v", setErr)
+	}
+	defer func() {
+		if unsetErr := os.Unsetenv("GO_ENV"); unsetErr != nil {
+			t.Fatalf("failed to unset GO_ENV: %v", unsetErr)
+		}
+	}()
 
 	cfg, err = Load()
 	if err != nil {
@@ -40,20 +56,44 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_CustomValues(t *testing.T) {
-	os.Setenv("GO_ENV", "development")
-	os.Setenv("AWS_REGION", "us-east-1")
-	os.Setenv("S3_BUCKET_NAME", "custom-bucket")
-	os.Setenv("PORT", "3000")
-	os.Setenv("ADMIN_EMAILS", "admin1@example.com, admin2@example.com")
-	os.Setenv("ALLOWED_ORIGINS", "https://example.com, https://app.example.com")
+	if err := os.Setenv("GO_ENV", "development"); err != nil {
+		t.Fatalf("failed to set GO_ENV: %v", err)
+	}
+	if err := os.Setenv("AWS_REGION", "us-east-1"); err != nil {
+		t.Fatalf("failed to set AWS_REGION: %v", err)
+	}
+	if err := os.Setenv("S3_BUCKET_NAME", "custom-bucket"); err != nil {
+		t.Fatalf("failed to set S3_BUCKET_NAME: %v", err)
+	}
+	if err := os.Setenv("PORT", "3000"); err != nil {
+		t.Fatalf("failed to set PORT: %v", err)
+	}
+	if err := os.Setenv("ADMIN_EMAILS", "admin1@example.com, admin2@example.com"); err != nil {
+		t.Fatalf("failed to set ADMIN_EMAILS: %v", err)
+	}
+	if err := os.Setenv("ALLOWED_ORIGINS", "https://example.com, https://app.example.com"); err != nil {
+		t.Fatalf("failed to set ALLOWED_ORIGINS: %v", err)
+	}
 
 	defer func() {
-		os.Unsetenv("GO_ENV")
-		os.Unsetenv("AWS_REGION")
-		os.Unsetenv("S3_BUCKET_NAME")
-		os.Unsetenv("PORT")
-		os.Unsetenv("ADMIN_EMAILS")
-		os.Unsetenv("ALLOWED_ORIGINS")
+		if err := os.Unsetenv("GO_ENV"); err != nil {
+			t.Fatalf("failed to unset GO_ENV: %v", err)
+		}
+		if err := os.Unsetenv("AWS_REGION"); err != nil {
+			t.Fatalf("failed to unset AWS_REGION: %v", err)
+		}
+		if err := os.Unsetenv("S3_BUCKET_NAME"); err != nil {
+			t.Fatalf("failed to unset S3_BUCKET_NAME: %v", err)
+		}
+		if err := os.Unsetenv("PORT"); err != nil {
+			t.Fatalf("failed to unset PORT: %v", err)
+		}
+		if err := os.Unsetenv("ADMIN_EMAILS"); err != nil {
+			t.Fatalf("failed to unset ADMIN_EMAILS: %v", err)
+		}
+		if err := os.Unsetenv("ALLOWED_ORIGINS"); err != nil {
+			t.Fatalf("failed to unset ALLOWED_ORIGINS: %v", err)
+		}
 	}()
 
 	cfg, err := Load()
@@ -110,9 +150,17 @@ func TestConfig_IsDevelopment(t *testing.T) {
 
 func TestMustLoad_Panics(t *testing.T) {
 	// Set production environment without JWT_SECRET
-	os.Setenv("GO_ENV", "production")
-	os.Unsetenv("JWT_SECRET")
-	defer os.Unsetenv("GO_ENV")
+	if err := os.Setenv("GO_ENV", "production"); err != nil {
+		t.Fatalf("failed to set GO_ENV: %v", err)
+	}
+	if err := os.Unsetenv("JWT_SECRET"); err != nil {
+		t.Fatalf("failed to unset JWT_SECRET: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("GO_ENV"); err != nil {
+			t.Fatalf("failed to unset GO_ENV: %v", err)
+		}
+	}()
 
 	defer func() {
 		if r := recover(); r == nil {

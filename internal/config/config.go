@@ -31,14 +31,18 @@ const (
 
 // AWSConfig holds AWS-related configuration.
 type AWSConfig struct {
-	Region     string
-	BucketName string
+	Region            string
+	BucketName        string
+	SpotImagesBaseURL string // SPOT_IMAGES_BASE_URL: CDN or public origin for spot-images/* (no trailing slash)
+	ForecastTable     string // FORECAST_TABLE: DynamoDB surf_forecasts (PK spot_id = country#region#spot#source#hourly|multiHour)
+	// Sort key is timestamp_ts (Number).
 }
 
 // AuthConfig holds authentication-related configuration.
 type AuthConfig struct {
 	JWTSecret       string
 	GoogleClientIDs []string
+	AppleClientIDs  []string
 	CookieSecure    bool
 }
 
@@ -101,6 +105,25 @@ func MustLoad() *Config {
 
 func (c *Config) IsDevelopment() bool {
 	return c.Env == EnvDevelopment
+}
+
+// ResolvedSpotImagesBaseURL returns the base URL for spot JPEGs (spot-images/...).
+// If SPOT_IMAGES_BASE_URL is unset, uses virtual-hosted S3 URL for the configured bucket and region.
+func (c *Config) ResolvedSpotImagesBaseURL() string {
+	if c == nil {
+		return ""
+	}
+	base := strings.TrimSpace(c.AWS.SpotImagesBaseURL)
+	base = strings.TrimSuffix(base, "/")
+	if base != "" {
+		return base
+	}
+	bucket := strings.TrimSpace(c.AWS.BucketName)
+	region := strings.TrimSpace(c.AWS.Region)
+	if bucket == "" || region == "" {
+		return ""
+	}
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com", bucket, region)
 }
 
 func (c *Config) Validate() error {
@@ -168,8 +191,10 @@ func newBaseConfig(env Environment) *Config {
 	return &Config{
 		Env: env,
 		AWS: AWSConfig{
-			Region:     getEnvOrDefault("AWS_REGION", "eu-west-1"),
-			BucketName: getEnvOrDefault("S3_BUCKET_NAME", "treblesurf-images"),
+			Region:            getEnvOrDefault("AWS_REGION", "eu-west-1"),
+			BucketName:        getEnvOrDefault("S3_BUCKET_NAME", "treblesurf-images"),
+			SpotImagesBaseURL: strings.TrimSpace(os.Getenv("SPOT_IMAGES_BASE_URL")),
+			ForecastTable:     getEnvOrDefault("FORECAST_TABLE", "surf_forecasts"),
 		},
 		WebSocket: WebSocketConfig{
 			Endpoint: os.Getenv("WEBSOCKET_API_ENDPOINT"),
@@ -196,6 +221,7 @@ func loadAuthConfig(cfg *Config, env Environment) error {
 	}
 
 	cfg.Auth.GoogleClientIDs = loadGoogleClientIDs()
+	cfg.Auth.AppleClientIDs = loadAppleClientIDs()
 
 	cfg.Auth.CookieSecure = !cfg.IsDevelopment()
 	if secure, ok := getEnvBool("COOKIE_SECURE"); ok {
@@ -221,6 +247,17 @@ func loadGoogleClientIDs() []string {
 		}
 	}
 	return out
+}
+
+func loadAppleClientIDs() []string {
+	if ids := strings.TrimSpace(os.Getenv("APPLE_CLIENT_IDS")); ids != "" {
+		return splitCommaSeparated(ids)
+	}
+	// Native iOS Sign in with Apple uses the App ID / bundle ID as JWT audience.
+	if id := strings.TrimSpace(os.Getenv("APPLE_BUNDLE_ID")); id != "" {
+		return []string{id}
+	}
+	return []string{"treble.TrebleSurf"}
 }
 
 func loadSecurityConfig(cfg *Config, env Environment) {

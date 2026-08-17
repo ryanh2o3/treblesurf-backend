@@ -215,6 +215,9 @@ func TestReportService_normalizeSpotReports(t *testing.T) {
 				if _, exists := report["user_email"]; exists {
 					return false
 				}
+				if _, exists := report["UserEmail"]; exists {
+					return false
+				}
 				if report["video_key"] == nil {
 					return false
 				}

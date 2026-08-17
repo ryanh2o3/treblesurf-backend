@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -345,28 +345,32 @@ func parseOptionalIntParam(c *gin.Context, paramName string, defaultValue int) i
 // handleVideoViewURLError handles errors from video view URL generation.
 func handleVideoViewURLError(c *gin.Context, err error) {
 	requestLogger(c).Warn("failed to generate video view URL", slog.Any("error", err))
-	errStr := err.Error()
 
 	switch {
-	case strings.Contains(errStr, "video not found or not accessible"):
+	case errors.Is(err, service.ErrReportVideoKeyRequired):
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request",
+			"message": "A video key is required",
+		})
+	case errors.Is(err, service.ErrReportVideoNotFound):
 		c.JSON(http.StatusNotFound, gin.H{
 			"error":   "Video not found",
 			"message": "The requested video could not be found or accessed",
 			"help":    "The video may have been deleted or the video key may be incorrect.",
 		})
-	case strings.Contains(errStr, "user not found"):
+	case errors.Is(err, service.ErrReportUserNotFound), errors.Is(err, service.ErrReportUserMissingUUID):
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "User not found",
 			"message": "Unable to verify your user account",
 			"help":    "Please log in again and try again.",
 		})
-	case strings.Contains(errStr, "access denied"):
+	case errors.Is(err, service.ErrReportVideoAccessDenied):
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "Access denied",
 			"message": "You don't have permission to view this video",
 			"help":    "You can only view videos from your own surf reports.",
 		})
-	case strings.Contains(errStr, "failed to generate presigned view URL"):
+	case errors.Is(err, service.ErrReportPresignedViewURL):
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to generate view URL",
 			"message": "Unable to create a secure view link for the video",
@@ -428,9 +432,8 @@ func verifyMediaAccess(userSvc *service.UserService, c *gin.Context, email, medi
 // handleMediaDeletionError handles errors from media deletion.
 func handleMediaDeletionError(c *gin.Context, err error) {
 	requestLogger(c).Warn("failed to delete media", slog.Any("error", err))
-	errStr := err.Error()
 
-	if strings.Contains(errStr, "not found") || strings.Contains(errStr, "NoSuchKey") {
+	if errors.Is(err, repository.ErrNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error":   "Media not found",
 			"message": "The requested media could not be found",
@@ -514,7 +517,7 @@ func validateUploadURLParams(c *gin.Context) (country, region, spot, email strin
 func handleUploadURLError(c *gin.Context, mediaType string, err error) {
 	requestLogger(c).Warn("failed to generate upload URL", slog.String("media_type", mediaType), slog.Any("error", err))
 
-	if strings.Contains(err.Error(), "failed to generate presigned URL") {
+	if errors.Is(err, service.ErrReportPresignedUploadURL) {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to generate upload URL",
 			"message": fmt.Sprintf("Unable to create a secure upload link for your %s", mediaType),
@@ -527,4 +530,3 @@ func handleUploadURLError(c *gin.Context, mediaType string, err error) {
 		"error": fmt.Sprintf("Failed to generate %s upload URL", mediaType),
 	})
 }
-

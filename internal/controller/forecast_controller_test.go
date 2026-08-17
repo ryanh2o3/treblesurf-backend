@@ -6,37 +6,53 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"treblesurf-backend/internal/config"
 	"treblesurf-backend/internal/model"
+	"treblesurf-backend/internal/repository"
 	mockrepo "treblesurf-backend/internal/repository/mock"
 	"treblesurf-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func setupForecastController(repo *mockrepo.ForecastRepo) *ForecastController {
-	forecastSvc, _ := service.NewForecastService(repo)
-	tideSvc := service.NewTideService(&config.Config{Env: config.EnvDevelopment})
+func setupForecastController(t *testing.T, repo *mockrepo.ForecastRepo, loc *mockrepo.LocationRepo) *ForecastController {
+	t.Helper()
+	if loc == nil {
+		loc = &mockrepo.LocationRepo{}
+	}
+	forecastSvc, err := service.NewForecastService(repo, loc)
+	if err != nil {
+		t.Fatalf("NewForecastService: %v", err)
+	}
+	tideSvc, err := service.NewTideService(&config.Config{Env: config.EnvDevelopment})
+	if err != nil {
+		t.Fatalf("NewTideService: %v", err)
+	}
 	return NewForecastController(forecastSvc, tideSvc)
 }
 
 func TestForecastController_GetSpotForecast(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string, _ string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
 				{
 					CountryRegionSpot: country + "_" + region + "_" + spot,
-					WaveHeight:        2.5,
-					WindSpeed:         15.0,
-					ForecastTimestamp: "1700000000",
+					ForecastTimestamp: "1700000000#imi_swan+weatherkit",
+					Source:            "imi_swan+weatherkit",
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data: map[string]interface{}{
+						"swellHeight": 2.5,
+						"windSpeed":   15.0,
+					},
 				},
 			}, nil
 		},
 	}
 
-	controller := setupForecastController(repo)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -60,14 +76,31 @@ func TestForecastController_GetSpotForecast(t *testing.T) {
 	}
 }
 
+func TestForecastController_GetSpotForecast_InvalidGranularity(t *testing.T) {
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, _, _, _ string, _ []string, _ string) ([]*model.Forecast, error) {
+			t.Fatal("repository should not be called when granularity is invalid")
+			return nil, nil
+		},
+	}
+	controller := setupForecastController(t, repo, nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Bundoran&granularity=invalid", http.NoBody)
+	controller.GetSpotForecast(c)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
 func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, _, _, _ string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, _, _, _ string, _ []string, _ string) ([]*model.Forecast, error) {
 			return []*model.Forecast{}, nil
 		},
 	}
 
-	controller := setupForecastController(repo)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -80,16 +113,101 @@ func TestForecastController_GetSpotForecast_NotFound(t *testing.T) {
 	}
 }
 
-func TestForecastController_GetListSpotsForecast(t *testing.T) {
+func TestForecastController_GetSpotForecast_SourcesAll_ReturnsGrouped(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetSpotForecastFn: func(_ context.Context, country, region, spot string) ([]*model.Forecast, error) {
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string, _ string) ([]*model.Forecast, error) {
 			return []*model.Forecast{
-				{CountryRegionSpot: country + "_" + region + "_" + spot},
+				{ForecastTimestamp: "1700000000#stormglass", Source: "stormglass", SpotID: country + "#" + region + "#" + spot},
+				{ForecastTimestamp: "1700000000#imi_swan+weatherkit", Source: "imi_swan+weatherkit", SpotID: country + "#" + region + "#" + spot},
 			}, nil
 		},
 	}
 
-	controller := setupForecastController(repo)
+	controller := setupForecastController(t, repo, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Bundoran&sources=all", http.NoBody)
+
+	controller.GetSpotForecast(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(response))
+	}
+	group := response[0]
+	if group["sources"] == nil {
+		t.Fatalf("expected sources map in grouped response")
+	}
+	sources, ok := group["sources"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sources to be map, got %T", group["sources"])
+	}
+	if len(sources) != 2 {
+		t.Fatalf("expected 2 sources (stormglass + imi_swan+weatherkit), got %d", len(sources))
+	}
+	if group["primary_source"] != "imi_swan+weatherkit" {
+		t.Fatalf("expected primary_source imi_swan+weatherkit, got %v", group["primary_source"])
+	}
+}
+
+func TestForecastController_GetSpotForecast_SourceParam_ReturnsRequestedSource(t *testing.T) {
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string, _ string) ([]*model.Forecast, error) {
+			return []*model.Forecast{
+				{ForecastTimestamp: "1700000000#stormglass", Source: "stormglass", SpotID: country + "#" + region + "#" + spot},
+				{ForecastTimestamp: "1700000000#weatherkit", Source: "weatherkit", SpotID: country + "#" + region + "#" + spot},
+			}, nil
+		},
+	}
+	controller := setupForecastController(t, repo, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/forecast?country=Ireland&region=Donegal&spot=Bundoran&source=weatherkit", http.NoBody)
+
+	controller.GetSpotForecast(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+	var response []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if len(response) != 1 {
+		t.Fatalf("expected 1 forecast, got %d", len(response))
+	}
+	if response[0]["source"] != "weatherkit" {
+		t.Fatalf("expected source=weatherkit from query param, got %v", response[0]["source"])
+	}
+}
+
+func TestForecastController_GetListSpotsForecast(t *testing.T) {
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string, _ string) ([]*model.Forecast, error) {
+			return []*model.Forecast{
+				{
+					CountryRegionSpot: country + "_" + region + "_" + spot,
+					ForecastTimestamp: "1700000000#imi_swan+weatherkit",
+					Source:            "imi_swan+weatherkit",
+					Country:           country,
+					Region:            region,
+					Spot:              spot,
+					Data:              map[string]interface{}{"swellHeight": 1.0},
+				},
+			}, nil
+		},
+	}
+
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -114,15 +232,22 @@ func TestForecastController_GetListSpotsForecast(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetCurrentConditionsFn: func(_ context.Context, country, region, spot string) (*model.Forecast, error) {
+		GetCurrentConditionsFn: func(_ context.Context, country, region, spot string, _ []string) (*model.Forecast, error) {
 			return &model.Forecast{
 				CountryRegionSpot: country + "_" + region + "_" + spot,
-				Temperature:       18.5,
+				ForecastTimestamp: "1700000000#imi_swan+weatherkit",
+				Source:            "imi_swan+weatherkit",
+				Country:           country,
+				Region:            region,
+				Spot:              spot,
+				Data: map[string]interface{}{
+					"swellHeight": 2.0, "temperature": 18.5,
+				},
 			}, nil
 		},
 	}
 
-	controller := setupForecastController(repo)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -145,12 +270,12 @@ func TestForecastController_GetCurrentWeather(t *testing.T) {
 
 func TestForecastController_GetCurrentWeather_NotFound(t *testing.T) {
 	repo := &mockrepo.ForecastRepo{
-		GetCurrentConditionsFn: func(_ context.Context, _, _, _ string) (*model.Forecast, error) {
-			return nil, nil
+		GetCurrentConditionsFn: func(_ context.Context, _, _, _ string, _ []string) (*model.Forecast, error) {
+			return nil, repository.ErrNotFound
 		},
 	}
 
-	controller := setupForecastController(repo)
+	controller := setupForecastController(t, repo, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -164,16 +289,24 @@ func TestForecastController_GetCurrentWeather_NotFound(t *testing.T) {
 }
 
 func TestForecastController_GetRegionForecast(t *testing.T) {
-	repo := &mockrepo.ForecastRepo{
-		GetRegionForecastFn: func(_ context.Context, country, region string, _ time.Time) ([]*model.Forecast, error) {
-			return []*model.Forecast{
-				{CountryRegionSpot: country + "_" + region + "_Bundoran"},
-				{CountryRegionSpot: country + "_" + region + "_Rossnowlagh"},
+	loc := &mockrepo.LocationRepo{
+		GetSpotsFn: func(_ context.Context, country, region string) ([]*model.LocationInfo, error) {
+			return []*model.LocationInfo{
+				{CountryRegionSpot: country + "/" + region + "/Bundoran"},
+				{CountryRegionSpot: country + "/" + region + "/Rossnowlagh"},
 			}, nil
 		},
 	}
+	repo := &mockrepo.ForecastRepo{
+		GetSpotForecastFn: func(_ context.Context, country, region, spot string, _ []string, _ string) ([]*model.Forecast, error) {
+			return []*model.Forecast{{
+				CountryRegionSpot: country + "_" + region + "_" + spot,
+				Source:            "imi_swan+weatherkit",
+			}}, nil
+		},
+	}
 
-	controller := setupForecastController(repo)
+	controller := setupForecastController(t, repo, loc)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -187,7 +320,7 @@ func TestForecastController_GetRegionForecast(t *testing.T) {
 }
 
 func TestForecastController_GetBeforeAfterTides(t *testing.T) {
-	controller := setupForecastController(nil)
+	controller := setupForecastController(t, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -210,7 +343,7 @@ func TestForecastController_GetBeforeAfterTides(t *testing.T) {
 }
 
 func TestForecastController_GetDayTides(t *testing.T) {
-	controller := setupForecastController(nil)
+	controller := setupForecastController(t, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

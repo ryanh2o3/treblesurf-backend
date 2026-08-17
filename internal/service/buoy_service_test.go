@@ -111,7 +111,7 @@ func TestBuoyService_GetLocations(t *testing.T) {
 	ctx := context.Background()
 	expected := map[string]*model.BuoyLocation{
 		testBuoyName: {Name: testBuoyName, Region: "Atlantic", Latitude: 51.0, Longitude: -10.0},
-		"M5": {Name: "M5", Region: "Celtic", Latitude: 51.5, Longitude: -9.5},
+		"M5":         {Name: "M5", Region: "Celtic", Latitude: 51.5, Longitude: -9.5},
 	}
 	repo := &mockrepo.BuoyRepo{
 		GetLocationsFn: func(_ context.Context) (map[string]*model.BuoyLocation, error) {
@@ -401,7 +401,7 @@ func TestBuoyService_GetBatchDataRanges(t *testing.T) {
 		}
 		expected := map[string][]*model.BuoyData{
 			testBuoyName: {{BuoyName: testBuoyName, WaveHeight: 2.5}},
-			"M5": {{BuoyName: "M5", WaveHeight: 3.0}},
+			"M5":         {{BuoyName: "M5", WaveHeight: 3.0}},
 		}
 		repo := &mockrepo.BuoyRepo{
 			GetBatchDataRangesFn: func(_ context.Context, reqs []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error) {

@@ -27,6 +27,8 @@ type containerServices struct {
 	streamService          *service.StreamService
 	snapshotService        *service.SnapshotService
 	buoyService            *service.BuoyService
+	contentReportService   *service.ContentReportService
+	moderationService      *service.ModerationService
 }
 
 // containerControllers holds all initialized controllers.
@@ -40,23 +42,27 @@ type containerControllers struct {
 	buoyController            *controller.BuoyController
 	streamController          *controller.StreamController
 	snapshotController        *controller.SnapshotController
+	contentReportController   *controller.ContentReportController
+	moderationController      *controller.ModerationController
 }
 
 type containerRepositories struct {
-	userRepo            repository.UserRepository
-	sessionRepo         repository.SessionRepository
-	apiKeyRepo          repository.APIKeyRepository
-	locationRepo        repository.LocationRepository
-	forecastRepo        repository.ForecastRepository
-	forecastDataRepo    repository.ForecastDataRepository
-	websocketRepo       repository.WebSocketRepository
-	subscriptionRepo    repository.SpotSubscriptionRepository
-	swellPredictionRepo repository.SwellPredictionRepository
-	reportRepo          repository.ReportRepository
-	buoyRepo            repository.BuoyRepository
-	mediaRepo           repository.MediaRepository
-	streamRequestRepo   repository.StreamRequestRepository
-	snapshotRepo        repository.SnapshotRepository
+	userRepo             repository.UserRepository
+	sessionRepo          repository.SessionRepository
+	apiKeyRepo           repository.APIKeyRepository
+	locationRepo         repository.LocationRepository
+	forecastRepo         repository.ForecastRepository
+	forecastDataRepo     repository.ForecastDataRepository
+	websocketRepo        repository.WebSocketRepository
+	subscriptionRepo     repository.SpotSubscriptionRepository
+	swellPredictionRepo  repository.SwellPredictionRepository
+	reportRepo           repository.ReportRepository
+	buoyRepo             repository.BuoyRepository
+	mediaRepo            repository.MediaRepository
+	streamRequestRepo    repository.StreamRequestRepository
+	snapshotRepo         repository.SnapshotRepository
+	contentReportRepo    repository.ContentReportRepository
+	moderationActionRepo repository.ModerationActionRepository
 }
 
 // initializeServices creates all application services with their dependencies.
@@ -66,22 +72,24 @@ func initializeServices(storage *containerStorage, cfg *containerConfig, appCfg 
 }
 
 func initRepositories(storage *containerStorage, cfg *containerConfig) *containerRepositories {
-	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, "SpotForecastData")
+	forecastRepo := repodynamo.NewForecastRepo(storage.dynamoDBClient, cfg.forecastTable)
 	return &containerRepositories{
-		userRepo:            repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"),
-		sessionRepo:         repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions"),
-		apiKeyRepo:          repodynamo.NewAPIKeyRepo(storage.dynamoDBClient, "ApiKeys"),
-		locationRepo:        repodynamo.NewLocationRepo(storage.dynamoDBClient, "LocationData"),
-		forecastRepo:        forecastRepo,
-		forecastDataRepo:    forecastRepo,
-		websocketRepo:       repodynamo.NewWebSocketRepo(storage.dynamoDBClient, "WebSocketConnections"),
-		subscriptionRepo:    repodynamo.NewSpotSubscriptionRepo(storage.dynamoDBClient, "SpotSubscriptions"),
-		swellPredictionRepo: repodynamo.NewSwellPredictionRepo(storage.dynamoDBClient, "SwellPredictions"),
-		reportRepo:          repodynamo.NewReportRepo(storage.dynamoDBClient, "SurfReports"),
-		buoyRepo:            repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations"),
-		mediaRepo:           repos3.NewMediaRepo(storage.s3Client, cfg.bucketName),
-		streamRequestRepo:   repodynamo.NewStreamRequestRepo(storage.dynamoDBClient, "StreamRequests"),
-		snapshotRepo:        repodynamo.NewSnapshotRepo(storage.dynamoDBClient, "SpotSnapshots"),
+		userRepo:             repodynamo.NewUserRepo(storage.dynamoDBClient, "Users"),
+		sessionRepo:          repodynamo.NewSessionRepo(storage.dynamoDBClient, "Sessions"),
+		apiKeyRepo:           repodynamo.NewAPIKeyRepo(storage.dynamoDBClient, "ApiKeys"),
+		locationRepo:         repodynamo.NewLocationRepo(storage.dynamoDBClient, "LocationData"),
+		forecastRepo:         forecastRepo,
+		forecastDataRepo:     forecastRepo,
+		websocketRepo:        repodynamo.NewWebSocketRepo(storage.dynamoDBClient, "WebSocketConnections"),
+		subscriptionRepo:     repodynamo.NewSpotSubscriptionRepo(storage.dynamoDBClient, "SpotSubscriptions"),
+		swellPredictionRepo:  repodynamo.NewSwellPredictionRepo(storage.dynamoDBClient, "SwellPredictions"),
+		reportRepo:           repodynamo.NewReportRepo(storage.dynamoDBClient, "SurfReports"),
+		buoyRepo:             repodynamo.NewBuoyRepo(storage.dynamoDBClient, "BuoyData", "BuoyLocations"),
+		mediaRepo:            repos3.NewMediaRepo(storage.s3Client, cfg.bucketName),
+		streamRequestRepo:    repodynamo.NewStreamRequestRepo(storage.dynamoDBClient, "StreamRequests"),
+		snapshotRepo:         repodynamo.NewSnapshotRepo(storage.dynamoDBClient, "SpotSnapshots"),
+		contentReportRepo:    repodynamo.NewContentReportRepo(storage.dynamoDBClient, "ContentReports"),
+		moderationActionRepo: repodynamo.NewModerationActionRepo(storage.dynamoDBClient, "ModerationActions"),
 	}
 }
 
@@ -91,25 +99,52 @@ func buildServices(
 	cfg *containerConfig,
 	appCfg *config.Config,
 ) (*containerServices, error) {
-	services := &containerServices{
-		tideService: service.NewTideService(appCfg),
-	}
+	services := &containerServices{}
 
+	if err := initTideService(appCfg, services); err != nil {
+		return nil, err
+	}
 	if err := initAuthAndUserServices(appCfg, repos, services); err != nil {
 		return nil, err
 	}
-	if err := initDomainServices(repos, services); err != nil {
+	if err := initDomainServices(repos, services, appCfg); err != nil {
+		return nil, err
+	}
+	if err := initRealtimeAndReportServices(repos, storage, cfg, services); err != nil {
 		return nil, err
 	}
 
-	services.websocketService = service.NewWebSocketService(
+	return services, nil
+}
+
+func initTideService(appCfg *config.Config, services *containerServices) error {
+	tideService, err := service.NewTideService(appCfg)
+	if err != nil {
+		return fmt.Errorf("creating tide service: %w", err)
+	}
+	services.tideService = tideService
+	return nil
+}
+
+func initRealtimeAndReportServices(
+	repos *containerRepositories,
+	storage *containerStorage,
+	cfg *containerConfig,
+	services *containerServices,
+) error {
+	websocketService, err := service.NewWebSocketService(
 		repos.websocketRepo,
 		repos.subscriptionRepo,
 		[]byte(cfg.jwtSecret),
 		cfg.websocketEndpoint,
 		cfg.websocketStage,
 	)
-	services.reportService = service.NewReportService(
+	if err != nil {
+		return fmt.Errorf("creating websocket service: %w", err)
+	}
+	services.websocketService = websocketService
+
+	reportService, err := service.NewReportService(
 		repos.mediaRepo,
 		repos.reportRepo,
 		repos.buoyRepo,
@@ -119,8 +154,32 @@ func buildServices(
 		services.userService,
 		services.websocketService,
 	)
+	if err != nil {
+		return fmt.Errorf("creating report service: %w", err)
+	}
+	services.reportService = reportService
 
-	return services, nil
+	contentReportService, err := service.NewContentReportService(
+		repos.contentReportRepo,
+		repos.reportRepo,
+		repos.userRepo,
+	)
+	if err != nil {
+		return fmt.Errorf("creating content report service: %w", err)
+	}
+	services.contentReportService = contentReportService
+
+	moderationService, err := service.NewModerationService(
+		repos.contentReportRepo,
+		repos.moderationActionRepo,
+		repos.userRepo,
+	)
+	if err != nil {
+		return fmt.Errorf("creating moderation service: %w", err)
+	}
+	services.moderationService = moderationService
+
+	return nil
 }
 
 func initAuthAndUserServices(
@@ -136,17 +195,18 @@ func initAuthAndUserServices(
 	if err != nil {
 		return fmt.Errorf("creating user service: %w", err)
 	}
+	userService.WithAccountCleanup(repos.sessionRepo, repos.reportRepo)
 	services.authService = authService
 	services.userService = userService
 	return nil
 }
 
-func initDomainServices(repos *containerRepositories, services *containerServices) error {
-	forecastService, err := service.NewForecastService(repos.forecastRepo)
+func initDomainServices(repos *containerRepositories, services *containerServices, appCfg *config.Config) error {
+	forecastService, err := service.NewForecastService(repos.forecastRepo, repos.locationRepo)
 	if err != nil {
 		return fmt.Errorf("creating forecast service: %w", err)
 	}
-	locationService, err := service.NewLocationService(repos.locationRepo, repos.mediaRepo)
+	locationService, err := service.NewLocationService(repos.locationRepo, appCfg.ResolvedSpotImagesBaseURL())
 	if err != nil {
 		return fmt.Errorf("creating location service: %w", err)
 	}
@@ -190,12 +250,14 @@ func initializeControllers(
 	return &containerControllers{
 		forecastController:        controller.NewForecastController(services.forecastService, services.tideService),
 		swellPredictionController: controller.NewSwellPredictionController(services.swellPredictionService),
-		userController:            controller.NewUserController(services.userService),
+		userController:            controller.NewUserController(services.userService).WithAuth(services.authService),
 		reportController:          controller.NewReportController(services.reportService, services.userService),
 		locationController:        controller.NewLocationController(services.locationService),
 		apiKeyController:          controller.NewAPIKeyController(services.apiKeyService),
 		buoyController:            controller.NewBuoyController(services.buoyService),
 		streamController:          controller.NewStreamController(services.streamService),
 		snapshotController:        controller.NewSnapshotController(services.snapshotService, storage.s3Client, cfg.bucketName),
+		contentReportController:   controller.NewContentReportController(services.contentReportService, services.userService),
+		moderationController:      controller.NewModerationController(services.moderationService),
 	}
 }

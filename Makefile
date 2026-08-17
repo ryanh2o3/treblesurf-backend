@@ -1,5 +1,8 @@
 .PHONY: help lint lint-fix lint-check test build clean run-api run-websocket
 
+GOLANGCI_LINT_VERSION ?= v2.11.3
+GOLANGCI_LINT_BIN := $(CURDIR)/bin/golangci-lint
+
 # Default target
 help:
 	@echo "Available targets:"
@@ -15,14 +18,17 @@ help:
 	@echo "  run-websocket - Run the WebSocket server"
 
 # Linting targets
-lint:
-	@golangci-lint run ./...
+lint-install:
+	@GOBIN="$(CURDIR)/bin" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
-lint-fix:
-	@golangci-lint run --fix ./...
+lint: lint-install
+	@"$(GOLANGCI_LINT_BIN)" run ./...
 
-lint-check:
-	@golangci-lint run ./... || (echo "Linting failed. Fix issues or run 'make lint-fix' to auto-fix some issues." && exit 1)
+lint-fix: lint-install
+	@"$(GOLANGCI_LINT_BIN)" run --fix ./...
+
+lint-check: lint-install
+	@"$(GOLANGCI_LINT_BIN)" run ./... || (echo "Linting failed. Fix issues or run 'make lint-fix' to auto-fix some issues." && exit 1)
 
 # Testing
 test:
@@ -58,7 +64,7 @@ clean:
 
 # Run targets
 run-api:
-	@go run cmd/api/main.go
+	@go run local/cmd/server.go
 
 run-websocket:
 	@go run cmd/websocket/main.go

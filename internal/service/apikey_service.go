@@ -40,16 +40,16 @@ func (s *APIKeyService) GenerateAPIKey(
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
-	
+
 	// Generate a unique ID
 	idBytes := make([]byte, 16)
 	if _, err := rand.Read(idBytes); err != nil {
 		return nil, err
 	}
-	
+
 	keyID := fmt.Sprintf("key_%s", base64.URLEncoding.EncodeToString(idBytes)[:16])
 	keyValue := base64.URLEncoding.EncodeToString(b)
-	
+
 	// Create expiration date (or far future if 0 days)
 	var expiresAt time.Time
 	if durationDays <= 0 {
@@ -57,7 +57,7 @@ func (s *APIKeyService) GenerateAPIKey(
 	} else {
 		expiresAt = time.Now().AddDate(0, 0, durationDays)
 	}
-	
+
 	apiKey := &model.APIKey{
 		KeyID:       keyID,
 		KeyValue:    keyValue,
@@ -67,7 +67,7 @@ func (s *APIKeyService) GenerateAPIKey(
 		ExpiresAt:   expiresAt,
 		Scopes:      scopes,
 	}
-	
+
 	return apiKey, nil
 }
 
@@ -82,19 +82,19 @@ func (s *APIKeyService) ValidateAPIKey(ctx context.Context, keyValue, requiredSc
 	if err != nil {
 		return nil, false
 	}
-	
+
 	// Check if the key is expired
 	if time.Now().After(apiKey.ExpiresAt) {
 		return nil, false
 	}
-	
+
 	// Check if the key has the required scope
 	for _, scope := range apiKey.Scopes {
 		if scope == requiredScope {
 			return apiKey, true
 		}
 	}
-	
+
 	return nil, false
 }
 

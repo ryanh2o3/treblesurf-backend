@@ -22,7 +22,7 @@ func (s *ReportService) GetSpotSurfReports(
 ) ([]map[string]interface{}, error) {
 	reports, err := s.reportRepo.GetBySpot(ctx, countryName, regionName, spotName, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query reports: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrSurfReportsQuery, err)
 	}
 
 	reportMaps, err := s.convertReportsToMaps(reports)

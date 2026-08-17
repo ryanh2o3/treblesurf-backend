@@ -278,16 +278,6 @@ func (rc *ReportController) serveReportMedia(
 			return
 		}
 
-		notFoundSubstring := fmt.Sprintf("failed to read %s data", mediaType)
-		if strings.Contains(err.Error(), notFoundSubstring) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   fmt.Sprintf("%s not found", title),
-				"message": fmt.Sprintf("The requested %s could not be found or accessed", mediaType),
-				"help":    fmt.Sprintf("The %s may have been deleted or the %s key may be incorrect.", mediaType, mediaType),
-			})
-			return
-		}
-
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("Failed to retrieve %s", mediaType),
 		})
@@ -402,8 +392,7 @@ func (rc *ReportController) RetrieveTodaysSurfReports(c *gin.Context) {
 		}
 		requestLogger(c).Warn("failed to retrieve surf reports", slog.Any("error", err))
 
-		// Provide more helpful error messages for common failures
-		if strings.Contains(err.Error(), "failed to query reports") {
+		if errors.Is(err, service.ErrSurfReportsQuery) {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to retrieve reports",
 				"message": "Unable to fetch surf reports from the database",
@@ -455,8 +444,7 @@ func (rc *ReportController) GetAllSpotSurfReports(c *gin.Context) {
 		}
 		requestLogger(c).Warn("failed to retrieve surf reports", slog.Any("error", err))
 
-		// Provide more helpful error messages for common failures
-		if strings.Contains(err.Error(), "failed to query reports") {
+		if errors.Is(err, service.ErrSurfReportsQuery) {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to retrieve reports",
 				"message": "Unable to fetch surf reports from the database",

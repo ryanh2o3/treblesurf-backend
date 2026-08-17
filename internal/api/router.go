@@ -99,6 +99,7 @@ func setupRoutes(r gin.IRouter, cfg *config.Config, container *Container) {
 // setupPublicRoutes configures public authentication routes.
 func setupPublicRoutes(r gin.IRouter, authService *auth.Service) {
 	r.POST("/auth/google", authService.GoogleAuthHandler)
+	r.POST("/auth/apple", authService.AppleAuthHandler)
 	r.GET("/auth/validate", authService.ValidateTokenHandler)
 	r.POST("/auth/logout", authService.LogoutHandler)
 }
@@ -118,24 +119,9 @@ func setupAuthRoutes(r gin.IRouter, cfg *config.Config, authService *auth.Servic
 		c.JSON(http.StatusOK, gin.H{"message": "CSRF token available"})
 	})
 
-	// Development-only endpoint for iOS simulator
+	// Development-only login endpoint (bypasses Google OAuth). Never registered in production.
 	if isLocal {
-		r.POST("/auth/dev-session", func(c *gin.Context) {
-			var req struct {
-				Email string `json:"email"`
-			}
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-				return
-			}
-
-			if err := authService.CreateDevSession(req.Email, c); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{"message": "Development session created"})
-		})
+		r.POST("/auth/dev-session", authService.DevLoginHandler)
 	}
 }
 
@@ -211,6 +197,7 @@ func setupReportModificationRoutes(g *gin.RouterGroup, container *Container) {
 	g.GET("/generateVideoUploadURL", container.ReportController.GenerateVideoUploadURL)
 	g.DELETE("/deleteUploadedMedia", container.ReportController.DeleteUploadedMedia)
 	g.DELETE("/deleteMyAccount", container.UserController.DeleteMyAccount)
+	g.DELETE("/account/delete", container.UserController.DeleteMyAccount)
 	g.PUT("/setTheme", container.UserController.SetUserTheme)
 	g.DELETE("/sessions/:sessionId", container.AuthService.TerminateSessionHandler)
 }

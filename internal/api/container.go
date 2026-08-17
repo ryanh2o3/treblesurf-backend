@@ -41,6 +41,8 @@ type Container struct {
 	BuoyController            *controller.BuoyController
 	StreamController          *controller.StreamController
 	SnapshotController        *controller.SnapshotController
+	ContentReportController   *controller.ContentReportController
+	ModerationController      *controller.ModerationController
 
 	rateLimiter *rateLimiter
 }
@@ -49,6 +51,7 @@ type Container struct {
 type containerConfig struct {
 	region            string
 	bucketName        string
+	forecastTable     string
 	jwtSecret         string
 	websocketEndpoint string
 	websocketStage    string
@@ -87,6 +90,7 @@ func loadContainerConfig(cfg *config.Config) *containerConfig {
 	return &containerConfig{
 		region:            cfg.AWS.Region,
 		bucketName:        cfg.AWS.BucketName,
+		forecastTable:     cfg.AWS.ForecastTable,
 		isLocal:           cfg.IsDevelopment(),
 		jwtSecret:         cfg.Auth.JWTSecret,
 		websocketEndpoint: cfg.WebSocket.Endpoint,
@@ -124,6 +128,8 @@ func buildContainer(
 		BuoyController:            controllers.buoyController,
 		StreamController:          controllers.streamController,
 		SnapshotController:        controllers.snapshotController,
+		ContentReportController:   controllers.contentReportController,
+		ModerationController:      controllers.moderationController,
 		rateLimiter:               rateLimiter,
 	}
 }

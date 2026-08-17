@@ -68,6 +68,7 @@ func initializeProductionStorage(storage *containerStorage, region string) (*con
 		Region: aws.String(region),
 	}))
 
+	// One DynamoDB client per process (shared across all repos). Do not create per request.
 	storage.dynamoDBClient = dynamodb.New(sess)
 	storage.rekognitionClient = rekognition.New(sess)
 	storage.s3Client = s3.New(sess)

@@ -4,19 +4,36 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"treblesurf-backend/internal/logging"
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
 
 var _ repository.ForecastRepository = (*ForecastRepo)(nil)
+
+const (
+	forecastSourceStormglass    = "stormglass"
+	forecastSourceIrelandMerged = "imi_swan+weatherkit"
+)
+
+func defaultPartitionSourceForCountry(country string) string {
+	if strings.EqualFold(strings.TrimSpace(country), "ireland") {
+		return forecastSourceIrelandMerged
+	}
+	return forecastSourceStormglass
+}
 
 type ForecastRepo struct {
 	client    *dynamodb.DynamoDB
@@ -30,79 +47,338 @@ func NewForecastRepo(client *dynamodb.DynamoDB, tableName string) *ForecastRepo 
 	}
 }
 
+func partitionSpotID(country, region, spot, source, granularity string) string {
+	return fmt.Sprintf("%s#%s#%s#%s#%s", country, region, spot, source, granularity)
+}
+
+func itemTimestampTS(item map[string]*dynamodb.AttributeValue) int64 {
+	av := item["timestamp_ts"]
+	if av == nil || av.N == nil {
+		return 0
+	}
+	n, err := strconv.ParseInt(aws.StringValue(av.N), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+func itemSourceString(item map[string]*dynamodb.AttributeValue) string {
+	if av := item["source"]; av != nil && av.S != nil {
+		return aws.StringValue(av.S)
+	}
+	return ""
+}
+
+func sortForecastItems(items []map[string]*dynamodb.AttributeValue) {
+	sort.Slice(items, func(i, j int) bool {
+		ti := itemTimestampTS(items[i])
+		tj := itemTimestampTS(items[j])
+		if ti != tj {
+			return ti < tj
+		}
+		return itemSourceString(items[i]) < itemSourceString(items[j])
+	})
+}
+
+func (r *ForecastRepo) queryPartitionRange(
+	ctx context.Context,
+	partitionKey string,
+	startInclusive, endInclusive int64,
+) ([]map[string]*dynamodb.AttributeValue, error) {
+	var all []map[string]*dynamodb.AttributeValue
+	var eks map[string]*dynamodb.AttributeValue
+	for {
+		input := &dynamodb.QueryInput{
+			TableName:              aws.String(r.tableName),
+			KeyConditionExpression: aws.String("spot_id = :pk AND timestamp_ts BETWEEN :start AND :end"),
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":pk": {
+					S: aws.String(partitionKey),
+				},
+				":start": {
+					N: aws.String(strconv.FormatInt(startInclusive, 10)),
+				},
+				":end": {
+					N: aws.String(strconv.FormatInt(endInclusive, 10)),
+				},
+			},
+			ScanIndexForward: aws.Bool(true),
+		}
+		if len(eks) > 0 {
+			input.ExclusiveStartKey = eks
+		}
+		result, err := r.client.QueryWithContext(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, result.Items...)
+		if len(result.LastEvaluatedKey) == 0 {
+			break
+		}
+		eks = result.LastEvaluatedKey
+	}
+	return all, nil
+}
+
+// queryPartitionLimitedRange reads up to limit items (ascending by timestamp_ts) within the range.
+func (r *ForecastRepo) queryPartitionLimitedRange(
+	ctx context.Context,
+	partitionKey string,
+	startInclusive, endInclusive, limit int64,
+) ([]map[string]*dynamodb.AttributeValue, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	var all []map[string]*dynamodb.AttributeValue
+	var eks map[string]*dynamodb.AttributeValue
+	for int64(len(all)) < limit {
+		pageLimit := limit - int64(len(all))
+		input := &dynamodb.QueryInput{
+			TableName:              aws.String(r.tableName),
+			KeyConditionExpression: aws.String("spot_id = :pk AND timestamp_ts BETWEEN :start AND :end"),
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":pk": {
+					S: aws.String(partitionKey),
+				},
+				":start": {
+					N: aws.String(strconv.FormatInt(startInclusive, 10)),
+				},
+				":end": {
+					N: aws.String(strconv.FormatInt(endInclusive, 10)),
+				},
+			},
+			ScanIndexForward: aws.Bool(true),
+			Limit:            aws.Int64(pageLimit),
+		}
+		if len(eks) > 0 {
+			input.ExclusiveStartKey = eks
+		}
+		result, err := r.client.QueryWithContext(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, result.Items...)
+		if len(result.LastEvaluatedKey) == 0 || int64(len(all)) >= limit {
+			break
+		}
+		eks = result.LastEvaluatedKey
+	}
+	return all, nil
+}
+
+// queryPartitionAtTimestamp performs a point read on (partitionKey, ts) using numeric equality on the sort key.
+func (r *ForecastRepo) queryPartitionAtTimestamp(
+	ctx context.Context,
+	partitionKey string,
+	ts int64,
+) ([]map[string]*dynamodb.AttributeValue, error) {
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		KeyConditionExpression: aws.String("spot_id = :pk AND timestamp_ts = :ts"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":pk": {
+				S: aws.String(partitionKey),
+			},
+			":ts": {
+				N: aws.String(strconv.FormatInt(ts, 10)),
+			},
+		},
+	}
+	result, err := r.client.QueryWithContext(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func (r *ForecastRepo) querySpotPartitionsBySources(
+	ctx context.Context,
+	country, region, spot string,
+	startEpoch, endEpoch int64,
+	sources []string,
+	granularity string,
+) ([]map[string]*dynamodb.AttributeValue, error) {
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("partitionSources must be non-empty")
+	}
+	if len(sources) == 1 {
+		pk := partitionSpotID(country, region, spot, sources[0], granularity)
+		return r.queryPartitionRange(ctx, pk, startEpoch, endEpoch)
+	}
+	partItems := make([][]map[string]*dynamodb.AttributeValue, len(sources))
+	g, gctx := errgroup.WithContext(ctx)
+	for i := range sources {
+		src := sources[i]
+		g.Go(func() error {
+			pk := partitionSpotID(country, region, spot, src, granularity)
+			items, err := r.queryPartitionRange(gctx, pk, startEpoch, endEpoch)
+			if err != nil {
+				return err
+			}
+			partItems[i] = items
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	var merged []map[string]*dynamodb.AttributeValue
+	for _, items := range partItems {
+		merged = append(merged, items...)
+	}
+	sortForecastItems(merged)
+	return merged, nil
+}
+
 func (r *ForecastRepo) GetSpotForecast(
 	ctx context.Context,
 	country, region, spot string,
+	partitionSources []string,
+	granularity string,
 ) ([]*model.Forecast, error) {
-	spotID := fmt.Sprintf("%s#%s#%s", country, region, spot)
-	currentEpoch := time.Now().Unix()
-
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":current_time": {
-				S: aws.String(fmt.Sprintf("%d", currentEpoch)),
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
+	if len(partitionSources) == 0 {
+		return nil, fmt.Errorf("partitionSources must be non-empty")
 	}
+	g, err := repository.ParseForecastGranularity(granularity)
+	if err != nil {
+		return nil, err
+	}
+	granularity = g
+	now := time.Now()
+	startEpoch := now.Unix()
+	endEpoch := now.Add(7 * 24 * time.Hour).Unix()
 
-	result, err := r.client.QueryWithContext(ctx, input)
+	dynamoStart := time.Now()
+	items, err := r.querySpotPartitionsBySources(ctx, country, region, spot, startEpoch, endEpoch, partitionSources, granularity)
+	dynamoElapsed := time.Since(dynamoStart)
 	if err != nil {
 		return nil, fmt.Errorf("querying spot forecast: %w", err)
 	}
 
-	forecasts := make([]*model.Forecast, 0, len(result.Items))
-	for _, item := range result.Items {
-		forecast, err := parseForecastItem(item, country, region, spot)
+	parseStart := time.Now()
+	forecasts, err := parseForecastItems(ctx, items, country, region, spot)
+	if err != nil {
+		return nil, err
+	}
+	parseElapsed := time.Since(parseStart)
+
+	logGetSpotForecastTiming(
+		ctx,
+		country, region, spot,
+		granularity,
+		partitionSources,
+		startEpoch, endEpoch,
+		dynamoElapsed, parseElapsed,
+		len(items),
+	)
+
+	return forecasts, nil
+}
+
+func parseForecastItems(
+	ctx context.Context,
+	items []map[string]*dynamodb.AttributeValue,
+	country, region, spot string,
+) ([]*model.Forecast, error) {
+	forecasts := make([]*model.Forecast, len(items))
+	switch len(items) {
+	case 0:
+		return forecasts, nil
+	case 1:
+		f, err := parseForecastItem(items[0], country, region, spot)
 		if err != nil {
 			return nil, err
 		}
-		forecasts = append(forecasts, forecast)
+		forecasts[0] = f
+		return forecasts, nil
+	default:
+		const parseParallelism = 8
+		sem := semaphore.NewWeighted(parseParallelism)
+		var parseEg errgroup.Group
+		for i := range items {
+			parseEg.Go(func() error {
+				if err := sem.Acquire(ctx, 1); err != nil {
+					return err
+				}
+				defer sem.Release(1)
+				f, err := parseForecastItem(items[i], country, region, spot)
+				if err != nil {
+					return err
+				}
+				forecasts[i] = f
+				return nil
+			})
+		}
+		if err := parseEg.Wait(); err != nil {
+			return nil, err
+		}
+		return forecasts, nil
 	}
+}
 
-	return forecasts, nil
+func logGetSpotForecastTiming(
+	ctx context.Context,
+	country, region, spot string,
+	granularity string,
+	partitionSources []string,
+	startEpoch, endEpoch int64,
+	dynamoElapsed, parseElapsed time.Duration,
+	itemCount int,
+) {
+	baseID := fmt.Sprintf("%s#%s#%s", country, region, spot)
+	logging.FromContext(ctx).Info("forecast timing: dynamodb get_spot_forecast",
+		slog.String("spot_id", baseID),
+		slog.String("granularity", granularity),
+		slog.Any("partition_sources", partitionSources),
+		slog.Int64("dynamo_query_ms", dynamoElapsed.Milliseconds()),
+		slog.Int64("parse_items_ms", parseElapsed.Milliseconds()),
+		slog.Int("dynamo_item_count", itemCount),
+		slog.Bool("dynamo_result_truncated", false),
+		slog.Int64("range_start_epoch", startEpoch),
+		slog.Int64("range_end_epoch", endEpoch),
+	)
 }
 
 func (r *ForecastRepo) GetCurrentConditions(
 	ctx context.Context,
 	country, region, spot string,
+	partitionSources []string,
 ) (*model.Forecast, error) {
-	spotID := fmt.Sprintf("%s#%s#%s", country, region, spot)
-	currentEpoch := time.Now().Unix()
+	now := time.Now()
+	startEpoch := now.Unix()
+	endEpoch := now.Add(48 * time.Hour).Unix()
 
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :current_time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":current_time": {
-				S: aws.String(fmt.Sprintf("%d", currentEpoch)),
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
-		Limit:            aws.Int64(1),
+	if len(partitionSources) == 0 {
+		return nil, fmt.Errorf("partitionSources must be non-empty")
 	}
-
-	result, err := r.client.QueryWithContext(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("querying current conditions: %w", err)
+	var best map[string]*dynamodb.AttributeValue
+	for _, src := range partitionSources {
+		pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
+		items, err := r.queryPartitionLimitedRange(ctx, pk, startEpoch, endEpoch, 1)
+		if err != nil {
+			return nil, fmt.Errorf("querying current conditions: %w", err)
+		}
+		if len(items) == 0 {
+			continue
+		}
+		if best == nil {
+			best = items[0]
+			continue
+		}
+		bt := itemTimestampTS(best)
+		ct := itemTimestampTS(items[0])
+		if ct != 0 && (bt == 0 || ct < bt) {
+			best = items[0]
+		}
 	}
-	if len(result.Items) == 0 {
+	if best == nil {
 		return nil, repository.ErrNotFound
 	}
-
-	forecast, err := parseForecastItem(result.Items[0], country, region, spot)
+	forecast, err := parseForecastItem(best, country, region, spot)
 	if err != nil {
 		return nil, err
 	}
-
 	return forecast, nil
 }
 
@@ -111,78 +387,24 @@ func (r *ForecastRepo) GetForecastAtTime(
 	country, region, spot string,
 	t time.Time,
 ) (*model.Forecast, error) {
-	spotID := fmt.Sprintf("%s#%s#%s", country, region, spot)
 	targetEpoch := t.Unix()
 
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp >= :target_time"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":target_time": {
-				S: aws.String(fmt.Sprintf("%d", targetEpoch)),
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
-		Limit:            aws.Int64(1),
-	}
-
-	result, err := r.client.QueryWithContext(ctx, input)
+	src := defaultPartitionSourceForCountry(country)
+	pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
+	items, err := r.queryPartitionAtTimestamp(ctx, pk, targetEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("querying forecast at time: %w", err)
 	}
-	if len(result.Items) == 0 {
+	if len(items) == 0 {
 		return nil, repository.ErrNotFound
 	}
 
-	forecast, err := parseForecastItem(result.Items[0], country, region, spot)
+	forecast, err := parseForecastItem(items[0], country, region, spot)
 	if err != nil {
 		return nil, err
 	}
 
 	return forecast, nil
-}
-
-func (r *ForecastRepo) GetRegionForecast(
-	ctx context.Context,
-	country, region string,
-	forecastDate time.Time,
-) ([]*model.Forecast, error) {
-	dateKey := forecastDate.Format("2006-01-02")
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		KeyConditionExpression: aws.String("ForecastDate = :date AND begins_with(country_region_spot, :location)"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":date": {
-				S: aws.String(dateKey),
-			},
-			":location": {
-				S: aws.String(fmt.Sprintf("%s_%s_", country, region)),
-			},
-		},
-		ScanIndexForward: aws.Bool(false),
-	}
-
-	result, err := r.client.QueryWithContext(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("querying region forecast: %w", err)
-	}
-	if len(result.Items) == 0 {
-		return nil, repository.ErrNotFound
-	}
-
-	forecasts := make([]*model.Forecast, 0, len(result.Items))
-	for _, item := range result.Items {
-		forecast, err := parseForecastItem(item, country, region, "")
-		if err != nil {
-			return nil, err
-		}
-		forecasts = append(forecasts, forecast)
-	}
-
-	return forecasts, nil
 }
 
 func (r *ForecastRepo) QuerySince(
@@ -191,29 +413,28 @@ func (r *ForecastRepo) QuerySince(
 	since time.Time,
 	limit int,
 ) ([]*model.ForecastDataPoint, error) {
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp > :since"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":since": {
-				S: aws.String(fmt.Sprintf("%d", since.UTC().Unix())),
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
+	country, region, spot, ok := splitBaseSpotID(spotID)
+	if !ok {
+		return nil, fmt.Errorf("invalid spot_id for forecast query: %q", spotID)
 	}
-	if limit > 0 {
-		input.Limit = aws.Int64(int64(limit))
-	}
+	sinceEpoch := since.UTC().Unix()
+	endEpoch := since.Add(30 * 24 * time.Hour).Unix()
 
-	result, err := r.client.QueryWithContext(ctx, input)
+	src := defaultPartitionSourceForCountry(country)
+	pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
+	items, err := r.queryPartitionRange(ctx, pk, sinceEpoch, endEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("querying forecast data: %w", err)
 	}
 
-	return unmarshalForecastDataPoints(result.Items)
+	points, err := unmarshalForecastDataPoints(items, spotID)
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(points) > limit {
+		points = points[:limit]
+	}
+	return points, nil
 }
 
 func (r *ForecastRepo) QueryBetween(
@@ -222,65 +443,82 @@ func (r *ForecastRepo) QueryBetween(
 	start, end time.Time,
 	limit int,
 ) ([]*model.ForecastDataPoint, error) {
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp BETWEEN :start AND :end"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":spot_id": {
-				S: aws.String(spotID),
-			},
-			":start": {
-				S: aws.String(fmt.Sprintf("%d", start.UTC().Unix())),
-			},
-			":end": {
-				S: aws.String(fmt.Sprintf("%d", end.UTC().Unix())),
-			},
-		},
-		ScanIndexForward: aws.Bool(true),
+	country, region, spot, ok := splitBaseSpotID(spotID)
+	if !ok {
+		return nil, fmt.Errorf("invalid spot_id for forecast query: %q", spotID)
 	}
-	if limit > 0 {
-		input.Limit = aws.Int64(int64(limit))
-	}
+	startEpoch := start.UTC().Unix()
+	endEpoch := end.UTC().Unix()
 
-	result, err := r.client.QueryWithContext(ctx, input)
+	src := defaultPartitionSourceForCountry(country)
+	pk := partitionSpotID(country, region, spot, src, repository.ForecastGranularityHourly)
+	items, err := r.queryPartitionRange(ctx, pk, startEpoch, endEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("querying forecast data range: %w", err)
 	}
 
-	return unmarshalForecastDataPoints(result.Items)
+	points, err := unmarshalForecastDataPoints(items, spotID)
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(points) > limit {
+		points = points[:limit]
+	}
+	return points, nil
+}
+
+func splitBaseSpotID(spotID string) (country, region, spot string, ok bool) {
+	parts := strings.SplitN(spotID, "#", 3)
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
 }
 
 type forecastDataItem struct {
-	Data              map[string]interface{} `dynamodbav:"data"`
-	SpotID            string                 `dynamodbav:"spot_id"`
-	ForecastTimestamp string                 `dynamodbav:"forecast_timestamp"`
+	Data        map[string]interface{} `dynamodbav:"data"`
+	SpotID      string                 `dynamodbav:"spot_id"`
+	Source      string                 `dynamodbav:"source"`
+	GeneratedAt string                 `dynamodbav:"generated_at"`
+	TimestampTS int64                  `dynamodbav:"timestamp_ts"`
 }
 
-func unmarshalForecastDataPoints(items []map[string]*dynamodb.AttributeValue) ([]*model.ForecastDataPoint, error) {
+func (item *forecastDataItem) forecastTimestampString() string {
+	if item == nil || item.TimestampTS == 0 {
+		return ""
+	}
+	return strconv.FormatInt(item.TimestampTS, 10)
+}
+
+func unmarshalForecastDataPoints(items []map[string]*dynamodb.AttributeValue, baseSpotID string) ([]*model.ForecastDataPoint, error) {
 	forecasts := make([]*model.ForecastDataPoint, 0, len(items))
 	for _, item := range items {
 		var forecastItem forecastDataItem
 		if err := dynamodbattribute.UnmarshalMap(item, &forecastItem); err != nil {
 			return nil, fmt.Errorf("unmarshaling forecast data: %w", err)
 		}
-		forecastTime, err := parseForecastTimestamp(forecastItem.ForecastTimestamp)
-		if err != nil {
-			return nil, fmt.Errorf("parsing forecast timestamp: %w", err)
-		}
+		forecastTime := time.Unix(forecastItem.TimestampTS, 0).UTC()
 		forecasts = append(forecasts, &model.ForecastDataPoint{
-			SpotID:            forecastItem.SpotID,
+			SpotID:            baseSpotID,
 			ForecastTimestamp: forecastTime,
 			Data:              forecastItem.Data,
+			Source:            forecastItem.Source,
+			GeneratedAt:       forecastItem.GeneratedAt,
 		})
 	}
 	return forecasts, nil
 }
 
+// parseForecastTimestamp parses a legacy string sort key or decimal epoch string.
 func parseForecastTimestamp(value string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, fmt.Errorf("timestamp is empty")
 	}
-	if unixSeconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+	base := value
+	if idx := strings.Index(value, "#"); idx >= 0 {
+		base = value[:idx]
+	}
+	if unixSeconds, err := strconv.ParseInt(base, 10, 64); err == nil {
 		return time.Unix(unixSeconds, 0).UTC(), nil
 	}
 	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
@@ -293,12 +531,31 @@ func parseForecastItem(
 	item map[string]*dynamodb.AttributeValue,
 	fallbackCountry, fallbackRegion, fallbackSpot string,
 ) (*model.Forecast, error) {
+	// Production items use a Document map at `data`; one UnmarshalMap into forecastDataItem is enough.
+	if dAttr := item["data"]; dAttr != nil && len(dAttr.M) > 0 {
+		var data forecastDataItem
+		if err := dynamodbattribute.UnmarshalMap(item, &data); err != nil {
+			return nil, fmt.Errorf("unmarshaling forecast: %w", err)
+		}
+		if len(data.Data) > 0 {
+			return forecastFromData(nil, data, fallbackCountry, fallbackRegion, fallbackSpot), nil
+		}
+	}
+
 	var flat forecastItem
 	if err := dynamodbattribute.UnmarshalMap(item, &flat); err != nil {
 		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
 	}
 	if flat.isPopulated() {
 		return flat.toModel(), nil
+	}
+
+	var data forecastDataItem
+	if err := dynamodbattribute.UnmarshalMap(item, &data); err != nil {
+		return nil, fmt.Errorf("unmarshaling forecast: %w", err)
+	}
+	if len(data.Data) > 0 {
+		return forecastFromData(nil, data, fallbackCountry, fallbackRegion, fallbackSpot), nil
 	}
 
 	var raw map[string]interface{}
@@ -312,12 +569,41 @@ func parseForecastItem(
 	}
 
 	dataItem := forecastDataItem{
-		Data:              dataMap,
-		SpotID:            stringValue(raw["spot_id"]),
-		ForecastTimestamp: stringValue(raw["forecast_timestamp"]),
+		Data:        dataMap,
+		SpotID:      stringValue(raw["spot_id"]),
+		TimestampTS: int64FromInterface(raw["timestamp_ts"]),
+		Source:      stringValue(raw["source"]),
+		GeneratedAt: stringValue(raw["generated_at"]),
 	}
 
 	return forecastFromData(raw, dataItem, fallbackCountry, fallbackRegion, fallbackSpot), nil
+}
+
+func int64FromInterface(v interface{}) int64 {
+	switch x := v.(type) {
+	case int64:
+		return x
+	case int:
+		return int64(x)
+	case float64:
+		return int64(x)
+	case float32:
+		return int64(x)
+	case string:
+		n, err := strconv.ParseInt(x, 10, 64)
+		if err != nil {
+			return 0
+		}
+		return n
+	case json.Number:
+		n, err := x.Int64()
+		if err != nil {
+			return 0
+		}
+		return n
+	default:
+		return 0
+	}
 }
 
 func extractForecastData(
@@ -387,38 +673,24 @@ func forecastFromData(
 	item forecastDataItem,
 	fallbackCountry, fallbackRegion, fallbackSpot string,
 ) *model.Forecast {
-	country := fallbackCountry
-	region := fallbackRegion
-	spot := fallbackSpot
-
-	if spotID := stringValue(raw["spot_id"]); spotID != "" {
-		if parsedCountry, parsedRegion, parsedSpot, ok := splitSpotID(spotID); ok {
-			country = chooseString(country, parsedCountry)
-			region = chooseString(region, parsedRegion)
-			spot = chooseString(spot, parsedSpot)
-		}
-	}
-
-	countryRegionSpot := stringValue(raw["country_region_spot"])
-	if countryRegionSpot == "" && country != "" && region != "" && spot != "" {
-		countryRegionSpot = fmt.Sprintf("%s_%s_%s", country, region, spot)
-	}
+	country, region, spot, baseSpotID := resolveSpot(raw, item, fallbackCountry, fallbackRegion, fallbackSpot)
+	countryRegionSpot, rawForecastDate := resolveCountryRegionSpotAndForecastDate(raw, country, region, spot)
 
 	dateForecastedFor := mapString(item.Data, "dateForecastedFor", "date_forecasted_for")
-	forecastDate := stringValue(raw["ForecastDate"])
-	if forecastDate == "" {
-		forecastDate = mapString(item.Data, "forecast_date", "ForecastDate")
-	}
+	forecastDate := chooseString(rawForecastDate, mapString(item.Data, "forecast_date", "ForecastDate"))
 
-	date := parseForecastDate(mapString(item.Data, "date"), dateForecastedFor, item.ForecastTimestamp)
-	hour := mapInt(item.Data, "hour")
-	if hour == 0 && !date.IsZero() {
-		hour = date.Hour()
-	}
+	ftStr := item.forecastTimestampString()
+	date := parseForecastDate(mapString(item.Data, "date"), dateForecastedFor, ftStr)
+	hour := resolveForecastHour(item.Data, date)
 
 	return &model.Forecast{
-		ForecastTimestamp: item.ForecastTimestamp,
-		SpotID:            chooseString(stringValue(raw["spot_id"]), item.SpotID),
+		ForecastTimestamp: ftStr,
+		SpotID:            baseSpotID,
+		Source:            item.Source,
+		GeneratedAt: chooseString(
+			item.GeneratedAt,
+			mapString(item.Data, "generated_at", "generatedAt"),
+		),
 		CountryRegionSpot: countryRegionSpot,
 		ForecastDate:      chooseString(forecastDate, date.Format("2006-01-02")),
 		Date:              date,
@@ -438,6 +710,54 @@ func forecastFromData(
 		Temperature:       mapFloat(item.Data, "temperature", "waterTemperature"),
 		Data:              item.Data,
 	}
+}
+
+func resolveSpot(
+	raw map[string]interface{},
+	item forecastDataItem,
+	fallbackCountry, fallbackRegion, fallbackSpot string,
+) (country, region, spot, baseSpotID string) {
+	country = fallbackCountry
+	region = fallbackRegion
+	spot = fallbackSpot
+
+	spotKey := ""
+	if raw != nil {
+		spotKey = stringValue(raw["spot_id"])
+	}
+	if spotKey == "" {
+		spotKey = item.SpotID
+	}
+	if parsedCountry, parsedRegion, parsedSpot, ok := splitSpotID(spotKey); ok {
+		country = chooseString(country, parsedCountry)
+		region = chooseString(region, parsedRegion)
+		spot = chooseString(spot, parsedSpot)
+	}
+
+	baseSpotID = fmt.Sprintf("%s#%s#%s", country, region, spot)
+	return country, region, spot, baseSpotID
+}
+
+func resolveCountryRegionSpotAndForecastDate(
+	raw map[string]interface{},
+	country, region, spot string,
+) (countryRegionSpot, forecastDate string) {
+	if raw != nil {
+		countryRegionSpot = stringValue(raw["country_region_spot"])
+		forecastDate = stringValue(raw["ForecastDate"])
+	}
+	if countryRegionSpot == "" && country != "" && region != "" && spot != "" {
+		countryRegionSpot = fmt.Sprintf("%s_%s_%s", country, region, spot)
+	}
+	return countryRegionSpot, forecastDate
+}
+
+func resolveForecastHour(data map[string]interface{}, date time.Time) int {
+	hour := mapInt(data, "hour")
+	if hour == 0 && !date.IsZero() {
+		return date.Hour()
+	}
+	return hour
 }
 
 func parseForecastDate(dateValue, dateForecastedFor, forecastTimestamp string) time.Time {
@@ -471,9 +791,10 @@ func parseTimeValue(value string) time.Time {
 	return time.Time{}
 }
 
+// splitSpotID parses partition spot_id (country#region#spot or country#region#spot#source).
 func splitSpotID(spotID string) (country, region, spot string, ok bool) {
-	parts := strings.SplitN(spotID, "#", 3)
-	if len(parts) != 3 {
+	parts := strings.Split(spotID, "#")
+	if len(parts) < 3 {
 		return "", "", "", false
 	}
 	return parts[0], parts[1], parts[2], true

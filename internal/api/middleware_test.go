@@ -1,6 +1,7 @@
 package httphandler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,7 +19,7 @@ func TestMain(m *testing.M) {
 func TestAdminMiddleware_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/admin/test", http.NoBody)
+	c.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/test", http.NoBody)
 
 	middleware := AdminMiddleware()
 	middleware(c)
@@ -31,7 +32,7 @@ func TestAdminMiddleware_NoAuth(t *testing.T) {
 func TestAdminMiddleware_NonAdmin(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/admin/test", http.NoBody)
+	c.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/test", http.NoBody)
 	c.Set("email", "user@example.com")
 
 	middleware := AdminMiddleware()
@@ -54,7 +55,7 @@ func TestAdminMiddleware_AdminUser(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin/test", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/test", http.NoBody)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -75,7 +76,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 		// Make a few requests - should all pass
 		for i := 0; i < 5; i++ {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", http.NoBody)
 			router.ServeHTTP(w, req)
 
 			if w.Code != http.StatusOK {
@@ -96,13 +97,13 @@ func TestRateLimitMiddleware(t *testing.T) {
 		// First requests should pass
 		for i := 0; i < 2; i++ {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", http.NoBody)
 			router.ServeHTTP(w, req)
 		}
 
 		// Next request should be rate limited
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", http.NoBody)
 		router.ServeHTTP(w, req)
 
 		if w.Code != http.StatusTooManyRequests {
@@ -154,7 +155,7 @@ func TestIOSHeadersMiddleware(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", http.NoBody)
 	router.ServeHTTP(w, req)
 
 	if w.Header().Get("X-App-Version") != "1.0.0" {
@@ -173,7 +174,7 @@ func TestIOSHeadersMiddleware_AuthRoutes_NoCaching(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/auth/validate", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/auth/validate", http.NoBody)
 	router.ServeHTTP(w, req)
 
 	cacheControl := w.Header().Get("Cache-Control")
@@ -205,7 +206,7 @@ func TestGetClientIPFromContext(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
-			req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", http.NoBody)
 			for k, v := range tt.headers {
 				req.Header.Set(k, v)
 			}

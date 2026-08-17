@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,10 +18,10 @@ const (
 
 func TestReportService_getUserAndValidate(t *testing.T) {
 	tests := []struct {
+		wantIs    error
 		setupMock func() *UserService
 		name      string
 		userEmail string
-		errMsg    string
 		wantErr   bool
 	}{
 		{
@@ -52,7 +51,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 				return service
 			},
 			wantErr: true,
-			errMsg:  "user not found",
+			wantIs:  ErrReportUserNotFound,
 		},
 		{
 			name:      "user nil",
@@ -67,7 +66,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 				return service
 			},
 			wantErr: true,
-			errMsg:  "user not found",
+			wantIs:  ErrReportUserNotFound,
 		},
 		{
 			name:      "user without UUID",
@@ -82,7 +81,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 				return service
 			},
 			wantErr: true,
-			errMsg:  "user does not have a UUID",
+			wantIs:  ErrReportUserMissingUUID,
 		},
 		{
 			name:      "repository error",
@@ -97,7 +96,7 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 				return service
 			},
 			wantErr: true,
-			errMsg:  "failed to get user",
+			wantIs:  ErrReportUserLookupFailed,
 		},
 	}
 
@@ -105,15 +104,15 @@ func TestReportService_getUserAndValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			userService := tt.setupMock()
-			reportService := &ReportService{userService: userService}
+			reportService := &ReportService{userLookup: userService}
 
 			user, err := reportService.getUserAndValidate(ctx, tt.userEmail)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error but got none")
 				}
-				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("expected error to contain %q, got %q", tt.errMsg, err.Error())
+				if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+					t.Errorf("errors.Is: want %v, got %v", tt.wantIs, err)
 				}
 				if user != nil {
 					t.Error("expected nil user on error")
@@ -374,5 +373,58 @@ func TestReportService_storeReport(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPrimarySourceForSpotID(t *testing.T) {
+	tests := []struct {
+		spotID string
+		want   string
+	}{
+		{"ireland#connacht#easkey", sourceComposedIreland},
+		{"Ireland#Donegal#Bundoran", sourceComposedIreland},
+		{"usa#ca#spot", "stormglass"},
+		{"short", "stormglass"},
+		{"", "stormglass"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.spotID, func(t *testing.T) {
+			got := primarySourceForSpotID(tt.spotID)
+			if got != tt.want {
+				t.Fatalf("primarySourceForSpotID(%q) = %q, want %q", tt.spotID, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSelectPrimaryForecast(t *testing.T) {
+	spotID := "ireland#donegal#bundoran"
+	points := []*model.ForecastDataPoint{
+		{Source: "stormglass", Data: map[string]interface{}{"wave_height": 2.0}},
+		{Source: sourceComposedIreland, Data: map[string]interface{}{"wave_height": 2.5}},
+		{Source: "weatherkit", Data: map[string]interface{}{"wave_height": 1.8}},
+	}
+	got := selectPrimaryForecast(spotID, points)
+	if got == nil {
+		t.Fatal("expected non-nil forecast")
+	}
+	if got.Source != sourceComposedIreland {
+		t.Fatalf("expected primary source %s for Ireland, got %s", sourceComposedIreland, got.Source)
+	}
+	// When primary is not present, returns first
+	pointsUSA := []*model.ForecastDataPoint{
+		{Source: "stormglass", Data: map[string]interface{}{}},
+		{Source: "weatherkit", Data: map[string]interface{}{}},
+	}
+	gotUSA := selectPrimaryForecast("usa#ca#spot", pointsUSA)
+	if gotUSA == nil || gotUSA.Source != "stormglass" {
+		t.Fatalf("expected first point when primary not in list, got %v", gotUSA)
+	}
+	// Empty list
+	if selectPrimaryForecast(spotID, nil) != nil {
+		t.Fatal("expected nil for nil slice")
+	}
+	if selectPrimaryForecast(spotID, []*model.ForecastDataPoint{}) != nil {
+		t.Fatal("expected nil for empty slice")
 	}
 }

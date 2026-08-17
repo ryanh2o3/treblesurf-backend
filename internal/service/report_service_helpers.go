@@ -25,18 +25,18 @@ const (
 )
 
 func (s *ReportService) getUserAndValidate(ctx context.Context, userEmail string) (*model.User, error) {
-	user, err := s.userService.GetByEmail(ctx, userEmail)
+	user, err := s.userLookup.GetByEmail(ctx, userEmail)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, fmt.Errorf("user not found")
+			return nil, fmt.Errorf("%w", ErrReportUserNotFound)
 		}
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrReportUserLookupFailed, err)
 	}
 	if user == nil {
-		return nil, fmt.Errorf("user not found")
+		return nil, fmt.Errorf("%w", ErrReportUserNotFound)
 	}
 	if user.UUID == "" {
-		return nil, fmt.Errorf("user does not have a UUID")
+		return nil, fmt.Errorf("%w", ErrReportUserMissingUUID)
 	}
 	return user, nil
 }
@@ -150,11 +150,12 @@ func (s *ReportService) broadcastReportMessage(
 		return
 	}
 
-	go func() {
-		broadcastCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	go func(parentCtx context.Context) {
+		// Detach cancellation from the request while still preserving values (trace IDs, etc.).
+		broadcastCtx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 5*time.Second)
 		defer cancel()
 		s.broadcastToUsers(broadcastCtx, subscribers, message)
-	}()
+	}(ctx)
 }
 
 func (s *ReportService) createBaseReport(
@@ -346,6 +347,7 @@ func (s *ReportService) convertReportsToMaps(
 func (s *ReportService) normalizeSpotReports(reports []map[string]interface{}) {
 	for _, report := range reports {
 		delete(report, "user_email") // Remove sensitive field
+		delete(report, "UserEmail")
 
 		// Ensure new fields have defaults if missing
 		setDefaultIfMissing(report, "video_key", "")
@@ -370,17 +372,45 @@ func setDefaultIfMissing(m map[string]interface{}, key string, defaultValue inte
 	}
 }
 
+// primarySourceForSpotID returns the preferred forecast source for a spot (spotID is country#region#spot).
+func primarySourceForSpotID(spotID string) string {
+	parts := strings.SplitN(spotID, "#", 3)
+	if len(parts) != 3 {
+		return sourceStormglass
+	}
+	if strings.EqualFold(parts[0], "ireland") {
+		return sourceComposedIreland
+	}
+	return sourceStormglass
+}
+
+// selectPrimaryForecast returns the first point matching the primary source, or the first point if none match.
+func selectPrimaryForecast(spotID string, points []*model.ForecastDataPoint) *model.ForecastDataPoint {
+	if len(points) == 0 {
+		return nil
+	}
+	primary := primarySourceForSpotID(spotID)
+	for _, p := range points {
+		if p != nil && p.Source == primary {
+			return p
+		}
+	}
+	for _, p := range points {
+		if p != nil {
+			return p
+		}
+	}
+	return nil
+}
+
 // queryCurrentForecast queries for the most recent forecast data.
 func (s *ReportService) queryCurrentForecast(ctx context.Context, spotID string) (*model.ForecastDataPoint, error) {
 	currentTime := time.Now().Add(-1 * time.Hour)
-	forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, currentTime, 1)
+	forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, currentTime, 10)
 	if err != nil {
 		return nil, err
 	}
-	if len(forecasts) == 0 {
-		return nil, nil
-	}
-	return forecasts[0], nil
+	return selectPrimaryForecast(spotID, forecasts), nil
 }
 
 // queryHistoricalForecast queries for forecast data looking backwards up to 24 hours.
@@ -391,9 +421,9 @@ func (s *ReportService) queryHistoricalForecast(ctx context.Context, spotID stri
 
 	for i := 1; i <= 24; i++ {
 		pastTime := currentTime.Add(-time.Duration(i) * time.Hour)
-		forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, pastTime, 1)
+		forecasts, err := s.forecastDataRepo.QuerySince(ctx, spotID, pastTime, 10)
 		if err == nil && len(forecasts) > 0 {
-			return forecasts[0], nil
+			return selectPrimaryForecast(spotID, forecasts), nil
 		}
 	}
 

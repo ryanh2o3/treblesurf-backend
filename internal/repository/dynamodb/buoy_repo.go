@@ -177,24 +177,34 @@ func parseBuoyData(item map[string]*dynamodb.AttributeValue) (*model.BuoyData, e
 	}
 
 	timestamp := parseBuoyTimestamp(raw)
-	buoyName := mapString(raw, "buoy_name", "BuoyName")
+	buoyName := firstString(raw, "name", "buoy_name", "BuoyName")
 	if buoyName == "" {
 		if regionBuoy := mapString(raw, "region_buoy", "RegionBuoy"); regionBuoy != "" {
 			buoyName = buoyNameFromRegionBuoy(regionBuoy)
 		}
 	}
 
+	// Python buoyData service (treblesurf-buoyData) writes PascalCase: MeanWaveDirection, SeaTemperature, AtmosphericPressure, etc.
+	// Support both legacy snake_case and current writer attribute names.
 	return &model.BuoyData{
-		Timestamp:     timestamp,
-		BuoyName:      buoyName,
-		WaveHeight:    firstFloat(raw, "wave_height", "WaveHeight"),
-		WavePeriod:    firstFloat(raw, "wave_period", "WavePeriod"),
-		MaxPeriod:     firstFloat(raw, "max_period", "MaxPeriod"),
-		WaveDirection: firstFloat(raw, "wave_direction", "WaveDirection"),
-		WindSpeed:     firstFloat(raw, "wind_speed", "WindSpeed"),
-		WindDirection: firstFloat(raw, "wind_direction", "WindDirection"),
-		Temperature:   firstFloat(raw, "temperature", "Temperature"),
-		Pressure:      firstFloat(raw, "pressure", "Pressure"),
+		Timestamp:        timestamp,
+		BuoyName:         buoyName,
+		WaveHeight:       firstFloat(raw, "wave_height", "WaveHeight"),
+		WavePeriod:       firstFloat(raw, "wave_period", "WavePeriod"),
+		MaxPeriod:        firstFloat(raw, "max_period", "MaxPeriod"),
+		WaveDirection:    firstFloat(raw, "wave_direction", "WaveDirection", "MeanWaveDirection"),
+		WindSpeed:        firstFloat(raw, "wind_speed", "WindSpeed"),
+		WindDirection:    firstFloat(raw, "wind_direction", "WindDirection"),
+		Temperature:      firstFloat(raw, "temperature", "Temperature", "SeaTemperature"),
+		Pressure:         firstFloat(raw, "pressure", "Pressure", "AtmosphericPressure"),
+		SprTp:            firstFloat(raw, "SprTp"),
+		ThTp:             firstFloat(raw, "ThTp"),
+		MaxHeight:        firstFloat(raw, "max_height", "MaxHeight"),
+		Gust:             firstFloat(raw, "Gust"),
+		AirTemperature:   firstFloat(raw, "air_temperature", "AirTemperature"),
+		DewPoint:         firstFloat(raw, "dew_point", "DewPoint"),
+		RelativeHumidity: firstFloat(raw, "relative_humidity", "RelativeHumidity"),
+		Salinity:         firstFloat(raw, "salinity", "Salinity"),
 	}, nil
 }
 

@@ -16,7 +16,7 @@ type tableDefinition struct {
 func getAllTableDefinitions() []tableDefinition {
 	return []tableDefinition{
 		newLocationDataTable(),
-		newSpotForecastDataTable(),
+		newSurfForecastsTable(),
 		newBuoyDataTable(),
 		newBuoyLocationsTable(),
 		newSurfReportsTable(),
@@ -46,17 +46,17 @@ func newLocationDataTable() tableDefinition {
 	}
 }
 
-// newSpotForecastDataTable returns the definition for the SpotForecastData table.
-func newSpotForecastDataTable() tableDefinition {
+// newSurfForecastsTable returns the definition for the surf_forecasts table (PK country#region#spot#source#hourly|multiHour, numeric SK).
+func newSurfForecastsTable() tableDefinition {
 	return tableDefinition{
-		name: "SpotForecastData",
+		name: "surf_forecasts",
 		keySchema: []*dynamodb.KeySchemaElement{
 			{
 				AttributeName: aws.String("spot_id"),
 				KeyType:       aws.String("HASH"),
 			},
 			{
-				AttributeName: aws.String("forecast_timestamp"),
+				AttributeName: aws.String("timestamp_ts"),
 				KeyType:       aws.String("RANGE"),
 			},
 		},
@@ -66,8 +66,8 @@ func newSpotForecastDataTable() tableDefinition {
 				AttributeType: aws.String("S"),
 			},
 			{
-				AttributeName: aws.String("forecast_timestamp"),
-				AttributeType: aws.String("S"),
+				AttributeName: aws.String("timestamp_ts"),
+				AttributeType: aws.String("N"),
 			},
 		},
 	}

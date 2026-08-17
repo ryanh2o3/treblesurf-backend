@@ -1,9 +1,15 @@
 package auth
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"treblesurf-backend/internal/config"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestGenerateCSRFToken(t *testing.T) {
@@ -54,5 +60,22 @@ func TestToAuthUser_NilInput(t *testing.T) {
 	result := toAuthUser(nil)
 	if result != nil {
 		t.Fatalf("expected nil for nil input")
+	}
+}
+
+func TestDevLoginHandler_DisabledOutsideDevelopment(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &Service{isDevelopment: false}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body, _ := json.Marshal(map[string]string{"email": "dev@example.com"})
+	c.Request = httptest.NewRequest(http.MethodPost, "/auth/dev-session", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	svc.DevLoginHandler(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, w.Code)
 	}
 }

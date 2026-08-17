@@ -275,6 +275,7 @@ func (s *ReportService) GetSurfReportsWithSimilarBuoyData(
 
 		if similarity > 0.7 {
 			delete(info.report, "user_email")
+			delete(info.report, "UserEmail")
 			info.report["similarity"] = similarity
 			info.report["buoy_wave_height"] = buoyDataMap["WaveHeight"]
 			info.report["buoy_wave_direction"] = buoyDataMap["MeanWaveDirection"]
@@ -942,6 +943,7 @@ func (s *ReportService) GetSurfReportsWithMatchingConditions(
 		combinedSimilarity := 0.7*bestMatch.similarity + 0.3*windSimilarity
 
 		delete(info.report, "user_email")
+		delete(info.report, "UserEmail")
 		info.report["buoy_similarity"] = bestMatch.similarity
 		info.report["wind_similarity"] = windSimilarity
 		info.report["combined_similarity"] = combinedSimilarity

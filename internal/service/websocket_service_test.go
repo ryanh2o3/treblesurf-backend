@@ -15,6 +15,21 @@ import (
 
 const websocketTestSpotIdentifier = "Ireland/Donegal/Bundoran"
 
+func newTestWebSocketService(
+	t *testing.T,
+	connections *mockrepo.WebSocketRepo,
+	subscriptions *mockrepo.SpotSubscriptionRepo,
+	jwtSecret []byte,
+	endpoint, stage string,
+) *WebSocketService {
+	t.Helper()
+	svc, err := NewWebSocketService(connections, subscriptions, jwtSecret, endpoint, stage)
+	if err != nil {
+		t.Fatalf("NewWebSocketService: %v", err)
+	}
+	return svc
+}
+
 func TestNewWebSocketService(t *testing.T) {
 	connections := &mockrepo.WebSocketRepo{}
 	subscriptions := &mockrepo.SpotSubscriptionRepo{}
@@ -22,7 +37,7 @@ func TestNewWebSocketService(t *testing.T) {
 	endpoint := "test-endpoint"
 	stage := "test-stage"
 
-	service := NewWebSocketService(connections, subscriptions, jwtSecret, endpoint, stage)
+	service := newTestWebSocketService(t, connections, subscriptions, jwtSecret, endpoint, stage)
 
 	if service == nil {
 		t.Fatal("expected service but got nil")
@@ -46,7 +61,7 @@ func TestNewWebSocketService(t *testing.T) {
 
 func TestWebSocketService_ValidateWebSocketToken(t *testing.T) {
 	jwtSecret := []byte("test-secret")
-	service := NewWebSocketService(nil, nil, jwtSecret, "", "")
+	service := newTestWebSocketService(t, &mockrepo.WebSocketRepo{}, &mockrepo.SpotSubscriptionRepo{}, jwtSecret, "", "")
 
 	tests := []struct {
 		setupToken func() string
@@ -110,7 +125,7 @@ func TestWebSocketService_ValidateWebSocketToken(t *testing.T) {
 
 func TestWebSocketService_GetEmailFromToken(t *testing.T) {
 	jwtSecret := []byte("test-secret")
-	service := NewWebSocketService(nil, nil, jwtSecret, "", "")
+	service := newTestWebSocketService(t, &mockrepo.WebSocketRepo{}, &mockrepo.SpotSubscriptionRepo{}, jwtSecret, "", "")
 
 	tests := []struct {
 		name       string
@@ -186,7 +201,7 @@ func TestWebSocketService_SaveConnection(t *testing.T) {
 			return nil
 		},
 	}
-	service := NewWebSocketService(connections, nil, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, connections, &mockrepo.SpotSubscriptionRepo{}, []byte("secret"), "", "")
 
 	conn := &model.ConnectionInfo{
 		ConnectionID: "test-connection-id",
@@ -221,7 +236,7 @@ func TestWebSocketService_DeleteConnection(t *testing.T) {
 			return nil
 		},
 	}
-	service := NewWebSocketService(connections, nil, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, connections, &mockrepo.SpotSubscriptionRepo{}, []byte("secret"), "", "")
 
 	err := service.DeleteConnection(ctx, "test-connection-id")
 	if err != nil {
@@ -243,7 +258,7 @@ func TestWebSocketService_GetConnection(t *testing.T) {
 			return nil, errors.New("not found")
 		},
 	}
-	service := NewWebSocketService(connections, nil, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, connections, &mockrepo.SpotSubscriptionRepo{}, []byte("secret"), "", "")
 
 	conn, err := service.GetConnection(ctx, "test-connection-id")
 	if err != nil {
@@ -264,7 +279,7 @@ func TestWebSocketService_UpdateConnectionLastActive(t *testing.T) {
 			return nil
 		},
 	}
-	service := NewWebSocketService(connections, nil, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, connections, &mockrepo.SpotSubscriptionRepo{}, []byte("secret"), "", "")
 
 	err := service.UpdateConnectionLastActive(ctx, "test-connection-id")
 	if err != nil {
@@ -282,7 +297,7 @@ func TestWebSocketService_UpdateConnectionSpot(t *testing.T) {
 			return nil
 		},
 	}
-	service := NewWebSocketService(connections, nil, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, connections, &mockrepo.SpotSubscriptionRepo{}, []byte("secret"), "", "")
 
 	err := service.UpdateConnectionSpot(ctx, "test-connection-id", websocketTestSpotIdentifier)
 	if err != nil {
@@ -300,7 +315,7 @@ func TestWebSocketService_SaveSubscription(t *testing.T) {
 			return nil
 		},
 	}
-	service := NewWebSocketService(nil, subscriptions, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, &mockrepo.WebSocketRepo{}, subscriptions, []byte("secret"), "", "")
 
 	err := service.SaveSubscription(ctx, websocketTestSpotIdentifier, "test-user-id", "test-connection-id")
 	if err != nil {
@@ -319,7 +334,7 @@ func TestWebSocketService_GetSubscribersBySpot(t *testing.T) {
 			return nil, nil
 		},
 	}
-	service := NewWebSocketService(nil, subscriptions, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, &mockrepo.WebSocketRepo{}, subscriptions, []byte("secret"), "", "")
 
 	subscribers, err := service.GetSubscribersBySpot(ctx, websocketTestSpotIdentifier)
 	if err != nil {
@@ -330,18 +345,21 @@ func TestWebSocketService_GetSubscribersBySpot(t *testing.T) {
 	}
 }
 
-func TestWebSocketService_GetSubscribersBySpot_NilRepository(t *testing.T) {
-	ctx := context.Background()
-	service := NewWebSocketService(nil, nil, []byte("secret"), "", "")
-
-	_, err := service.GetSubscribersBySpot(ctx, websocketTestSpotIdentifier)
-	if err == nil {
-		t.Fatal("expected error for nil subscription repository")
+func TestNewWebSocketService_RequiresRepositories(t *testing.T) {
+	secret := []byte("secret")
+	if _, err := NewWebSocketService(nil, &mockrepo.SpotSubscriptionRepo{}, secret, "", ""); err == nil {
+		t.Fatal("expected error when connections repository is nil")
+	}
+	if _, err := NewWebSocketService(&mockrepo.WebSocketRepo{}, nil, secret, "", ""); err == nil {
+		t.Fatal("expected error when subscription repository is nil")
+	}
+	if _, err := NewWebSocketService(&mockrepo.WebSocketRepo{}, &mockrepo.SpotSubscriptionRepo{}, nil, "", ""); err == nil {
+		t.Fatal("expected error when JWT secret is empty")
 	}
 }
 
 func TestWebSocketService_CreateSubscriptionResponse(t *testing.T) {
-	service := NewWebSocketService(nil, nil, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, &mockrepo.WebSocketRepo{}, &mockrepo.SpotSubscriptionRepo{}, []byte("secret"), "", "")
 	spotIdentifier := websocketTestSpotIdentifier
 
 	response := service.CreateSubscriptionResponse(spotIdentifier)
@@ -368,7 +386,7 @@ func TestWebSocketService_CreateSubscriptionResponse(t *testing.T) {
 }
 
 func TestWebSocketService_CreatePongResponse(t *testing.T) {
-	service := NewWebSocketService(nil, nil, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, &mockrepo.WebSocketRepo{}, &mockrepo.SpotSubscriptionRepo{}, []byte("secret"), "", "")
 
 	response := service.CreatePongResponse()
 
@@ -404,7 +422,7 @@ func TestWebSocketService_GetConnectionsByUserIDs(t *testing.T) {
 			return nil, nil
 		},
 	}
-	service := NewWebSocketService(connections, nil, []byte("secret"), "", "")
+	service := newTestWebSocketService(t, connections, &mockrepo.SpotSubscriptionRepo{}, []byte("secret"), "", "")
 
 	conns, err := service.GetConnectionsByUserIDs(ctx, []string{"user1"})
 	if err != nil {

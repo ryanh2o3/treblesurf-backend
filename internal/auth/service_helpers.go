@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -28,6 +29,7 @@ func validateGoogleIDToken(ctx context.Context, idToken string, clientIDs map[st
 }
 
 // extractUserClaims extracts user claims from a Google ID token payload.
+//
 //nolint:unparam,gocritic // Error return maintained for API consistency; multiple return values needed for all claims
 func extractUserClaims(payload *idtoken.Payload) (email, name, picture, familyName, givenName string, err error) {
 	email, ok := payload.Claims["email"].(string)
@@ -70,6 +72,64 @@ func (s *Service) handleNewUser(ctx context.Context, email, name, picture, famil
 	return s.getUserByEmail(ctx, email)
 }
 
+// handleNewAppleUser creates a user keyed by Apple sub (and email when present).
+func (s *Service) handleNewAppleUser(ctx context.Context, email, appleID string) (*User, error) {
+	newUser := User{
+		Email:   email,
+		AppleID: appleID,
+		// Apple does not provide avatar or name in the identity token for native iOS
+		// when the client only posts identity_token (name is only available on first
+		// ASAuthorizationAppleIDCredential and is not sent by the current iOS client).
+		Picture: "",
+	}
+
+	if err := s.createUser(ctx, newUser); err != nil {
+		return nil, err
+	}
+
+	slog.Info("created new apple user", slog.String("email", email), slog.String("apple_id", appleID))
+	return s.getUserByEmail(ctx, email)
+}
+
+// handleExistingAppleUser updates last login for a known Apple user.
+func (s *Service) handleExistingAppleUser(ctx context.Context, existing *User) (*User, error) {
+	if err := s.updateUserLastLogin(ctx, existing.Email); err != nil {
+		slog.Warn("error updating last login", slog.Any("error", err))
+	}
+
+	if err := s.ensureUserHasUUID(ctx, existing.Email); err != nil {
+		slog.Warn("error ensuring user has UUID", slog.Any("error", err))
+	}
+
+	userData, err := s.getUserByEmail(ctx, existing.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	slog.Info("apple user logged in", slog.String("email", existing.Email), slog.String("apple_id", existing.AppleID))
+	return userData, nil
+}
+
+// linkAppleIDToUser attaches an Apple sub to an existing email-keyed account.
+func (s *Service) linkAppleIDToUser(ctx context.Context, existing *User, appleID string) (*User, error) {
+	if existing.AppleID != "" && existing.AppleID != appleID {
+		return nil, fmt.Errorf("user already linked to a different apple_id")
+	}
+
+	if existing.AppleID == "" {
+		modelUser := toModelUser(existing)
+		modelUser.AppleID = appleID
+		if err := s.userRepo.Update(ctx, modelUser); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.handleExistingAppleUser(ctx, &User{
+		Email:   existing.Email,
+		AppleID: appleID,
+	})
+}
+
 // handleExistingUser updates last login and ensures UUID, returns updated user.
 func (s *Service) handleExistingUser(ctx context.Context, email string) (*User, error) {
 	if err := s.updateUserLastLogin(ctx, email); err != nil {
@@ -104,7 +164,7 @@ func setupCSRFToken(c *gin.Context, secure bool) string {
 		"/",
 		"",
 		secure, // Secure
-		false, // Not HTTP-only (JS needs to access it)
+		false,  // Not HTTP-only (JS needs to access it)
 	)
 	c.Header("X-CSRF-Token", csrfToken)
 
@@ -146,7 +206,7 @@ func setAuthCookie(c *gin.Context, secure bool) {
 		"/",
 		"",
 		secure, // Secure (HTTPS only)
-		true, // HTTP-only
+		true,   // HTTP-only
 	)
 }
 
@@ -237,9 +297,9 @@ func buildValidateTokenResponse(userData *User, authType string) gin.H {
 		"valid":     true,
 		"auth_type": authType,
 		"user": gin.H{
-			"email":      userData.Email,
-			"name":       userData.Name,
-			"picture":    userData.Picture,
+			"email":       userData.Email,
+			"name":        userData.Name,
+			"picture":     userData.Picture,
 			"family_name": userData.FamilyName,
 			"given_name":  userData.GivenName,
 			"theme":       userData.Theme,
@@ -247,4 +307,3 @@ func buildValidateTokenResponse(userData *User, authType string) gin.H {
 		},
 	}
 }
-

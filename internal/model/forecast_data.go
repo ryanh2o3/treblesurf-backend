@@ -8,4 +8,6 @@ type ForecastDataPoint struct {
 	ForecastTimestamp time.Time              `json:"forecast_timestamp"`
 	Data              map[string]interface{} `json:"data"`
 	SpotID            string                 `json:"spot_id"`
+	Source            string                 `json:"source,omitempty"`
+	GeneratedAt       string                 `json:"generated_at,omitempty"`
 }
