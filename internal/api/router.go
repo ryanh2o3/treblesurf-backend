@@ -119,7 +119,7 @@ func setupAuthRoutes(r gin.IRouter, cfg *config.Config, authService *auth.Servic
 		c.JSON(http.StatusOK, gin.H{"message": "CSRF token available"})
 	})
 
-	// Development-only login endpoint (bypasses Google OAuth)
+	// Development-only login endpoint (bypasses Google OAuth). Never registered in production.
 	if isLocal {
 		r.POST("/auth/dev-session", authService.DevLoginHandler)
 	}
@@ -197,6 +197,7 @@ func setupReportModificationRoutes(g *gin.RouterGroup, container *Container) {
 	g.GET("/generateVideoUploadURL", container.ReportController.GenerateVideoUploadURL)
 	g.DELETE("/deleteUploadedMedia", container.ReportController.DeleteUploadedMedia)
 	g.DELETE("/deleteMyAccount", container.UserController.DeleteMyAccount)
+	g.DELETE("/account/delete", container.UserController.DeleteMyAccount)
 	g.PUT("/setTheme", container.UserController.SetUserTheme)
 	g.DELETE("/sessions/:sessionId", container.AuthService.TerminateSessionHandler)
 }

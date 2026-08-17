@@ -554,26 +554,7 @@ func (s *Service) ValidateTokenHandler(c *gin.Context) {
 }
 
 func (s *Service) LogoutHandler(c *gin.Context) {
-	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(
-		"auth_token",
-		"",
-		-1, // Expire immediately
-		"/",
-		"",
-		s.cookieSecure,
-		true,
-	)
-
-	c.SetCookie(
-		"csrf_token",
-		"",
-		-1,
-		"/",
-		"",
-		s.cookieSecure,
-		false,
-	)
+	s.ClearAuthCookies(c)
 
 	if s.sessionService != nil {
 		userSession, err := s.sessionService.GetUserSession(c.Request)
@@ -585,6 +566,18 @@ func (s *Service) LogoutHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+}
+
+// ClearAuthCookies expires auth cookies so the client is signed out after account deletion.
+func (s *Service) ClearAuthCookies(c *gin.Context) {
+	if s == nil || c == nil {
+		return
+	}
+
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("auth_token", "", -1, "/", "", s.cookieSecure, true)
+	c.SetCookie("csrf_token", "", -1, "/", "", s.cookieSecure, false)
+	c.SetCookie("session_id", "", -1, "/", "", s.cookieSecure, true)
 }
 
 func (s *Service) GetUserSessionsHandler(c *gin.Context) {
@@ -764,8 +757,13 @@ func (s *Service) CreateDevSession(email string, c *gin.Context) error {
 }
 
 // DevLoginHandler handles development-only login that bypasses Google OAuth.
-// Only registered when running locally via cmd/server.
+// Only registered when running locally; also refuses to run outside development.
 func (s *Service) DevLoginHandler(c *gin.Context) {
+	if s == nil || !s.isDevelopment {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+		return
+	}
+
 	var req struct {
 		Email string `json:"email"`
 	}

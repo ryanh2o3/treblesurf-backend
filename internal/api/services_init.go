@@ -195,6 +195,7 @@ func initAuthAndUserServices(
 	if err != nil {
 		return fmt.Errorf("creating user service: %w", err)
 	}
+	userService.WithAccountCleanup(repos.sessionRepo, repos.reportRepo)
 	services.authService = authService
 	services.userService = userService
 	return nil
@@ -249,7 +250,7 @@ func initializeControllers(
 	return &containerControllers{
 		forecastController:        controller.NewForecastController(services.forecastService, services.tideService),
 		swellPredictionController: controller.NewSwellPredictionController(services.swellPredictionService),
-		userController:            controller.NewUserController(services.userService),
+		userController:            controller.NewUserController(services.userService).WithAuth(services.authService),
 		reportController:          controller.NewReportController(services.reportService, services.userService),
 		locationController:        controller.NewLocationController(services.locationService),
 		apiKeyController:          controller.NewAPIKeyController(services.apiKeyService),

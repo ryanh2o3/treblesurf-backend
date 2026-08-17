@@ -203,7 +203,6 @@ func mapSpotReportToClient(report map[string]interface{}) map[string]interface{}
 	out["Reporter"] = stringFromReport(report, "reporter", "Reporter")
 	out["SurfSize"] = stringFromReport(report, "surf_size", "SurfSize")
 	out["Time"] = stringFromReport(report, "time", "Time")
-	out["UserEmail"] = stringFromReport(report, "user_email", "UserEmail")
 	out["WindAmount"] = stringFromReport(report, "wind_amount", "WindAmount")
 	out["WindDirection"] = stringFromReport(report, "wind_direction", "WindDirection")
 	out["country_region_spot"] = stringFromReport(report, "country_region_spot", "country_region_spot")

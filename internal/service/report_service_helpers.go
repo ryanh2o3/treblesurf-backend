@@ -347,6 +347,7 @@ func (s *ReportService) convertReportsToMaps(
 func (s *ReportService) normalizeSpotReports(reports []map[string]interface{}) {
 	for _, report := range reports {
 		delete(report, "user_email") // Remove sensitive field
+		delete(report, "UserEmail")
 
 		// Ensure new fields have defaults if missing
 		setDefaultIfMissing(report, "video_key", "")

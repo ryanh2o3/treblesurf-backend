@@ -61,6 +61,9 @@ type ReportRepository interface {
 	// ScanSince retrieves all reports since a given time across all spots.
 	// Use limit=0 for no limit.
 	ScanSince(ctx context.Context, since time.Time, limit int) ([]*model.SurfReport, error)
+
+	// AnonymizeByUserEmail strips personal identifiers from surf reports posted by email.
+	AnonymizeByUserEmail(ctx context.Context, email string) error
 }
 
 // LocationRepository handles location data persistence.

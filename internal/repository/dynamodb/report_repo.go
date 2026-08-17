@@ -169,3 +169,65 @@ func (r *ReportRepo) ScanSince(ctx context.Context, since time.Time, limit int) 
 
 	return reports, nil
 }
+
+func (r *ReportRepo) AnonymizeByUserEmail(ctx context.Context, email string) error {
+	if email == "" {
+		return nil
+	}
+
+	var startKey map[string]*dynamodb.AttributeValue
+	for {
+		input := &dynamodb.ScanInput{
+			TableName:        aws.String(r.tableName),
+			FilterExpression: aws.String("UserEmail = :email OR user_email = :email"),
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":email": {S: aws.String(email)},
+			},
+			ExclusiveStartKey: startKey,
+		}
+
+		result, err := r.client.ScanWithContext(ctx, input)
+		if err != nil {
+			return fmt.Errorf("scanning reports to anonymize: %w", err)
+		}
+
+		for _, item := range result.Items {
+			if err := r.anonymizeReportItem(ctx, item); err != nil {
+				return err
+			}
+		}
+
+		if result.LastEvaluatedKey == nil {
+			return nil
+		}
+		startKey = result.LastEvaluatedKey
+	}
+}
+
+func (r *ReportRepo) anonymizeReportItem(ctx context.Context, item map[string]*dynamodb.AttributeValue) error {
+	pk, ok := item["country_region_spot"]
+	if !ok || pk == nil || pk.S == nil {
+		return nil
+	}
+	sk, ok := item["dateReported"]
+	if !ok || sk == nil || sk.S == nil {
+		return nil
+	}
+
+	_, err := r.client.UpdateItemWithContext(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.tableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"country_region_spot": pk,
+			"dateReported":        sk,
+		},
+		UpdateExpression: aws.String("REMOVE UserEmail, user_email SET Reporter = :anon, reportedBy = :deleted"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":anon":    {S: aws.String("Anonymous")},
+			":deleted": {S: aws.String("deleted")},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("anonymizing surf report: %w", err)
+	}
+	return nil
+}

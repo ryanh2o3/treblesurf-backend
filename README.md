@@ -61,7 +61,7 @@ treblesurf-backend/
 - `GET /auth/validate` - Validate authentication token
 - `POST /auth/logout` - Log out
 - `GET /auth/csrf` - Get CSRF token (requires auth)
-- `POST /auth/dev-session` - Create development session (dev only)
+- `POST /auth/dev-session` - Create development session (**local/development only**; not registered in production)
 - `GET /ws-token` - Get WebSocket authentication token
 
 ### Public Endpoints
@@ -103,7 +103,7 @@ treblesurf-backend/
 - `GET /sessions` - Get user sessions
 - `GET /getTheme` - Get user theme preference
 - `PUT /setTheme` - Set user theme preference
-- `DELETE /deleteMyAccount` - Delete user account
+- `DELETE /deleteMyAccount` - Delete user account (also `DELETE /account/delete`)
 - `DELETE /sessions/:sessionId` - Terminate specific session
 
 ### Surf Reports (Requires Authentication)
