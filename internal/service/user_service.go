@@ -31,7 +31,7 @@ func (s *UserService) WithAccountCleanup(
 	reports repository.ReportRepository,
 ) *UserService {
 	if s == nil {
-		return s
+		return nil
 	}
 	s.sessions = sessions
 	s.reports = reports
