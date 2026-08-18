@@ -10,10 +10,10 @@ import (
 var _ repository.MediaRepository = (*MediaRepo)(nil)
 
 type MediaRepo struct {
-	UploadFn          func(ctx context.Context, key string, data []byte, contentType string) error
-	DownloadFn        func(ctx context.Context, key string) ([]byte, error)
-	ExistsFn          func(ctx context.Context, key string) (bool, error)
-	DeleteFn          func(ctx context.Context, key string) error
+	UploadFn            func(ctx context.Context, key string, data []byte, contentType string) error
+	DownloadFn          func(ctx context.Context, key string) ([]byte, error)
+	ExistsFn            func(ctx context.Context, key string) (bool, error)
+	DeleteFn            func(ctx context.Context, key string) error
 	GenerateUploadURLFn func(ctx context.Context, key string, expires time.Duration) (string, error)
 	GenerateViewURLFn   func(ctx context.Context, key string, expires time.Duration) (string, error)
 }

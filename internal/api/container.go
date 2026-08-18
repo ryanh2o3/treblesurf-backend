@@ -43,6 +43,8 @@ type Container struct {
 	SnapshotController        *controller.SnapshotController
 	ContentReportController   *controller.ContentReportController
 	ModerationController      *controller.ModerationController
+	NotificationController    *controller.NotificationController
+	NotificationService       *service.NotificationService
 
 	rateLimiter *rateLimiter
 }
@@ -130,6 +132,8 @@ func buildContainer(
 		SnapshotController:        controllers.snapshotController,
 		ContentReportController:   controllers.contentReportController,
 		ModerationController:      controllers.moderationController,
+		NotificationController:    controllers.notificationController,
+		NotificationService:       services.notificationService,
 		rateLimiter:               rateLimiter,
 	}
 }

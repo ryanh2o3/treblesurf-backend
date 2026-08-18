@@ -17,6 +17,7 @@ type Config struct {
 	Security  SecurityConfig
 	Server    ServerConfig
 	Auth      AuthConfig
+	APNS      APNSConfig
 }
 
 // Environment represents the application environment.
@@ -52,6 +53,15 @@ type WebSocketConfig struct {
 	Stage    string
 }
 
+// APNSConfig holds Apple Push Notification service credentials.
+// When KeyP8 is empty, push delivery is disabled (local/dev without keys).
+type APNSConfig struct {
+	KeyP8  string
+	KeyID  string
+	TeamID string
+	Topic  string
+}
+
 // ServerConfig holds HTTP server configuration.
 type ServerConfig struct {
 	Port           string
@@ -78,6 +88,7 @@ func Load() (*Config, error) {
 	}
 	loadSecurityConfig(cfg, env)
 	loadServerConfig(cfg)
+	loadAPNSConfig(cfg)
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -303,6 +314,18 @@ func loadServerConfig(cfg *Config) {
 	}
 	if timeoutSeconds, ok := getEnvInt("REQUEST_TIMEOUT_SECONDS"); ok && timeoutSeconds > 0 {
 		cfg.Server.RequestTimeout = time.Duration(timeoutSeconds) * time.Second
+	}
+}
+
+func loadAPNSConfig(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	cfg.APNS = APNSConfig{
+		KeyP8:  strings.ReplaceAll(os.Getenv("APNS_KEY_P8"), `\n`, "\n"),
+		KeyID:  strings.TrimSpace(os.Getenv("APNS_KEY_ID")),
+		TeamID: strings.TrimSpace(os.Getenv("APNS_TEAM_ID")),
+		Topic:  getEnvOrDefault("APNS_TOPIC", "treble.TrebleSurf"),
 	}
 }
 

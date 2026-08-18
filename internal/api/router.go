@@ -200,6 +200,10 @@ func setupReportModificationRoutes(g *gin.RouterGroup, container *Container) {
 	g.DELETE("/account/delete", container.UserController.DeleteMyAccount)
 	g.PUT("/setTheme", container.UserController.SetUserTheme)
 	g.DELETE("/sessions/:sessionId", container.AuthService.TerminateSessionHandler)
+	g.PUT("/notification/device-token", container.NotificationController.PutDeviceToken)
+	g.DELETE("/notification/device-token", container.NotificationController.DeleteDeviceToken)
+	g.PUT("/notification/spot", container.NotificationController.PutSpotAlert)
+	g.DELETE("/notification/spot", container.NotificationController.DeleteSpotAlert)
 }
 
 // setupUserRoutes configures user-related read routes.
@@ -207,6 +211,7 @@ func setupUserRoutes(g *gin.RouterGroup, container *Container) {
 	g.GET("/sessions", container.AuthService.GetUserSessionsHandler)
 	g.GET("/user/preferences", container.UserController.GetUserPreferences)
 	g.GET("/getTheme", container.UserController.GetUserTheme)
+	g.GET("/notification/preferences", container.NotificationController.GetPreferences)
 	g.GET("/getTodaySpotReports", container.ReportController.RetrieveTodaysSurfReports)
 	g.GET("/getAllSpotReports", container.ReportController.GetAllSpotSurfReports)
 	g.GET("/getSurfReportsWithSimilarBuoyData", container.ReportController.GetSurfReportsWithSimilarBuoyData)

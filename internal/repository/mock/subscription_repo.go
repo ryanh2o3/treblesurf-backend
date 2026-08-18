@@ -9,7 +9,7 @@ import (
 var _ repository.SpotSubscriptionRepository = (*SpotSubscriptionRepo)(nil)
 
 type SpotSubscriptionRepo struct {
-	SaveFn func(ctx context.Context, spotIdentifier, userID, connectionID string) error
+	SaveFn                 func(ctx context.Context, spotIdentifier, userID, connectionID string) error
 	GetSubscribersBySpotFn func(ctx context.Context, spotIdentifier string) ([]string, error)
 }
 

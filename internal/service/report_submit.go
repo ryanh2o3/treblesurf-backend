@@ -58,6 +58,7 @@ func (s *ReportService) SubmitSurfReport(
 		s3KeyReport, "", "image", false, reportFields, currentTime,
 	)
 	s.broadcastReportMessage(ctx, report.Country, report.Region, report.Spot, message)
+	s.notifyReportWatchers(ctx, report.Country, report.Region, report.Spot, user.UUID, report.SurfSize, report.Quality)
 
 	return nil
 }
@@ -107,6 +108,7 @@ func (s *ReportService) SubmitSurfReportWithS3Image(
 		s3KeyReport, "", "image", false, reportFields, currentTime,
 	)
 	s.broadcastReportMessage(ctx, report.Country, report.Region, report.Spot, message)
+	s.notifyReportWatchers(ctx, report.Country, report.Region, report.Spot, user.UUID, report.SurfSize, report.Quality)
 
 	return nil
 }
@@ -156,6 +158,7 @@ func (s *ReportService) SubmitSurfReportWithIOSValidation(
 		s3KeyReport, videoKeyReport, mediaType, report.IOSValidated, reportFields, currentTime,
 	)
 	s.broadcastReportMessage(ctx, report.Country, report.Region, report.Spot, message)
+	s.notifyReportWatchers(ctx, report.Country, report.Region, report.Spot, user.UUID, report.SurfSize, report.Quality)
 
 	return nil
 }
@@ -190,4 +193,11 @@ func (s *ReportService) broadcastToUsers(ctx context.Context, subscribers []stri
 	if err := s.spotBroadcaster.BroadcastToUsers(ctx, subscribers, message); err != nil {
 		slog.Warn("failed to broadcast message to subscribers", slog.Any("error", err))
 	}
+}
+
+func (s *ReportService) notifyReportWatchers(ctx context.Context, country, region, spot, reporterUUID, surfSize, quality string) {
+	if s.reportPush == nil {
+		return
+	}
+	s.reportPush.NotifyNewReport(ctx, country, region, spot, reporterUUID, surfSize, quality)
 }

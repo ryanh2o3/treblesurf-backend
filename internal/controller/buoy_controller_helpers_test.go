@@ -71,16 +71,16 @@ func TestBuoyDataToResponse_Nil(t *testing.T) {
 func TestBuoyDataToResponse_Valid(t *testing.T) {
 	now := time.Now()
 	data := &model.BuoyData{
-		BuoyName:     "M4",
-		WaveHeight:   2.5,
-		WavePeriod:   8.0,
-		MaxPeriod:    10.0,
+		BuoyName:      "M4",
+		WaveHeight:    2.5,
+		WavePeriod:    8.0,
+		MaxPeriod:     10.0,
 		WaveDirection: 180.0,
-		WindSpeed:    15.0,
+		WindSpeed:     15.0,
 		WindDirection: 200.0,
-		Temperature:  12.5,
-		Pressure:     1013.25,
-		Timestamp:    now,
+		Temperature:   12.5,
+		Pressure:      1013.25,
+		Timestamp:     now,
 	}
 	result := buoyDataToClientResponse(data, map[string]string{})
 	if result == nil {

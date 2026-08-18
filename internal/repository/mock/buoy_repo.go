@@ -11,11 +11,11 @@ import (
 var _ repository.BuoyRepository = (*BuoyRepo)(nil)
 
 type BuoyRepo struct {
-	GetLiveDataFn       func(ctx context.Context, buoyName string) (*model.BuoyData, error)
-	GetDataAtTimeFn     func(ctx context.Context, buoyName string, t time.Time) (*model.BuoyData, error)
-	GetDataRangeFn      func(ctx context.Context, buoyName string, start, end time.Time) ([]*model.BuoyData, error)
+	GetLiveDataFn        func(ctx context.Context, buoyName string) (*model.BuoyData, error)
+	GetDataAtTimeFn      func(ctx context.Context, buoyName string, t time.Time) (*model.BuoyData, error)
+	GetDataRangeFn       func(ctx context.Context, buoyName string, start, end time.Time) ([]*model.BuoyData, error)
 	GetBatchDataRangesFn func(ctx context.Context, requests []repository.BuoyDataRequest) (map[string][]*model.BuoyData, error)
-	GetLocationsFn      func(ctx context.Context) (map[string]*model.BuoyLocation, error)
+	GetLocationsFn       func(ctx context.Context) (map[string]*model.BuoyLocation, error)
 }
 
 func (m *BuoyRepo) GetLiveData(ctx context.Context, buoyName string) (*model.BuoyData, error) {

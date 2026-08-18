@@ -48,6 +48,14 @@ func (a *App) GinEngine() *gin.Engine {
 	return a.router
 }
 
+// NotificationService returns the push-notification service for the hourly worker.
+func (a *App) NotificationService() *service.NotificationService {
+	if a == nil || a.container == nil {
+		return nil
+	}
+	return a.container.NotificationService
+}
+
 // Shutdown allows cleanup when running as a server.
 func (a *App) Shutdown(_ context.Context) error {
 	if a.container != nil {

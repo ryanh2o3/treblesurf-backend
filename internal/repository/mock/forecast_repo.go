@@ -17,7 +17,7 @@ type ForecastRepo struct {
 		partitionSources []string,
 		granularity string,
 	) ([]*model.Forecast, error)
-	GetCurrentConditionsFn  func(ctx context.Context, country, region, spot string, partitionSources []string) (*model.Forecast, error)
+	GetCurrentConditionsFn func(ctx context.Context, country, region, spot string, partitionSources []string) (*model.Forecast, error)
 	GetForecastAtTimeFn    func(ctx context.Context, country, region, spot string, t time.Time) (*model.Forecast, error)
 	QuerySinceFn           func(ctx context.Context, spotID string, since time.Time, limit int) ([]*model.ForecastDataPoint, error)
 	QueryBetweenFn         func(ctx context.Context, spotID string, start, end time.Time, limit int) ([]*model.ForecastDataPoint, error)

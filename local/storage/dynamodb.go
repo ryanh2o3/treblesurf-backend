@@ -82,12 +82,17 @@ func createTableIfNotExists(table tableDefinition) error {
 		return nil
 	}
 
-	_, err = DB.CreateTable(&dynamodb.CreateTableInput{
+	input := &dynamodb.CreateTableInput{
 		TableName:            aws.String(table.name),
 		KeySchema:            table.keySchema,
 		AttributeDefinitions: table.attributes,
 		BillingMode:          aws.String("PAY_PER_REQUEST"),
-	})
+	}
+	if len(table.gsi) > 0 {
+		input.GlobalSecondaryIndexes = table.gsi
+	}
+
+	_, err = DB.CreateTable(input)
 
 	if err != nil {
 		log.Printf("Error creating table %s: %v", table.name, err)

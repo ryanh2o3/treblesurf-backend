@@ -41,17 +41,17 @@ func (c *SwellPredictionController) GetSpotSwellPrediction(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve swell prediction"})
 		return
 	}
-	
+
 	if len(predictions) == 0 {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "No swell prediction found for this spot"})
 		return
 	}
-	
+
 	// Sort predictions by forecast_timestamp (earliest first for better UX)
 	sort.Slice(predictions, func(i, j int) bool {
 		return predictions[i].ForecastTimestampValue() < predictions[j].ForecastTimestampValue()
 	})
-	
+
 	ctx.JSON(http.StatusOK, predictions) // Return all predictions
 }
 
@@ -60,12 +60,12 @@ func (c *SwellPredictionController) GetListSpotsSwellPrediction(ctx *gin.Context
 	spotsStr := ctx.Query("spots")
 	regionName := ctx.Query("region")
 	countryName := ctx.Query("country")
-	
+
 	if spotsStr == "" || regionName == "" || countryName == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "spots, region, and country parameters are required"})
 		return
 	}
-	
+
 	spots := strings.Split(spotsStr, ",")
 	requestLogger(ctx).Info("getting swell predictions for spots", slog.Any("spots", spots))
 
@@ -222,10 +222,10 @@ func (c *SwellPredictionController) GetSwellPredictionStatus(ctx *gin.Context) {
 }
 
 // GetClosestAIPredictionForSpot retrieves the closest AI prediction for a specific spot
-// 
+//
 // This endpoint finds the AI prediction with an arrival_time closest to the current time.
 // It efficiently uses forecast_timestamp (Unix timestamp) for comparison instead of parsing arrival_time.
-// 
+//
 // Timestamp Fields:
 // - forecast_timestamp: Unix timestamp (string) representing when the swell is predicted to arrive at the surf spot
 // - generated_at: Unix timestamp (string) representing when the AI prediction was generated/created

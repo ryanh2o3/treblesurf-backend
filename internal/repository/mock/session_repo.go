@@ -10,9 +10,9 @@ import (
 var _ repository.SessionRepository = (*SessionRepo)(nil)
 
 type SessionRepo struct {
-	SaveFn      func(ctx context.Context, session *model.Session) error
-	GetFn       func(ctx context.Context, sessionID string) (*model.Session, error)
-	DeleteFn    func(ctx context.Context, sessionID string) error
+	SaveFn        func(ctx context.Context, session *model.Session) error
+	GetFn         func(ctx context.Context, sessionID string) (*model.Session, error)
+	DeleteFn      func(ctx context.Context, sessionID string) error
 	GetByUserIDFn func(ctx context.Context, userID string) ([]*model.Session, error)
 }
 

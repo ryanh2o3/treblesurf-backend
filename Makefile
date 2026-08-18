@@ -10,9 +10,10 @@ help:
 	@echo "  lint-fix     - Run golangci-lint with auto-fix enabled"
 	@echo "  lint-check   - Run golangci-lint and exit with error if issues found (for CI)"
 	@echo "  test         - Run all tests"
-	@echo "  build        - Build the API and WebSocket servers"
+	@echo "  build        - Build the API, WebSocket, and notifications servers"
 	@echo "  build-api    - Build the API server"
 	@echo "  build-ws     - Build the WebSocket server"
+	@echo "  build-notifications - Build the notifications worker"
 	@echo "  clean        - Remove build artifacts"
 	@echo "  run-api      - Run the API server"
 	@echo "  run-websocket - Run the WebSocket server"
@@ -41,7 +42,7 @@ test-coverage:
 	@go test -cover ./...
 
 # Build targets
-build: build-api build-ws
+build: build-api build-ws build-notifications
 
 build-api:
 	@echo "Building API server..."
@@ -51,10 +52,15 @@ build-ws:
 	@echo "Building WebSocket server..."
 	@go build -o bin/websocket cmd/websocket/main.go
 
+build-notifications:
+	@echo "Building notifications worker..."
+	@go build -o bin/notifications cmd/notifications/main.go
+
 build-linux:
 	@echo "Building for Linux..."
 	@GOOS=linux GOARCH=amd64 go build -o bin/api-linux cmd/api/main.go
 	@GOOS=linux GOARCH=amd64 go build -o bin/websocket-linux cmd/websocket/main.go
+	@GOOS=linux GOARCH=amd64 go build -o bin/notifications-linux cmd/notifications/main.go
 
 # Clean build artifacts
 clean:

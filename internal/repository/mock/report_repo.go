@@ -11,8 +11,8 @@ import (
 var _ repository.ReportRepository = (*ReportRepo)(nil)
 
 type ReportRepo struct {
-	CreateFn              func(ctx context.Context, report *model.SurfReport) error
-	GetBySpotFn           func(ctx context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error)
+	CreateFn                func(ctx context.Context, report *model.SurfReport) error
+	GetBySpotFn             func(ctx context.Context, country, region, spot string, limit int) ([]*model.SurfReport, error)
 	GetBySpotAndTimeRangeFn func(ctx context.Context, country, region, spot string, start, end time.Time) ([]*model.SurfReport, error)
 	ScanSinceFn             func(ctx context.Context, since time.Time, limit int) ([]*model.SurfReport, error)
 	AnonymizeByUserEmailFn  func(ctx context.Context, email string) error

@@ -10,6 +10,7 @@ type tableDefinition struct {
 	name       string
 	keySchema  []*dynamodb.KeySchemaElement
 	attributes []*dynamodb.AttributeDefinition
+	gsi        []*dynamodb.GlobalSecondaryIndex
 }
 
 // getAllTableDefinitions returns all table definitions for local development.
@@ -24,6 +25,8 @@ func getAllTableDefinitions() []tableDefinition {
 		newSpotSnapshotsTable(),
 		newStreamRequestsTable(),
 		newAPIKeysTable(),
+		newDeviceTokensTable(),
+		newSpotAlertSubscriptionsTable(),
 	}
 }
 
@@ -225,6 +228,76 @@ func newAPIKeysTable() tableDefinition {
 			{
 				AttributeName: aws.String("key_id"),
 				AttributeType: aws.String("S"),
+			},
+		},
+	}
+}
+
+func newDeviceTokensTable() tableDefinition {
+	return tableDefinition{
+		name: "DeviceTokens",
+		keySchema: []*dynamodb.KeySchemaElement{
+			{
+				AttributeName: aws.String("user_uuid"),
+				KeyType:       aws.String("HASH"),
+			},
+			{
+				AttributeName: aws.String("token"),
+				KeyType:       aws.String("RANGE"),
+			},
+		},
+		attributes: []*dynamodb.AttributeDefinition{
+			{
+				AttributeName: aws.String("user_uuid"),
+				AttributeType: aws.String("S"),
+			},
+			{
+				AttributeName: aws.String("token"),
+				AttributeType: aws.String("S"),
+			},
+		},
+	}
+}
+
+func newSpotAlertSubscriptionsTable() tableDefinition {
+	return tableDefinition{
+		name: "SpotAlertSubscriptions",
+		keySchema: []*dynamodb.KeySchemaElement{
+			{
+				AttributeName: aws.String("spot_id"),
+				KeyType:       aws.String("HASH"),
+			},
+			{
+				AttributeName: aws.String("user_uuid"),
+				KeyType:       aws.String("RANGE"),
+			},
+		},
+		attributes: []*dynamodb.AttributeDefinition{
+			{
+				AttributeName: aws.String("spot_id"),
+				AttributeType: aws.String("S"),
+			},
+			{
+				AttributeName: aws.String("user_uuid"),
+				AttributeType: aws.String("S"),
+			},
+		},
+		gsi: []*dynamodb.GlobalSecondaryIndex{
+			{
+				IndexName: aws.String("user_uuid-index"),
+				KeySchema: []*dynamodb.KeySchemaElement{
+					{
+						AttributeName: aws.String("user_uuid"),
+						KeyType:       aws.String("HASH"),
+					},
+					{
+						AttributeName: aws.String("spot_id"),
+						KeyType:       aws.String("RANGE"),
+					},
+				},
+				Projection: &dynamodb.Projection{
+					ProjectionType: aws.String("ALL"),
+				},
 			},
 		},
 	}

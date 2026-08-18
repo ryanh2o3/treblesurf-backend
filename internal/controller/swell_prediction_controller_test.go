@@ -16,12 +16,12 @@ import (
 )
 
 const (
-	testSwellCountry     = "Ireland"
-	testSwellRegion      = "Donegal"
-	testSwellSpot        = "Bundoran"
-	testSwellSpotIDHash  = "Ireland#Donegal#Bundoran"
-	testSwellSpotID      = "Ireland_Donegal_Bundoran"
-	testSwellSpotIDRoss  = "Ireland_Donegal_Rossnowlagh"
+	testSwellCountry    = "Ireland"
+	testSwellRegion     = "Donegal"
+	testSwellSpot       = "Bundoran"
+	testSwellSpotIDHash = "Ireland#Donegal#Bundoran"
+	testSwellSpotID     = "Ireland_Donegal_Bundoran"
+	testSwellSpotIDRoss = "Ireland_Donegal_Rossnowlagh"
 )
 
 func setupSwellPredictionController(repo *mockrepo.SwellPredictionRepo) *SwellPredictionController {

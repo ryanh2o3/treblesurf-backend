@@ -10,7 +10,7 @@ import (
 var _ repository.StreamRequestRepository = (*StreamRequestRepo)(nil)
 
 type StreamRequestRepo struct {
-	SaveFn       func(ctx context.Context, request *model.StreamRequest) error
+	SaveFn        func(ctx context.Context, request *model.StreamRequest) error
 	GetBySpotIDFn func(ctx context.Context, spotID string) (*model.StreamRequest, error)
 }
 

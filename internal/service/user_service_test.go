@@ -177,6 +177,61 @@ func TestUserService_Delete_CleansSessionsAndReports(t *testing.T) {
 	}
 }
 
+func TestUserService_Delete_CleansNotificationData(t *testing.T) {
+	ctx := context.Background()
+	tokensDeleted := false
+	alertsDeleted := false
+	repo := &mockrepo.UserRepo{
+		GetByEmailFn: func(_ context.Context, email string) (*model.User, error) {
+			return &model.User{Email: email, UUID: "user-uuid-1"}, nil
+		},
+		DeleteFn: func(_ context.Context, email string) error {
+			if email != testUserEmail {
+				t.Fatalf("unexpected email: %s", email)
+			}
+			return nil
+		},
+	}
+	notify, err := NewNotificationService(
+		&mockrepo.DeviceTokenRepo{
+			DeleteByUserFn: func(_ context.Context, userUUID string) error {
+				tokensDeleted = true
+				if userUUID != "user-uuid-1" {
+					t.Fatalf("unexpected uuid %s", userUUID)
+				}
+				return nil
+			},
+		},
+		&mockrepo.SpotAlertRepo{
+			DeleteByUserFn: func(_ context.Context, userUUID string) error {
+				alertsDeleted = true
+				if userUUID != "user-uuid-1" {
+					t.Fatalf("unexpected uuid %s", userUUID)
+				}
+				return nil
+			},
+		},
+		&mockrepo.SwellPredictionRepo{},
+		NoopPushSender{},
+	)
+	if err != nil {
+		t.Fatalf("NewNotificationService: %v", err)
+	}
+
+	svc, err := NewUserService(repo)
+	if err != nil {
+		t.Fatalf("unexpected error creating service: %v", err)
+	}
+	svc.WithNotificationCleanup(notify)
+
+	if err := svc.Delete(ctx, testUserEmail); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !tokensDeleted || !alertsDeleted {
+		t.Fatal("expected notification data to be deleted")
+	}
+}
+
 func TestNewUserService_NilRepository_ReturnsError(t *testing.T) {
 	_, err := NewUserService(nil)
 	if err == nil {

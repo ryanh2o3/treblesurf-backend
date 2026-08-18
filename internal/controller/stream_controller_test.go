@@ -92,7 +92,7 @@ func TestStreamController_RequestStreamHandler(t *testing.T) {
 
 	// Verify expiration is in the future (within 6 minutes, considering 5 minute TTL + buffer)
 	expiresAt, _ := time.Parse(time.RFC3339, expiresAtStr)
-	if expiresAt.Before(now.Add(4 * time.Minute)) || expiresAt.After(now.Add(6*time.Minute)) {
+	if expiresAt.Before(now.Add(4*time.Minute)) || expiresAt.After(now.Add(6*time.Minute)) {
 		t.Errorf("expected expiration to be around 5 minutes from now, got %v", expiresAt)
 	}
 }
@@ -320,7 +320,7 @@ func TestStreamController_CheckStreamRequestHandler_Expired(t *testing.T) {
 			return &model.StreamRequest{
 				SpotID:      spotID,
 				RequestedBy: testStreamEmail,
-				RequestedAt: now.Add(-10 * time.Minute), // Requested 10 minutes ago
+				RequestedAt: now.Add(-10 * time.Minute),       // Requested 10 minutes ago
 				Expiration:  now.Add(-5 * time.Minute).Unix(), // Expired 5 minutes ago
 			}, nil
 		},

@@ -94,7 +94,7 @@ func (r *SwellPredictionRepo) GetRegionPredictions(
 	}
 
 	input := &dynamodb.ScanInput{
-		TableName: aws.String(r.tableName),
+		TableName:        aws.String(r.tableName),
 		FilterExpression: aws.String("begins_with(spot_id, :region_prefix) AND forecast_timestamp >= :current_hour"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":region_prefix": {
@@ -155,7 +155,7 @@ func (r *SwellPredictionRepo) GetRecentPredictions(
 	}
 
 	input := &dynamodb.ScanInput{
-		TableName: aws.String(r.tableName),
+		TableName:        aws.String(r.tableName),
 		FilterExpression: aws.String("generated_at >= :cutoff"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":cutoff": {
@@ -257,7 +257,7 @@ func (r *SwellPredictionRepo) groupPredictionsBySpot(
 
 func buildPredictionQuery(spotID string, startTime, endTime time.Time) *dynamodb.QueryInput {
 	return &dynamodb.QueryInput{
-		TableName: aws.String("SwellPredictions"),
+		TableName:              aws.String("SwellPredictions"),
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp BETWEEN :start AND :end"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":spot_id": {S: aws.String(spotID)},
@@ -271,7 +271,7 @@ func buildPredictionQuery(spotID string, startTime, endTime time.Time) *dynamodb
 
 func buildFallbackPredictionQuery(spotID string, startTime time.Time) *dynamodb.QueryInput {
 	return &dynamodb.QueryInput{
-		TableName: aws.String("SwellPredictions"),
+		TableName:              aws.String("SwellPredictions"),
 		KeyConditionExpression: aws.String("spot_id = :spot_id AND forecast_timestamp >= :start"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":spot_id": {S: aws.String(spotID)},
@@ -304,7 +304,7 @@ func findClosestPrediction(
 			closestTimeDiff = timeDiff
 			predictionCopy := prediction
 			closestPrediction = &predictionCopy
-			}
+		}
 	}
 
 	return closestPrediction

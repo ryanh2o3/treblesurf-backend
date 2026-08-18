@@ -41,7 +41,7 @@ func (lc *LocationController) GetRegions(c *gin.Context) {
 func (lc *LocationController) GetSpots(c *gin.Context) {
 	regionName := c.Query("region")
 	countryName := c.Query("country")
-	
+
 	if regionName == "" || countryName == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "both country and region parameters are required"})
 		return

@@ -163,4 +163,3 @@ func (c *ModerationController) ListActions(ctx *gin.Context) {
 		"offset":  offset,
 	})
 }
-

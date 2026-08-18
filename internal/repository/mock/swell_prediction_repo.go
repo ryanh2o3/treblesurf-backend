@@ -13,7 +13,7 @@ var _ repository.SwellPredictionRepository = (*SwellPredictionRepo)(nil)
 type SwellPredictionRepo struct {
 	GetSpotPredictionsFn      func(ctx context.Context, spotID string, start time.Time, limit int) ([]model.SwellPrediction, error)
 	GetListSpotsPredictionsFn func(ctx context.Context, spotIDs []string, start time.Time, limit int) ([][]model.SwellPrediction, error)
-	GetRegionPredictionsFn func(
+	GetRegionPredictionsFn    func(
 		ctx context.Context,
 		country, region string,
 		start time.Time,

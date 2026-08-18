@@ -23,13 +23,13 @@ type BuoyController struct {
 }
 
 type buoyLocationResponse struct {
-	Name      string  `json:"name"`
-	RegionBuoy string `json:"region_buoy,omitempty"`
-	Region    string  `json:"region"`
-	Country   string  `json:"country"`
-	Spot      string  `json:"spot"`
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
+	Name       string  `json:"name"`
+	RegionBuoy string  `json:"region_buoy,omitempty"`
+	Region     string  `json:"region"`
+	Country    string  `json:"country"`
+	Spot       string  `json:"spot"`
+	Latitude   float64 `json:"latitude"`
+	Longitude  float64 `json:"longitude"`
 }
 
 // NewBuoyController creates a new BuoyController with the given service.
@@ -257,12 +257,12 @@ func buoyLocationToResponse(name string, location *model.BuoyLocation) *buoyLoca
 		return nil
 	}
 	return &buoyLocationResponse{
-		Name:      name,
-		Latitude:  location.Latitude,
-		Longitude: location.Longitude,
-		Region:    location.Region,
-		Country:   location.Country,
-		Spot:      location.Spot,
+		Name:       name,
+		Latitude:   location.Latitude,
+		Longitude:  location.Longitude,
+		Region:     location.Region,
+		Country:    location.Country,
+		Spot:       location.Spot,
 		RegionBuoy: location.RegionBuoy,
 	}
 }
@@ -315,11 +315,11 @@ func buoyDataToClientResponse(data *model.BuoyData, regionBuoyMap map[string]str
 		AtmosphericPressure: floatPtr(data.Pressure),
 		SprTp:               floatPtr(data.SprTp),
 		ThTp:                floatPtr(data.ThTp),
-		MaxHeight:          floatPtr(data.MaxHeight),
+		MaxHeight:           floatPtr(data.MaxHeight),
 		Gust:                floatPtr(data.Gust),
-		AirTemperature:     floatPtr(data.AirTemperature),
-		DewPoint:           floatPtr(data.DewPoint),
-		RelativeHumidity:   floatPtr(data.RelativeHumidity),
+		AirTemperature:      floatPtr(data.AirTemperature),
+		DewPoint:            floatPtr(data.DewPoint),
+		RelativeHumidity:    floatPtr(data.RelativeHumidity),
 		Salinity:            floatPtr(data.Salinity),
 		DataDateTime:        dataDateTime,
 		Name:                data.BuoyName,

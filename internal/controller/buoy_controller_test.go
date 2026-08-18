@@ -19,7 +19,7 @@ import (
 
 const (
 	testBuoyNameM4 = "M4"
-	buoyTestRegion     = "Atlantic"
+	buoyTestRegion = "Atlantic"
 )
 
 func TestMain(m *testing.M) {

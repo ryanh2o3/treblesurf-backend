@@ -10,10 +10,10 @@ import (
 var _ repository.LocationRepository = (*LocationRepo)(nil)
 
 type LocationRepo struct {
-	GetRegionsFn     func(ctx context.Context, country string) ([]string, error)
-	GetSpotsFn       func(ctx context.Context, country, region string) ([]*model.LocationInfo, error)
+	GetRegionsFn      func(ctx context.Context, country string) ([]string, error)
+	GetSpotsFn        func(ctx context.Context, country, region string) ([]*model.LocationInfo, error)
 	GetLocationInfoFn func(ctx context.Context, country, region, spot string) (*model.LocationInfo, error)
-	GetCoordinatesFn func(ctx context.Context, country, region, spot string) (lat, lon float64, err error)
+	GetCoordinatesFn  func(ctx context.Context, country, region, spot string) (lat, lon float64, err error)
 }
 
 func (m *LocationRepo) GetRegions(ctx context.Context, country string) ([]string, error) {

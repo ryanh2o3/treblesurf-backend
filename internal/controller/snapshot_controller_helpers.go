@@ -17,7 +17,7 @@ func parseTimestamp(c *gin.Context) (time.Time, error) {
 	formats := []string{
 		time.RFC3339,
 		"2006-01-02T15:04:05.999999", // Python's isoformat()
-		"2006-01-02T15:04:05",         // isoformat without microseconds
+		"2006-01-02T15:04:05",        // isoformat without microseconds
 		"2006-01-02 15:04:05",
 	}
 
@@ -43,4 +43,3 @@ func validateImageFile(contentType string) bool {
 		contentType == "image/webp" ||
 		(len(contentType) >= 5 && contentType[:6] == "image/")
 }
-

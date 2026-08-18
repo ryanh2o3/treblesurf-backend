@@ -18,6 +18,7 @@ type ReportService struct {
 	rekognitionClient RekognitionAPI
 	userLookup        UserByEmail
 	spotBroadcaster   SpotNotificationBroadcaster
+	reportPush        *NotificationService
 }
 
 type RekognitionAPI interface {
@@ -60,6 +61,14 @@ func NewReportService(
 		userLookup:        userLookup,
 		spotBroadcaster:   spotBroadcaster,
 	}, nil
+}
+
+func (s *ReportService) WithReportPush(notify *NotificationService) *ReportService {
+	if s == nil {
+		return nil
+	}
+	s.reportPush = notify
+	return s
 }
 
 func (s *ReportService) IsValidSurfSize(swellSize string) bool {

@@ -98,7 +98,7 @@ func (r *WebSocketRepo) UpdateSpot(ctx context.Context, connectionID, spot strin
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":spot": {S: aws.String(spot)},
 			":time": {S: aws.String(time.Now().UTC().Format(time.RFC3339))},
-			":ttl":  {N: aws.String(fmt.Sprintf("%d", time.Now().Add(24 * time.Hour).Unix()))},
+			":ttl":  {N: aws.String(fmt.Sprintf("%d", time.Now().Add(24*time.Hour).Unix()))},
 		},
 	}
 
@@ -118,7 +118,7 @@ func (r *WebSocketRepo) UpdateLastActive(ctx context.Context, connectionID strin
 		UpdateExpression: aws.String("SET LastActive = :time, ttl = :ttl"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":time": {S: aws.String(time.Now().UTC().Format(time.RFC3339))},
-			":ttl":  {N: aws.String(fmt.Sprintf("%d", time.Now().Add(24 * time.Hour).Unix()))},
+			":ttl":  {N: aws.String(fmt.Sprintf("%d", time.Now().Add(24*time.Hour).Unix()))},
 		},
 	}
 
@@ -143,8 +143,8 @@ func (r *WebSocketRepo) GetConnectionsByUserIDs(ctx context.Context, userIDs []s
 	}
 
 	input := &dynamodb.ScanInput{
-		TableName:        aws.String(r.tableName),
-		FilterExpression: aws.String(fmt.Sprintf("user_id IN (%s)", strings.Join(exprParts, ", "))),
+		TableName:                 aws.String(r.tableName),
+		FilterExpression:          aws.String(fmt.Sprintf("user_id IN (%s)", strings.Join(exprParts, ", "))),
 		ExpressionAttributeValues: exprValues,
 	}
 

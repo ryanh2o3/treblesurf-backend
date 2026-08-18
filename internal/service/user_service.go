@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -14,6 +15,7 @@ type UserService struct {
 	users    repository.UserRepository
 	sessions repository.SessionRepository
 	reports  repository.ReportRepository
+	notify   *NotificationService
 }
 
 // NewUserService creates a new UserService with the given repository.
@@ -35,6 +37,15 @@ func (s *UserService) WithAccountCleanup(
 	}
 	s.sessions = sessions
 	s.reports = reports
+	return s
+}
+
+// WithNotificationCleanup attaches push token and spot-alert cleanup used when deleting an account.
+func (s *UserService) WithNotificationCleanup(notify *NotificationService) *UserService {
+	if s == nil {
+		return nil
+	}
+	s.notify = notify
 	return s
 }
 
@@ -61,8 +72,24 @@ func (s *UserService) UpdateTheme(ctx context.Context, email, theme string) erro
 	return s.users.UpdateTheme(ctx, email, theme)
 }
 
-// Delete removes a user by email, invalidates sessions, and anonymizes surf reports.
+// Delete removes a user by email, invalidates sessions, anonymizes surf reports, and clears push data.
 func (s *UserService) Delete(ctx context.Context, email string) error {
+	if s.notify != nil {
+		user, err := s.users.GetByEmail(ctx, email)
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			return fmt.Errorf("loading user for notification cleanup: %w", err)
+		}
+		if user != nil && user.UUID != "" {
+			if err := s.notify.DeleteUserData(ctx, user.UUID); err != nil {
+				slog.Warn("failed to delete notification data during account deletion",
+					slog.String("email", email),
+					slog.Any("error", err),
+				)
+				return fmt.Errorf("deleting notification data: %w", err)
+			}
+		}
+	}
+
 	if s.reports != nil {
 		if err := s.reports.AnonymizeByUserEmail(ctx, email); err != nil {
 			slog.Warn("failed to anonymize surf reports during account deletion",

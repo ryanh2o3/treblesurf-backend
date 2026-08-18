@@ -239,6 +239,26 @@ type ContentReportRepository interface {
 	CountByReporterSince(ctx context.Context, userID string, since time.Time) (int, error)
 }
 
+// DeviceTokenRepository stores APNs device tokens per user.
+type DeviceTokenRepository interface {
+	Save(ctx context.Context, token *model.DeviceToken) error
+	Delete(ctx context.Context, userUUID, token string) error
+	GetByUser(ctx context.Context, userUUID string) ([]*model.DeviceToken, error)
+	DeleteByUser(ctx context.Context, userUUID string) error
+}
+
+// SpotAlertRepository stores persistent per-spot push watches.
+type SpotAlertRepository interface {
+	Save(ctx context.Context, sub *model.SpotAlertSubscription) error
+	Get(ctx context.Context, spotID, userUUID string) (*model.SpotAlertSubscription, error)
+	Delete(ctx context.Context, spotID, userUUID string) error
+	GetByUser(ctx context.Context, userUUID string) ([]*model.SpotAlertSubscription, error)
+	GetBySpot(ctx context.Context, spotID string) ([]*model.SpotAlertSubscription, error)
+	ListGoodSurfEnabled(ctx context.Context) ([]*model.SpotAlertSubscription, error)
+	DeleteByUser(ctx context.Context, userUUID string) error
+	UpdateLastNotifiedKey(ctx context.Context, spotID, userUUID, key string) error
+}
+
 // ModerationActionRepository handles moderation action persistence.
 // Moderation actions are records of actions taken by moderators on reports.
 type ModerationActionRepository interface {

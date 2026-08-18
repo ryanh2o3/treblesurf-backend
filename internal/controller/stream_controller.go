@@ -171,5 +171,3 @@ func (sc *StreamController) CheckStreamRequestHandler(c *gin.Context) {
 		"stream_requested": streamRequested,
 	})
 }
-
- 

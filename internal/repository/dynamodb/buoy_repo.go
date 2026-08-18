@@ -17,10 +17,10 @@ import (
 var _ repository.BuoyRepository = (*BuoyRepo)(nil)
 
 type BuoyRepo struct {
-	client             *dynamodb.DynamoDB
-	dataTableName      string
-	locationTableName  string
-	regionPrefix       string
+	client            *dynamodb.DynamoDB
+	dataTableName     string
+	locationTableName string
+	regionPrefix      string
 }
 
 func NewBuoyRepo(client *dynamodb.DynamoDB, dataTableName, locationTableName string) *BuoyRepo {

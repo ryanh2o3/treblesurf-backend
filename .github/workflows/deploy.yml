@@ -20,6 +20,10 @@ jobs:
       GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
       APPLE_CLIENT_IDS: ${{ secrets.APPLE_CLIENT_IDS }}
       ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
+      APNS_KEY_P8: ${{ secrets.APNS_KEY_P8 }}
+      APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
+      APNS_TEAM_ID: ${{ secrets.APNS_TEAM_ID }}
+      APNS_TOPIC: treble.TrebleSurf
       # Must stay in sync with api Lambda update below. Omitting it strips the var on deploy → S3 fallback URLs + 403.
       SPOT_IMAGES_BASE_URL: https://treblesurf.com
       GO_ENV: production
@@ -63,6 +67,8 @@ jobs:
           GOOS=linux GOARCH=amd64 go build -o api-bootstrap ./cmd/api/main.go
           # WebSocket Lambda - using new cmd/websocket/main.go structure  
           GOOS=linux GOARCH=amd64 go build -o websocket-bootstrap ./cmd/websocket/main.go
+          # Notifications Lambda - hourly good-surf worker
+          GOOS=linux GOARCH=amd64 go build -o notifications-bootstrap ./cmd/notifications/main.go
 
       - name: Package the application
         run: |
@@ -76,12 +82,18 @@ jobs:
           zip websocket-bootstrap.zip bootstrap
           rm bootstrap
 
+          # Package notifications Lambda
+          cp notifications-bootstrap bootstrap
+          zip notifications-bootstrap.zip bootstrap
+          rm bootstrap
+
       - name: Verify build artifacts
         run: |
           echo "Build artifacts created:"
           ls -la *.zip
           echo "API Lambda size: $(stat -c%s bootstrap.zip) bytes"
           echo "WebSocket Lambda size: $(stat -c%s websocket-bootstrap.zip) bytes"
+          echo "Notifications Lambda size: $(stat -c%s notifications-bootstrap.zip) bytes"
 
       - name: Deploy Lambdas and Setup API Gateway
         run: |
@@ -90,6 +102,7 @@ jobs:
           REGION="eu-west-1"
           ZIP_FILE="bootstrap.zip"
           ROLE_ARN="arn:aws:iam::759663378274:role/service-role/api-role-pydrwpue"
+          APNS_KEY_P8_ESCAPED=$(python3 -c 'import os; print(os.environ.get("APNS_KEY_P8","").replace("\n","\\n"))')
 
 
           # Deploy Lambda function
@@ -101,7 +114,7 @@ jobs:
           # Update Lambda environment variables
           aws lambda update-function-configuration \
             --function-name $FUNCTION_NAME \
-            --environment "Variables={JWT_SECRET='$JWT_SECRET',GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID',GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID',APPLE_CLIENT_IDS='$APPLE_CLIENT_IDS',ADMIN_EMAILS='$ADMIN_EMAILS',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com',SPOT_IMAGES_BASE_URL='$SPOT_IMAGES_BASE_URL'}"
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID',GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID',APPLE_CLIENT_IDS='$APPLE_CLIENT_IDS',ADMIN_EMAILS='$ADMIN_EMAILS',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com',SPOT_IMAGES_BASE_URL='$SPOT_IMAGES_BASE_URL',APNS_KEY_P8='$APNS_KEY_P8_ESCAPED',APNS_KEY_ID='$APNS_KEY_ID',APNS_TEAM_ID='$APNS_TEAM_ID',APNS_TOPIC='$APNS_TOPIC'}"
 
       - name: Deploy WebSocket Lambda
         run: |
@@ -132,3 +145,23 @@ jobs:
             --source-arn "arn:aws:execute-api:$REGION:759663378274:$WEBSOCKET_API_ID/*" \
             --statement-id AllowWebSocketInvoke-$WEBSOCKET_API_ID \
             || echo "Permission already exists or couldn't be added"
+
+      - name: Deploy Notifications Lambda
+        run: |
+          NOTIFY_FUNCTION_NAME="notifications"
+          NOTIFY_ZIP_FILE="notifications-bootstrap.zip"
+          REGION="eu-west-1"
+
+          APNS_KEY_P8_ESCAPED=$(python3 -c 'import os; print(os.environ.get("APNS_KEY_P8","").replace("\n","\\n"))')
+
+          if aws lambda get-function --region "$REGION" --function-name "$NOTIFY_FUNCTION_NAME" >/dev/null 2>&1; then
+            aws lambda update-function-code --function-name $NOTIFY_FUNCTION_NAME --zip-file fileb://$NOTIFY_ZIP_FILE
+            aws lambda wait function-updated --function-name $NOTIFY_FUNCTION_NAME
+          else
+            echo "Lambda ${NOTIFY_FUNCTION_NAME} does not exist yet. Run scripts/setup-notifications-infra.sh once, then re-run this workflow."
+            exit 1
+          fi
+
+          aws lambda update-function-configuration \
+            --function-name $NOTIFY_FUNCTION_NAME \
+            --environment "Variables={JWT_SECRET='$JWT_SECRET',GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID',GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID',APPLE_CLIENT_IDS='$APPLE_CLIENT_IDS',ADMIN_EMAILS='$ADMIN_EMAILS',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com',SPOT_IMAGES_BASE_URL='$SPOT_IMAGES_BASE_URL',APNS_KEY_P8='$APNS_KEY_P8_ESCAPED',APNS_KEY_ID='$APNS_KEY_ID',APNS_TEAM_ID='$APNS_TEAM_ID',APNS_TOPIC='$APNS_TOPIC'}"

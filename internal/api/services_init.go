@@ -29,6 +29,7 @@ type containerServices struct {
 	buoyService            *service.BuoyService
 	contentReportService   *service.ContentReportService
 	moderationService      *service.ModerationService
+	notificationService    *service.NotificationService
 }
 
 // containerControllers holds all initialized controllers.
@@ -44,6 +45,7 @@ type containerControllers struct {
 	snapshotController        *controller.SnapshotController
 	contentReportController   *controller.ContentReportController
 	moderationController      *controller.ModerationController
+	notificationController    *controller.NotificationController
 }
 
 type containerRepositories struct {
@@ -63,6 +65,8 @@ type containerRepositories struct {
 	snapshotRepo         repository.SnapshotRepository
 	contentReportRepo    repository.ContentReportRepository
 	moderationActionRepo repository.ModerationActionRepository
+	deviceTokenRepo      repository.DeviceTokenRepository
+	spotAlertRepo        repository.SpotAlertRepository
 }
 
 // initializeServices creates all application services with their dependencies.
@@ -90,6 +94,8 @@ func initRepositories(storage *containerStorage, cfg *containerConfig) *containe
 		snapshotRepo:         repodynamo.NewSnapshotRepo(storage.dynamoDBClient, "SpotSnapshots"),
 		contentReportRepo:    repodynamo.NewContentReportRepo(storage.dynamoDBClient, "ContentReports"),
 		moderationActionRepo: repodynamo.NewModerationActionRepo(storage.dynamoDBClient, "ModerationActions"),
+		deviceTokenRepo:      repodynamo.NewDeviceTokenRepo(storage.dynamoDBClient, "DeviceTokens"),
+		spotAlertRepo:        repodynamo.NewSpotAlertRepo(storage.dynamoDBClient, "SpotAlertSubscriptions"),
 	}
 }
 
@@ -111,6 +117,9 @@ func buildServices(
 		return nil, err
 	}
 	if err := initRealtimeAndReportServices(repos, storage, cfg, services); err != nil {
+		return nil, err
+	}
+	if err := initNotificationServices(repos, appCfg, services); err != nil {
 		return nil, err
 	}
 
@@ -241,6 +250,34 @@ func initDomainServices(repos *containerRepositories, services *containerService
 	return nil
 }
 
+func initNotificationServices(
+	repos *containerRepositories,
+	appCfg *config.Config,
+	services *containerServices,
+) error {
+	sender, err := service.NewPushSender(appCfg)
+	if err != nil {
+		return fmt.Errorf("creating push sender: %w", err)
+	}
+	notificationService, err := service.NewNotificationService(
+		repos.deviceTokenRepo,
+		repos.spotAlertRepo,
+		repos.swellPredictionRepo,
+		sender,
+	)
+	if err != nil {
+		return fmt.Errorf("creating notification service: %w", err)
+	}
+	services.notificationService = notificationService
+	if services.userService != nil {
+		services.userService.WithNotificationCleanup(notificationService)
+	}
+	if services.reportService != nil {
+		services.reportService.WithReportPush(notificationService)
+	}
+	return nil
+}
+
 // initializeControllers creates all controllers with their service dependencies.
 func initializeControllers(
 	services *containerServices,
@@ -259,5 +296,6 @@ func initializeControllers(
 		snapshotController:        controller.NewSnapshotController(services.snapshotService, storage.s3Client, cfg.bucketName),
 		contentReportController:   controller.NewContentReportController(services.contentReportService, services.userService),
 		moderationController:      controller.NewModerationController(services.moderationService),
+		notificationController:    controller.NewNotificationController(services.notificationService, services.userService),
 	}
 }

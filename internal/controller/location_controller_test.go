@@ -133,8 +133,8 @@ func TestLocationController_GetSpots_MissingParams(t *testing.T) {
 	controller := setupLocationController(repo)
 
 	tests := []struct {
-		name   string
-		url    string
+		name string
+		url  string
 	}{
 		{"missing country", "/spots?region=" + locationTestRegion},
 		{"missing region", "/spots?country=" + locationTestCountry},

@@ -10,10 +10,10 @@ import (
 var _ repository.APIKeyRepository = (*APIKeyRepo)(nil)
 
 type APIKeyRepo struct {
-	CreateFn func(ctx context.Context, key *model.APIKey) error
+	CreateFn   func(ctx context.Context, key *model.APIKey) error
 	GetByKeyFn func(ctx context.Context, key string) (*model.APIKey, error)
-	ListFn   func(ctx context.Context) ([]*model.APIKey, error)
-	RevokeFn func(ctx context.Context, keyID string) error
+	ListFn     func(ctx context.Context) ([]*model.APIKey, error)
+	RevokeFn   func(ctx context.Context, keyID string) error
 }
 
 func (m *APIKeyRepo) Create(ctx context.Context, key *model.APIKey) error {

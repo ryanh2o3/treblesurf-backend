@@ -103,6 +103,11 @@ treblesurf-backend/
 - `GET /sessions` - Get user sessions
 - `GET /getTheme` - Get user theme preference
 - `PUT /setTheme` - Set user theme preference
+- `GET /notification/preferences` - List per-spot iOS push watches
+- `PUT /notification/device-token` - Register an iOS APNs device token
+- `DELETE /notification/device-token` - Remove an iOS APNs device token
+- `PUT /notification/spot` - Enable/disable report and good-surf alerts for a spot (`country`, `region`, `spot` query params)
+- `DELETE /notification/spot` - Stop watching a spot
 - `DELETE /deleteMyAccount` - Delete user account (also `DELETE /account/delete`)
 - `DELETE /sessions/:sessionId` - Terminate specific session
 
@@ -309,6 +314,23 @@ Key environment variables:
 - `GO_ENV`: Set to "development" for local development
 - `AWS_ENDPOINT_URL`: AWS service endpoint (local for dev)
 - `DYNAMODB_ENDPOINT`: DynamoDB endpoint (local for dev)
+
+- `APNS_KEY_P8`: APNs Auth Key PEM (newlines may be stored as `\n`)
+- `APNS_KEY_ID`: APNs key ID
+- `APNS_TEAM_ID`: Apple Developer Team ID
+- `APNS_TOPIC`: APNs topic / iOS bundle ID (default `treble.TrebleSurf`)
+
+### iOS push notifications (one-time)
+
+1. Enable Push Notifications for `treble.TrebleSurf` in Apple Developer and Xcode.
+2. Create an APNs Auth Key (`.p8`) and store `APNS_KEY_P8`, `APNS_KEY_ID`, and `APNS_TEAM_ID` as GitHub Actions secrets.
+3. Create DynamoDB tables, the `notifications` Lambda, and the hourly EventBridge rule:
+
+   ```bash
+   ./scripts/setup-notifications-infra.sh
+   ```
+
+The hourly worker reads swell predictions for watched spots and sends a push when `direction_quality >= 0.8`, `surf_size >= 0.8`, and `confidence >= 0.4` in the next 24 hours (one alert per arrival window). New surf reports also fan out to watchers of that spot, excluding the reporter.
 
 ## Deployment
 

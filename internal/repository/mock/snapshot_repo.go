@@ -10,7 +10,7 @@ import (
 var _ repository.SnapshotRepository = (*SnapshotRepo)(nil)
 
 type SnapshotRepo struct {
-	SaveFn         func(ctx context.Context, snapshot *model.SpotSnapshot) error
+	SaveFn            func(ctx context.Context, snapshot *model.SpotSnapshot) error
 	GetLatestBySpotFn func(ctx context.Context, spotID string) (*model.SpotSnapshot, error)
 }
 

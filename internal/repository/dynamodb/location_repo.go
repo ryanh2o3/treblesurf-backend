@@ -139,7 +139,7 @@ func parseLocationInfo(item map[string]*dynamodb.AttributeValue) (*model.Locatio
 	}
 
 	location := &model.LocationInfo{
-		CountryRegionSpot: mapString(raw, "country_region_spot", "CountryRegionSpot"),
+		CountryRegionSpot:   mapString(raw, "country_region_spot", "CountryRegionSpot"),
 		IdealSwellDirection: mapString(raw, "IdealSwellDirection", "ideal_swell_direction"),
 		Image:               mapString(raw, "Image", "image", "ImagePath", "image_path"),
 		Type:                mapString(raw, "Type", "type"),
