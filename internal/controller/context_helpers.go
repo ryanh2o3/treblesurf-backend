@@ -19,13 +19,7 @@ var (
 )
 
 func requestLogger(c *gin.Context) *slog.Logger {
-	logger := logging.FromContext(c.Request.Context())
-	if email, ok := c.Get("email"); ok {
-		if emailStr, ok := email.(string); ok && emailStr != "" {
-			logger = logger.With(slog.String("user_email", emailStr))
-		}
-	}
-	return logger
+	return logging.FromContext(c.Request.Context())
 }
 
 func getEmailFromContext(c *gin.Context) (string, error) {

@@ -3,20 +3,23 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+	"treblesurf-backend/internal/observability"
 )
 
 // Config holds all application configuration.
 type Config struct {
-	AWS       AWSConfig
-	WebSocket WebSocketConfig
-	Env       Environment
-	Security  SecurityConfig
-	Server    ServerConfig
-	Auth      AuthConfig
+	Observability observability.Config
+	AWS           AWSConfig
+	WebSocket     WebSocketConfig
+	Env           Environment
+	Security      SecurityConfig
+	Server        ServerConfig
+	Auth          AuthConfig
 }
 
 // Environment represents the application environment.
@@ -72,6 +75,12 @@ type SecurityConfig struct {
 func Load() (*Config, error) {
 	env := Environment(getEnvOrDefault("GO_ENV", string(EnvProduction)))
 	cfg := newBaseConfig(env)
+	telemetry, err := observability.LoadConfig()
+	if err != nil {
+		slog.Warn("invalid observability configuration; diagnostics disabled")
+		telemetry = observability.Config{}
+	}
+	cfg.Observability = telemetry
 
 	if err := loadAuthConfig(cfg, env); err != nil {
 		return nil, err

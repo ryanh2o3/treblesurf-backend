@@ -55,3 +55,6 @@ temp/
 # Internal documentation (keep only README.md)
 *.md
 !README.md
+
+!OBSERVABILITY_HANDOFF.md
+!observability/README.md

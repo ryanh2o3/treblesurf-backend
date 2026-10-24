@@ -3,8 +3,10 @@
 package httphandler
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -18,7 +20,16 @@ import (
 
 // SetupRouter creates and configures a Gin router with all application routes.
 func SetupRouter(cfg *config.Config, container *Container) *gin.Engine {
-	r := gin.Default()
+	r := gin.New()
+	r.Use(ObservabilityMiddleware(cfg.Observability, os.Stdout))
+	if cfg.Observability.Enabled {
+		r.Use(gin.CustomRecoveryWithWriter(io.Discard, func(c *gin.Context, _ any) {
+			slog.ErrorContext(c.Request.Context(), "request panic recovered")
+			c.AbortWithStatus(http.StatusInternalServerError)
+		}))
+	} else {
+		r.Use(gin.Logger(), gin.Recovery())
+	}
 
 	// Attach request-scoped logging and timeouts first
 	r.Use(RequestLoggerMiddleware())
@@ -41,9 +52,12 @@ func SetupRouter(cfg *config.Config, container *Container) *gin.Engine {
 // buildCORSMiddleware creates the CORS middleware configuration.
 func buildCORSMiddleware(cfg *config.Config) gin.HandlerFunc {
 	corsConfig := cors.Config{
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-CSRF-Token", "User-Agent"},
-		ExposeHeaders:    []string{"Content-Length", "X-CSRF-Token"},
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{
+			"Origin", "Content-Type", "Accept", "Authorization", "X-CSRF-Token",
+			"User-Agent", "X-Amzn-Trace-Id", "X-Request-Id",
+		},
+		ExposeHeaders:    []string{"Content-Length", "X-CSRF-Token", "X-Request-Id"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}

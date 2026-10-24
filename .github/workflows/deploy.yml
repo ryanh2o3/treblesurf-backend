@@ -24,6 +24,13 @@ jobs:
       SPOT_IMAGES_BASE_URL: https://treblesurf.com
       GO_ENV: production
       AWS_REGION: eu-west-1
+      OBSERVABILITY_ENABLED: ${{ vars.OBSERVABILITY_ENABLED || 'false' }}
+      OBSERVABILITY_ENVIRONMENT: production
+      SERVICE_VERSION: ${{ github.sha }}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://127.0.0.1:4318/v1/traces
+      OTEL_TRACES_SAMPLER_ARG: ${{ vars.OTEL_TRACES_SAMPLER_ARG || '0.1' }}
+      OPENTELEMETRY_COLLECTOR_CONFIG_FILE: /var/task/observability/collector.yaml
+      WEBSOCKET_API_ENDPOINT: 9q47dtf5qe.execute-api.eu-west-1.amazonaws.com
 
     steps:
       - name: Checkout code
@@ -34,7 +41,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: "1.24"
+          go-version-file: go.mod
           cache: true
 
       - name: Configure AWS Credentials
@@ -68,7 +75,7 @@ jobs:
         run: |
           # Package API Lambda
           cp api-bootstrap bootstrap
-          zip bootstrap.zip bootstrap
+          zip bootstrap.zip bootstrap observability/collector.yaml
           rm bootstrap
 
           # Package WebSocket Lambda
@@ -93,15 +100,13 @@ jobs:
 
 
           # Deploy Lambda function
-          aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://$ZIP_FILE
+          aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://$ZIP_FILE --query FunctionName --output text
 
           # Wait for the function update to complete before proceeding
           aws lambda wait function-updated --function-name $FUNCTION_NAME
 
           # Update Lambda environment variables
-          aws lambda update-function-configuration \
-            --function-name $FUNCTION_NAME \
-            --environment "Variables={JWT_SECRET='$JWT_SECRET',GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID',GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID',APPLE_CLIENT_IDS='$APPLE_CLIENT_IDS',ADMIN_EMAILS='$ADMIN_EMAILS',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com',SPOT_IMAGES_BASE_URL='$SPOT_IMAGES_BASE_URL'}"
+          python3 scripts/update_lambda_environment.py "$FUNCTION_NAME" --telemetry
 
       - name: Deploy WebSocket Lambda
         run: |
@@ -110,16 +115,14 @@ jobs:
           REGION="eu-west-1"
 
           # Update existing WebSocket Lambda
-          aws lambda update-function-code --function-name $WS_FUNCTION_NAME --zip-file fileb://$WS_ZIP_FILE
+          aws lambda update-function-code --function-name $WS_FUNCTION_NAME --zip-file fileb://$WS_ZIP_FILE --query FunctionName --output text
 
           # Wait for the function update to complete
           aws lambda wait function-updated --function-name $WS_FUNCTION_NAME
 
 
           # Update WebSocket Lambda environment variables
-          aws lambda update-function-configuration \
-            --function-name $WS_FUNCTION_NAME \
-            --environment "Variables={JWT_SECRET='$JWT_SECRET',GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID',GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID',APPLE_CLIENT_IDS='$APPLE_CLIENT_IDS',ADMIN_EMAILS='$ADMIN_EMAILS',GO_ENV='production',WEBSOCKET_API_ENDPOINT='9q47dtf5qe.execute-api.eu-west-1.amazonaws.com'}"
+          python3 scripts/update_lambda_environment.py "$WS_FUNCTION_NAME"
 
           # Configure permissions for WebSocket API Gateway
           WEBSOCKET_API_ID="9q47dtf5qe"

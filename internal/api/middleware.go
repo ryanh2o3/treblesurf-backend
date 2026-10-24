@@ -43,7 +43,10 @@ func iOSHeadersMiddleware() gin.HandlerFunc {
 func RequestLoggerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := strings.TrimSpace(c.GetHeader("X-Request-Id"))
-		if requestID == "" {
+		if requestID == "" || len(requestID) > 128 || strings.IndexFunc(requestID, func(r rune) bool {
+			allowed := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_'
+			return !allowed
+		}) >= 0 {
 			requestID = uuid.NewString()
 		}
 
