@@ -4,6 +4,14 @@ Use the normal production environment and existing deployment workflows. No stag
 
 ## Before deploying: AWS setup
 
+### Recovery after deployment (2026-10-24)
+
+The custom collector configuration caused `Extension.InitError` and API Gateway 502s: the attached Lambda collector has no `memory_limiter` processor and rejects the X-Ray exporter keys `sending_queue` and `retry_on_failure`. These unsupported settings have been removed from `collector.yaml` locally.
+
+The collector layer was detached from the live `api` Lambda to restore service. Both a direct Lambda health invocation and `https://treblesurf.com/api/health` returned HTTP 200 afterward. Application spans cannot be exported while the layer is detached; platform X-Ray tracing remains enabled. The corrected collector file still needs deployment and runtime verification before the layer is reattached. The existing workflow does not attach layers automatically, so an ordinary deployment will leave the recovery in place.
+
+The actual Lambda CloudWatch log group is `lambda`, not `/aws/lambda/api`.
+
 ### Applied through AWS CLI (2026-10-24)
 
 In account `759663378274`, region `eu-west-1`:
