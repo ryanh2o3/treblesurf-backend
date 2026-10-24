@@ -8,6 +8,7 @@ import (
 	"strings"
 	"treblesurf-backend/internal/app"
 	"treblesurf-backend/internal/config"
+	"treblesurf-backend/internal/observability"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -15,6 +16,7 @@ import (
 )
 
 var ginLambda *ginadapter.GinLambda
+var application *app.App
 
 func initialize() error {
 	cfg, err := config.Load()
@@ -22,7 +24,7 @@ func initialize() error {
 		return err
 	}
 
-	application, err := app.New(cfg)
+	application, err = app.New(cfg)
 	if err != nil {
 		return err
 	}
@@ -32,7 +34,8 @@ func initialize() error {
 
 //nolint:gocritic // AWS Lambda handler signature cannot be changed
 func Handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// Debug logging for API Gateway request
+	defer application.FlushTelemetry()
+	ctx = observability.LambdaContext(ctx, os.Getenv("_X_AMZN_TRACE_ID"))
 
 	// Check if path starts with /api and strip it
 	req.Path = strings.TrimPrefix(req.Path, "/api")

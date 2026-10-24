@@ -4,7 +4,10 @@ package service
 import (
 	"context"
 	"fmt"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"time"
+	"treblesurf-backend/internal/logging"
 
 	"treblesurf-backend/internal/model"
 	"treblesurf-backend/internal/repository"
@@ -53,12 +56,19 @@ func (s *BuoyService) GetDataRange(ctx context.Context, buoyName string, start, 
 
 // GetLast24HoursData retrieves buoy data from the last 24 hours.
 func (s *BuoyService) GetLast24HoursData(ctx context.Context, buoyName string) ([]*model.BuoyData, error) {
+	ctx, span := otel.Tracer("treblesurf-api").Start(ctx, "buoy.history")
+	defer span.End()
 	if buoyName == "" {
 		return nil, fmt.Errorf("buoy name is required")
 	}
 	endTime := time.Now().UTC()
 	startTime := endTime.Add(-24 * time.Hour)
-	return s.buoys.GetDataRange(ctx, buoyName, startTime, endTime)
+	data, err := s.buoys.GetDataRange(ctx, buoyName, startTime, endTime)
+	if err != nil {
+		span.SetStatus(codes.Error, "buoy history unavailable")
+	}
+	logging.FromContext(ctx).InfoContext(ctx, "buoy history completed")
+	return data, err
 }
 
 // GetMultipleBuoysData retrieves live data for multiple buoys.

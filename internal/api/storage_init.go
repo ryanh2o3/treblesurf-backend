@@ -4,6 +4,7 @@ package httphandler
 import (
 	"fmt"
 	"log/slog"
+	"treblesurf-backend/internal/observability"
 
 	storagepkg "treblesurf-backend/internal/storage"
 	localstorage "treblesurf-backend/local/storage"
@@ -69,6 +70,7 @@ func initializeProductionStorage(storage *containerStorage, region string) (*con
 	}))
 
 	// One DynamoDB client per process (shared across all repos). Do not create per request.
+	observability.InstrumentAWS(&sess.Handlers)
 	storage.dynamoDBClient = dynamodb.New(sess)
 	storage.rekognitionClient = rekognition.New(sess)
 	storage.s3Client = s3.New(sess)

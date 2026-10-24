@@ -1,0 +1,237 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "region": "eu-west-1",
+        "title": "/getLast24BuoyData latency",
+        "period": 60,
+        "view": "timeSeries",
+        "metrics": [
+          [
+            "TrebleSurf/API",
+            "Duration",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/getLast24BuoyData",
+            {
+              "stat": "p50"
+            }
+          ],
+          [
+            "TrebleSurf/API",
+            "Duration",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/getLast24BuoyData",
+            {
+              "stat": "p95"
+            }
+          ],
+          [
+            "TrebleSurf/API",
+            "Duration",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/getLast24BuoyData",
+            {
+              "stat": "p99"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "region": "eu-west-1",
+        "title": "/getLast24BuoyData requests / server errors",
+        "period": 60,
+        "stat": "Sum",
+        "view": "timeSeries",
+        "metrics": [
+          [
+            "TrebleSurf/API",
+            "Requests",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/getLast24BuoyData"
+          ],
+          [
+            "TrebleSurf/API",
+            "ServerErrors",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/getLast24BuoyData"
+          ],
+          [
+            "TrebleSurf/API",
+            "ClientErrors",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/getLast24BuoyData"
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "region": "eu-west-1",
+        "title": "/user/preferences latency",
+        "period": 60,
+        "view": "timeSeries",
+        "metrics": [
+          [
+            "TrebleSurf/API",
+            "Duration",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/user/preferences",
+            {
+              "stat": "p50"
+            }
+          ],
+          [
+            "TrebleSurf/API",
+            "Duration",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/user/preferences",
+            {
+              "stat": "p95"
+            }
+          ],
+          [
+            "TrebleSurf/API",
+            "Duration",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/user/preferences",
+            {
+              "stat": "p99"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "region": "eu-west-1",
+        "title": "/user/preferences requests / server errors",
+        "period": 60,
+        "stat": "Sum",
+        "view": "timeSeries",
+        "metrics": [
+          [
+            "TrebleSurf/API",
+            "Requests",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/user/preferences"
+          ],
+          [
+            "TrebleSurf/API",
+            "ServerErrors",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/user/preferences"
+          ],
+          [
+            "TrebleSurf/API",
+            "ClientErrors",
+            "Service",
+            "treblesurf-api",
+            "Environment",
+            "production",
+            "Route",
+            "/user/preferences"
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 12,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "region": "eu-west-1",
+        "title": "Lambda health",
+        "period": 60,
+        "stat": "Sum",
+        "metrics": [
+          [
+            "AWS/Lambda",
+            "Errors",
+            "FunctionName",
+            "api"
+          ],
+          [
+            "AWS/Lambda",
+            "Throttles",
+            "FunctionName",
+            "api"
+          ],
+          [
+            "AWS/Lambda",
+            "Invocations",
+            "FunctionName",
+            "api"
+          ]
+        ]
+      }
+    }
+  ]
+}

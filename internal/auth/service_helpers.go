@@ -190,7 +190,7 @@ func (s *Service) createSession(email, csrfToken string, c *gin.Context) {
 		return
 	}
 
-	_, err = s.sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
+	_, err = s.sessionsFor(c.Request.Context()).IssueUserSession(email, string(jsonBytes), c.Writer)
 	if err != nil {
 		slog.Warn("error creating session", slog.Any("error", err))
 	}

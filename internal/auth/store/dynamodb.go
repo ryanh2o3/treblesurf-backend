@@ -22,11 +22,13 @@ type sessionTableManager interface {
 // DynamoDBStore implements the session store interface using a session repository.
 type DynamoDBStore struct {
 	sessions repository.SessionRepository
+	ctx      context.Context
 }
 
 func NewDynamoDBStore(sessionsRepo repository.SessionRepository) *DynamoDBStore {
 	return &DynamoDBStore{
 		sessions: sessionsRepo,
+		ctx:      context.Background(),
 	}
 }
 
@@ -41,7 +43,7 @@ func (s *DynamoDBStore) SaveUserSession(userSession *user.Session) error {
 		JSON:      userSession.JSON,
 		TTL:       userSession.ExpiresAt.Unix(),
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sessionStoreTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, sessionStoreTimeout)
 	defer cancel()
 	return s.sessions.Save(ctx, sessionItem)
 }
@@ -50,7 +52,7 @@ func (s *DynamoDBStore) DeleteUserSession(sessionID string) error {
 	if s.sessions == nil {
 		return fmt.Errorf("session repository not initialized")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sessionStoreTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, sessionStoreTimeout)
 	defer cancel()
 	return s.sessions.Delete(ctx, sessionID)
 }
@@ -59,7 +61,7 @@ func (s *DynamoDBStore) FetchValidUserSession(sessionID string) (*user.Session, 
 	if s.sessions == nil {
 		return nil, fmt.Errorf("session repository not initialized")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sessionStoreTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, sessionStoreTimeout)
 	defer cancel()
 	sessionItem, err := s.sessions.Get(ctx, sessionID)
 	if err != nil {
@@ -85,7 +87,7 @@ func (s *DynamoDBStore) EnableTTL() error {
 	if !ok {
 		return fmt.Errorf("session repository does not support TTL management")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sessionStoreTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, sessionStoreTimeout)
 	defer cancel()
 	return manager.EnableTTL(ctx)
 }
@@ -94,7 +96,7 @@ func (s *DynamoDBStore) GetSessionsByUserID(userID string) ([]*user.Session, err
 	if s.sessions == nil {
 		return nil, fmt.Errorf("session repository not initialized")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sessionStoreTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, sessionStoreTimeout)
 	defer cancel()
 	sessionItems, err := s.sessions.GetByUserID(ctx, userID)
 	if err != nil {
@@ -123,7 +125,12 @@ func (s *DynamoDBStore) EnsureSessionsTable() error {
 	if !ok {
 		return fmt.Errorf("session repository does not support table management")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sessionStoreTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, sessionStoreTimeout)
 	defer cancel()
 	return manager.EnsureSessionsTable(ctx)
+}
+
+// WithContext returns a request-scoped copy; never mutates the shared store.
+func (s *DynamoDBStore) WithContext(ctx context.Context) *DynamoDBStore {
+	return &DynamoDBStore{sessions: s.sessions, ctx: ctx}
 }

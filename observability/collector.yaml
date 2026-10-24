@@ -1,0 +1,15 @@
+# ADOT Lambda collector amd64 v0.156.0 (layer version 4) has no processors.
+# Its awsxray exporter does not accept sending_queue or retry_on_failure.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+exporters:
+  awsxray:
+    region: ${env:AWS_REGION}
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [awsxray]

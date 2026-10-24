@@ -69,17 +69,19 @@ type SessionInfo struct {
 
 // Service provides authentication handlers and middleware with injected dependencies.
 type Service struct {
-	userRepo        repository.UserRepository
-	sessionRepo     repository.SessionRepository
-	sessionService  *sessions.Service
-	sessionStore    *store.DynamoDBStore
-	appleKeyCache   *appleKeyCache
-	googleClientIDs map[string]bool
-	appleClientIDs  map[string]bool
-	devUserEmail    string
-	jwtSecret       []byte
-	cookieSecure    bool
-	isDevelopment   bool
+	userRepo         repository.UserRepository
+	sessionRepo      repository.SessionRepository
+	sessionService   *sessions.Service
+	sessionAuth      auth.ServiceInterface
+	sessionTransport transport.ServiceInterface
+	sessionStore     *store.DynamoDBStore
+	appleKeyCache    *appleKeyCache
+	googleClientIDs  map[string]bool
+	appleClientIDs   map[string]bool
+	devUserEmail     string
+	jwtSecret        []byte
+	cookieSecure     bool
+	isDevelopment    bool
 }
 
 // NewService constructs an auth service with its required dependencies.
@@ -146,6 +148,8 @@ func (s *Service) initSessionService() error {
 		CookieName: "session_id",
 	})
 
+	s.sessionAuth = authService
+	s.sessionTransport = transportService
 	s.sessionService = sessions.New(sessionStore, authService, transportService, sessions.Options{
 		ExpirationDuration: 30 * 24 * time.Hour,
 	})
@@ -522,7 +526,7 @@ func (s *Service) ValidateTokenHandler(c *gin.Context) {
 		return
 	}
 
-	userSession, err := s.sessionService.GetUserSession(c.Request)
+	userSession, err := s.sessionsFor(c.Request.Context()).GetUserSession(c.Request)
 	if err != nil || userSession == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired or invalid"})
 		return
@@ -546,7 +550,7 @@ func (s *Service) ValidateTokenHandler(c *gin.Context) {
 
 	userData = s.ensureUserUUID(c.Request.Context(), userData, email)
 	updateSessionLastActive(userSession, c)
-	if err := s.sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
+	if err := s.sessionsFor(c.Request.Context()).ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
 		slog.Warn("failed to extend user session", slog.Any("error", err))
 	}
 
@@ -557,9 +561,9 @@ func (s *Service) LogoutHandler(c *gin.Context) {
 	s.ClearAuthCookies(c)
 
 	if s.sessionService != nil {
-		userSession, err := s.sessionService.GetUserSession(c.Request)
+		userSession, err := s.sessionsFor(c.Request.Context()).GetUserSession(c.Request)
 		if err == nil && userSession != nil {
-			if err := s.sessionService.ClearUserSession(userSession, c.Writer); err != nil {
+			if err := s.sessionsFor(c.Request.Context()).ClearUserSession(userSession, c.Writer); err != nil {
 				slog.Warn("failed to clear user session", slog.Any("error", err))
 			}
 		}
@@ -605,7 +609,7 @@ func (s *Service) GetUserSessionsHandler(c *gin.Context) {
 		return
 	}
 
-	userSessions, err := s.sessionStore.GetSessionsByUserID(emailStr)
+	userSessions, err := s.sessionStore.WithContext(c.Request.Context()).GetSessionsByUserID(emailStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve sessions"})
 		return
@@ -653,7 +657,7 @@ func (s *Service) TerminateSessionHandler(c *gin.Context) {
 		return
 	}
 
-	session, err := s.sessionStore.FetchValidUserSession(sessionID)
+	session, err := s.sessionStore.WithContext(c.Request.Context()).FetchValidUserSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve session"})
 		return
@@ -675,7 +679,7 @@ func (s *Service) TerminateSessionHandler(c *gin.Context) {
 		return
 	}
 
-	err = s.sessionStore.DeleteUserSession(sessionID)
+	err = s.sessionStore.WithContext(c.Request.Context()).DeleteUserSession(sessionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to terminate session"})
 		return
@@ -745,7 +749,7 @@ func (s *Service) CreateDevSession(email string, c *gin.Context) error {
 		return fmt.Errorf("failed to marshal session data: %w", err)
 	}
 
-	userSession, err := s.sessionService.IssueUserSession(email, string(jsonBytes), c.Writer)
+	userSession, err := s.sessionsFor(c.Request.Context()).IssueUserSession(email, string(jsonBytes), c.Writer)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
@@ -842,7 +846,7 @@ func (s *Service) devFindOrCreateUser(ctx context.Context, email, fallbackName s
 
 func (s *Service) SessionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userSession, err := s.sessionService.GetUserSession(c.Request)
+		userSession, err := s.sessionsFor(c.Request.Context()).GetUserSession(c.Request)
 		if err != nil {
 			slog.Warn("error fetching session", slog.Any("error", err))
 		}
@@ -850,7 +854,7 @@ func (s *Service) SessionMiddleware() gin.HandlerFunc {
 		if userSession != nil {
 			c.Set("session", userSession)
 
-			if err := s.sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
+			if err := s.sessionsFor(c.Request.Context()).ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
 				slog.Warn("failed to extend user session", slog.Any("error", err))
 			}
 
@@ -866,4 +870,14 @@ func (s *Service) SessionMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// sessionsFor binds a fresh adapter to this request without rebuilding auth state.
+func (s *Service) sessionsFor(ctx context.Context) *sessions.Service {
+	if s.sessionStore == nil {
+		return s.sessionService
+	}
+	return sessions.New(s.sessionStore.WithContext(ctx), s.sessionAuth, s.sessionTransport,
+		sessions.Options{ExpirationDuration: 30 * 24 * time.Hour},
+	)
 }

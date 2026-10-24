@@ -48,7 +48,7 @@ func (s *Service) handleSessionAuth(c *gin.Context) bool {
 		return false
 	}
 
-	userSession, err := s.sessionService.GetUserSession(c.Request)
+	userSession, err := s.sessionsFor(c.Request.Context()).GetUserSession(c.Request)
 	switch {
 	case err != nil:
 		slog.Warn("session service error", slog.Any("error", err))
@@ -70,7 +70,7 @@ func (s *Service) processValidSession(c *gin.Context, userSession *user.Session)
 	s.processSessionData(c, userSession)
 
 	// Extend session
-	if err := s.sessionService.ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
+	if err := s.sessionsFor(c.Request.Context()).ExtendUserSession(userSession, c.Request, c.Writer); err != nil {
 		slog.Warn("failed to extend user session", slog.Any("error", err))
 	}
 
@@ -126,7 +126,7 @@ func (s *Service) CSRFMiddleware() gin.HandlerFunc {
 		// Try to get token from session data first (preferred method)
 		var serverToken string
 		if s.sessionService != nil {
-			userSession, err := s.sessionService.GetUserSession(c.Request)
+			userSession, err := s.sessionsFor(c.Request.Context()).GetUserSession(c.Request)
 			if err == nil && userSession != nil {
 				// Parse session JSON to get CSRF token
 				var sessionData SessionJSON

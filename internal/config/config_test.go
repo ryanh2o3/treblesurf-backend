@@ -198,3 +198,18 @@ func TestSplitCommaSeparated(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_InvalidObservabilityDoesNotPreventStartup(t *testing.T) {
+	t.Setenv("GO_ENV", "development")
+	t.Setenv("OBSERVABILITY_ENABLED", "true")
+	t.Setenv("OBSERVABILITY_ENVIRONMENT", "production")
+	t.Setenv("SERVICE_VERSION", "test")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "invalid")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Observability.Enabled {
+		t.Fatal("invalid optional telemetry must be disabled")
+	}
+}
